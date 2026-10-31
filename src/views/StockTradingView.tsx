@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -39,6 +39,45 @@ interface StockTradingViewProps {
   onSaveTrades: (trades: StockTrade[]) => void;
 }
 
+// Consolidate duplicate OPEN entries for the same equity into one weighted-average position.
+const consolidateOpenPositions = (items: StockTrade[]): StockTrade[] => {
+  const result: StockTrade[] = [];
+  const openIndexBySymbol = new Map<string, number>();
+
+  for (const trade of items) {
+    const symbol = trade.stockName.trim().toUpperCase();
+    if (trade.status !== 'OPEN') {
+      result.push(trade);
+      continue;
+    }
+
+    const existingIndex = openIndexBySymbol.get(symbol);
+    if (existingIndex === undefined) {
+      openIndexBySymbol.set(symbol, result.length);
+      result.push({ ...trade, stockName: symbol });
+      continue;
+    }
+
+    const existing = result[existingIndex];
+    const quantity = existing.quantity + trade.quantity;
+    const investment = existing.totalInvestment + trade.totalInvestment;
+    const averageEntry = quantity > 0 ? investment / quantity : existing.entryPrice;
+    result[existingIndex] = {
+      ...existing,
+      entryPrice: averageEntry,
+      quantity,
+      totalInvestment: investment,
+      currentMarketPrice: trade.currentMarketPrice || existing.currentMarketPrice || averageEntry,
+      brokerage: 0,
+      otherCharges: estimateDeliveryCharges(investment),
+      targetEarnings: trade.targetEarnings ?? existing.targetEarnings,
+      notes: [existing.notes, trade.notes].filter(Boolean).join(' | '),
+    };
+  }
+
+  return result.map((trade, index) => ({ ...trade, serialNumber: index + 1 }));
+};
+
 export const StockTradingView: React.FC<StockTradingViewProps> = ({
   trades,
   profile,
@@ -60,6 +99,19 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   const [tradeStatus, setTradeStatus] = useState<'OPEN' | 'CLOSED'>('OPEN');
   const [currentMarketPrice, setCurrentMarketPrice] = useState('');
   const [notes, setNotes] = useState('');
+
+  // One-time cleanup on load: legacy duplicate OPEN entries become one weighted-average position.
+  useEffect(() => {
+    const consolidated = consolidateOpenPositions(trades);
+    const changed = consolidated.length !== trades.length ||
+      consolidated.some((trade, index) =>
+        trade.id !== trades[index]?.id ||
+        trade.quantity !== trades[index]?.quantity ||
+        trade.entryPrice !== trades[index]?.entryPrice ||
+        trade.totalInvestment !== trades[index]?.totalInvestment
+      );
+    if (changed) onSaveTrades(consolidated);
+  }, [trades, onSaveTrades]);
 
   // Performance analytics
   const metrics = useMemo(() => {
@@ -242,7 +294,38 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         currentMarketPrice: cmp,
         notes,
       };
-      onSaveTrades([...trades, newTrade]);
+      if (newTrade.status === 'OPEN') {
+        const normalizedSymbol = newTrade.stockName.trim().toUpperCase();
+        const existingIndex = trades.findIndex(
+          (trade) => trade.status === 'OPEN' && trade.stockName.trim().toUpperCase() === normalizedSymbol
+        );
+
+        if (existingIndex >= 0) {
+          const existing = trades[existingIndex];
+          const combinedQuantity = existing.quantity + newTrade.quantity;
+          const combinedInvestment = existing.totalInvestment + newTrade.totalInvestment;
+          const weightedAverageEntry = combinedQuantity > 0 ? combinedInvestment / combinedQuantity : ep;
+          const updated = trades.map((trade, index) => index === existingIndex
+            ? {
+                ...trade,
+                entryPrice: weightedAverageEntry,
+                quantity: combinedQuantity,
+                totalInvestment: combinedInvestment,
+                currentMarketPrice: currentMarketPrice ? cmp : (trade.currentMarketPrice || weightedAverageEntry),
+                brokerage: 0,
+                otherCharges: estimateDeliveryCharges(combinedInvestment),
+                targetEarnings: target ?? trade.targetEarnings,
+                notes: [trade.notes, notes].filter(Boolean).join(' | '),
+              }
+            : trade
+          );
+          onSaveTrades(updated.map((trade, index) => ({ ...trade, serialNumber: index + 1 })));
+        } else {
+          onSaveTrades([...trades, newTrade]);
+        }
+      } else {
+        onSaveTrades([...trades, newTrade]);
+      }
     }
 
     setIsModalOpen(false);
