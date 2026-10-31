@@ -181,8 +181,8 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
         <tbody className="divide-y divide-[#1e2e4f]/50">
           {calculated.length === 0 ? <tr><td colSpan={11} className="py-10 text-center text-slate-500">No capital records yet. Add your first week to begin.</td></tr> :
           calculated.map((r)=>
-            <tr key={r.id} className="hover:bg-[#131f38]/50">
-              <td className="px-3 py-3 font-bold text-amber-400">{r.serialNumber}</td>
+            <tr key={r.id} className={Number(r.customFields?.actualCapital) >= Number(r.finalAmount) && Number(r.finalAmount) > 0 ? "bg-emerald-500/10 border-l-4 border-emerald-400 opacity-70" : "hover:bg-[#131f38]/50"} title={Number(r.customFields?.actualCapital) >= Number(r.finalAmount) && Number(r.finalAmount) > 0 ? "Target completed — no action needed for this week" : "Target not completed yet"}>
+              <td className="px-3 py-3 font-bold text-amber-400">{r.serialNumber}{Number(r.customFields?.actualCapital) >= Number(r.finalAmount) && Number(r.finalAmount) > 0 ? <span className="ml-1 text-emerald-300" title="Target completed">✓</span> : null}</td>
               <td className="px-3 py-3 whitespace-nowrap text-slate-300">{r.weekStartDate}</td>
               <td className="px-3 py-3 text-right">{money(r.openingBalance, profile.currencySymbol)}</td>
               <td className="px-3 py-3 text-right text-cyan-300">{money(r.weeklyIncome, profile.currencySymbol)}</td>
