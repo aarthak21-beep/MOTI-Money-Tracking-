@@ -139,12 +139,15 @@ export const WeeklyIncomeView: React.FC<WeeklyIncomeViewProps> = ({
     }
 
     // Recalculate the running balance so every week's Base carries forward automatically.
+    let runningBase = Number(updated[0]?.openingBalance) || 0;
     updated = updated.map((record, index) => {
-      const base = index === 0 ? (Number(record.openingBalance) || 0) : updated[index - 1].finalAmount;
+      const base = index === 0 ? runningBase : runningBase;
       const income = Number(record.weeklyIncome) || 0;
       const growthAmount = base * 0.03;
+      const finalAmount = base + income + growthAmount;
+      runningBase = finalAmount;
       return { ...record, serialNumber: index + 1, openingBalance: base,
-        totalIncome: income, weeklyExpenses: 0, finalAmount: base + income + growthAmount };
+        totalIncome: income, weeklyExpenses: 0, finalAmount };
     });
     onSaveRecords(updated);
 
