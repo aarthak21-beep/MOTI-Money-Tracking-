@@ -511,7 +511,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                 const targetEarn = closed ? exit - t.entryPrice : 0;
                 const pnl = closed ? (exit - t.entryPrice) * t.quantity : 0;
                 const pct = t.entryPrice > 0 && closed ? (targetEarn / t.entryPrice) * 100 : 0;
-                const totalPnl = filteredTrades.slice(0, filteredTrades.indexOf(t) + 1)
+                const totalPnl = trades.slice(0, trades.indexOf(t) + 1)
                   .reduce((sum, trade) => sum + (trade.status === 'CLOSED' ? (Number(trade.actualPnl) || 0) : 0), 0);
                 return (
                   <tr key={t.id} className="hover:bg-[#131f38]/50 transition-colors">
@@ -523,7 +523,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                     <td className="py-3 px-3 text-right font-bold text-amber-300">₹{formatINR(t.totalInvestment)}</td>
                     <td className="py-3 px-3 whitespace-nowrap text-slate-300">{closed ? (t.exitDate || '-') : '-'}</td>
                     <td className="py-3 px-3 text-right font-bold text-white">{closed ? '₹' + formatINR(exit) : '-'}</td>
-                    <td className="py-3 px-3 text-right text-slate-400">{closed ? '₹' + formatINR((t.brokerage || 0) + (t.otherCharges || 0)) : '-'}</td>
+                    <td className="py-3 px-3 text-right text-slate-400">-</td>
                     <td className="py-3 px-3 text-right text-slate-200">{closed ? '₹' + formatINR(targetEarn) : '-'}</td>
                     <td className={`py-3 px-3 text-right font-bold ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{closed ? (pnl >= 0 ? '+' : '-') + '₹' + formatINR(Math.abs(pnl)) : '-'}</td>
                     <td className="py-3 px-3 text-right font-black text-white">{closed ? '₹' + formatINR(totalPnl) : '-'}</td>
