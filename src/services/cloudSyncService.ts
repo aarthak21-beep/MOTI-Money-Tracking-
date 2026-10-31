@@ -5,6 +5,8 @@ export interface CloudSnapshot {
   data: Record<string, unknown>;
 }
 
+let writeQueue: Promise<void> = Promise.resolve();
+
 export const CloudSyncService = {
   getUrl(): string {
     return localStorage.getItem(CONFIG_KEY) || '';
@@ -19,12 +21,16 @@ export const CloudSyncService = {
     const url = this.getUrl();
     if (!url) return;
     // Apps Script accepts a simple text/plain POST without a CORS preflight.
-    await fetch(url, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', snapshot }),
+    const body = JSON.stringify({ action: 'save', snapshot });
+    writeQueue = writeQueue.catch(() => undefined).then(async () => {
+      await fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body,
+      });
     });
+    await writeQueue;
   },
 
   load(): Promise<CloudSnapshot | null> {
