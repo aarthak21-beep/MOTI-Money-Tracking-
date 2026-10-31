@@ -1,0 +1,6 @@
+{
+  "name": "MOTI – Money & Operations Tracking Intelligence",
+  "description": "SMART MONEY. SMART BUSINESS. SMART FUTURE. Premium all-in-one financial and business management platform with stock trading, weekly & daily earnings, business invoices, expense tracking, cashflow, calculators, reports, and MOTI AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

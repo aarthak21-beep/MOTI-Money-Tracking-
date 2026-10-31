@@ -1,0 +1,25 @@
+{
+  "name": "MOTI – Money & Operations Tracking Intelligence",
+  "short_name": "MOTI",
+  "description": "SMART MONEY. SMART BUSINESS. SMART FUTURE. Premium all-in-one financial and business management platform.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0f1d",
+  "theme_color": "#0a0f1d",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "business", "productivity"]
+}
