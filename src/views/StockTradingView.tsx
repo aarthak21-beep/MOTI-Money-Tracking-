@@ -19,6 +19,7 @@ import {
 import { StockTrade, UserProfile } from '../types';
 import { formatINR, downloadCSV, printFinancialReport } from '../utils/exportUtils';
 import { TradingAnalyticsView } from './TradingAnalyticsView';
+import { EquityRiskCalculator } from './EquityRiskCalculator';
 
 // Zerodha NSE equity-delivery estimate (resident individual account).
 // Brokerage is zero; statutory/exchange fees still apply.
@@ -521,6 +522,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
 
       {/* Detailed trading performance analytics; read-only and never mutates saved trades */}
       <TradingAnalyticsView trades={trades} />
+      <EquityRiskCalculator />
 
       {/* Stock Trading KPI Metrics */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
