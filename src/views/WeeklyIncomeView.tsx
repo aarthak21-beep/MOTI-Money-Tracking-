@@ -52,7 +52,8 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, onSaveReco
 
   const openNew = () => {
     setEditing(null);
-    setDate(new Date().toISOString().slice(0, 10));
+    const today = new Date();
+    setDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
     setFirstBase(String(latestTarget || 0));
     setAddition('0');
     setRate('3');
