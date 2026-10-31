@@ -331,13 +331,13 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center border-b border-[#1e2e4f] pb-4">
         <div>
           <div className="flex items-center space-x-2">
-            <h1 className="text-2xl font-black text-white sm:text-3xl">STOCK TRADING LEDGER</h1>
+            <h1 className="text-2xl font-black text-white sm:text-3xl">EQUITY TRADING JOURNAL</h1>
             <span className="rounded bg-amber-500/10 px-2 py-0.5 text-xs font-bold text-amber-400 border border-amber-500/30">
-              EQUITY & F&O
+              EQUITY ONLY
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
-            Real-time trade journaling with automatic gross & net P&L, brokerage, and unrealized tracking.
+            Track equity entries, quantity, investment, exit price, target earn and cumulative P&L.
           </p>
         </div>
 
