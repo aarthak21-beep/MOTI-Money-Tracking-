@@ -172,6 +172,49 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
     };
   }, [trades]);
 
+  // Weekly and monthly charge summaries for closed equity delivery trades.
+  const chargeReports = useMemo(() => {
+    const parseDate = (value?: string) => {
+      if (!value) return null;
+      const [day, month, year] = value.split('-').map(Number);
+      if (!day || !month || !year) return null;
+      return new Date(year, month - 1, day);
+    };
+    const closed = trades.filter((trade) => trade.status === 'CLOSED' && trade.exitDate);
+    const aggregate = (period: 'week' | 'month') => {
+      const buckets = new Map<string, { label: string; brokerage: number; dp: number; statutory: number; total: number; dpKeys: Set<string> }>();
+      closed.forEach((trade) => {
+        const date = parseDate(trade.exitDate);
+        if (!date) return;
+        const key = period === 'month'
+          ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+          : (() => {
+              const start = new Date(date);
+              const day = (start.getDay() + 6) % 7;
+              start.setDate(start.getDate() - day);
+              return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+            })();
+        const label = period === 'month'
+          ? date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+          : (() => { const start = new Date(date); start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); const end = new Date(start); end.setDate(end.getDate() + 6); return `${start.toLocaleDateString('en-IN')} – ${end.toLocaleDateString('en-IN')}`; })();
+        if (!buckets.has(key)) buckets.set(key, { label, brokerage: 0, dp: 0, statutory: 0, total: 0, dpKeys: new Set() });
+        const bucket = buckets.get(key)!;
+        const dpKey = `${trade.exitDate}|${trade.stockName.trim().toUpperCase()}`;
+        const hasDp = (Number(trade.otherCharges) || 0) >= 15.34;
+        const dpForTrade = hasDp ? 15.34 : 0;
+        bucket.brokerage += Number(trade.brokerage) || 0;
+        bucket.dpKeys.add(dpKey);
+        bucket.statutory += Math.max(0, (Number(trade.otherCharges) || 0) - dpForTrade);
+      });
+      return Array.from(buckets.entries()).map(([key, bucket]) => {
+        bucket.dp = bucket.dpKeys.size * 15.34;
+        bucket.total = bucket.brokerage + bucket.dp + bucket.statutory;
+        return { key, ...bucket };
+      }).sort((a, b) => b.key.localeCompare(a.key));
+    };
+    return { weekly: aggregate('week'), monthly: aggregate('month') };
+  }, [trades]);
+
   // Filtered trades
   const filteredTrades = useMemo(() => {
     return trades.filter((t) => {
@@ -461,6 +504,18 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Brokerage and DP charge reports */}
+      <section className="space-y-3 rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4">
+        <div><h2 className="text-sm font-black text-white">BROKERAGE &amp; DP CHARGES REPORT</h2><p className="text-[10px] text-slate-400">Closed Equity Delivery trades · grouped by exit date · estimated Zerodha resident-individual charges</p></div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {([{ title: 'Weekly Charges', rows: chargeReports.weekly }, { title: 'Monthly Charges', rows: chargeReports.monthly }] as const).map((report) => <div key={report.title} className="overflow-x-auto rounded-xl border border-[#1e2e4f]">
+            <h3 className="px-3 py-2 text-xs font-bold text-amber-300">{report.title}</h3>
+            <table className="w-full min-w-[440px] text-xs"><thead><tr className="bg-[#0a101f] text-[10px] uppercase text-slate-400"><th className="px-2 py-2 text-left">Period</th><th className="px-2 py-2 text-right">Brokerage</th><th className="px-2 py-2 text-right">DP</th><th className="px-2 py-2 text-right">Other Taxes</th><th className="px-2 py-2 text-right">Total</th></tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{report.rows.length ? report.rows.map((row) => <tr key={row.key}><td className="px-2 py-2 text-slate-300">{row.label}</td><td className="px-2 py-2 text-right">{formatINR(row.brokerage)}</td><td className="px-2 py-2 text-right">{formatINR(row.dp)}</td><td className="px-2 py-2 text-right">{formatINR(row.statutory)}</td><td className="px-2 py-2 text-right font-bold text-amber-300">{formatINR(row.total)}</td></tr>) : <tr><td colSpan={5} className="px-2 py-4 text-center text-slate-500">No closed trades yet</td></tr>}</tbody></table>
+          </div>)}
+        </div>
+        <p className="text-[10px] leading-relaxed text-slate-500">Zerodha equity-delivery brokerage is ₹0. DP estimate is ₹15.34 per stock per sell-day (standard male primary-holder rate); actual DP can differ by account holder category. Other taxes are derived from the saved trade charge estimates.</p>
+      </section>
 
       {/* Stock Trading KPI Metrics */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
