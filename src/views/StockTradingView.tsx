@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { StockTrade, UserProfile } from '../types';
 import { formatINR, downloadCSV, printFinancialReport } from '../utils/exportUtils';
+import { TradingAnalyticsView } from './TradingAnalyticsView';
 
 // Zerodha NSE equity-delivery estimate (resident individual account).
 // Brokerage is zero; statutory/exchange fees still apply.
@@ -517,6 +518,9 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         </div>
         <p className="text-[10px] leading-relaxed text-slate-500">Zerodha equity-delivery brokerage is ₹0. DP estimate is ₹15.34 per stock per sell-day (standard male primary-holder rate); actual DP can differ by account holder category. Other taxes are derived from the saved trade charge estimates.</p>
       </section>
+
+      {/* Detailed trading performance analytics; read-only and never mutates saved trades */}
+      <TradingAnalyticsView trades={trades} />
 
       {/* Stock Trading KPI Metrics */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
