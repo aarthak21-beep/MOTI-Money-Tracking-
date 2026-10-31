@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ImagePlus, Trash2, Save, BookOpen, X } from 'lucide-react';
+import { ImagePlus, Trash2, Save, BookOpen } from 'lucide-react';
 import { StockTrade } from '../types';
 
 interface TradeNotesJournalProps {
