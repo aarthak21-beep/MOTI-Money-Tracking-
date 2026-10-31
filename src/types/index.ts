@@ -59,6 +59,11 @@ export interface StockTrade {
   entryReason?: string;
   exitNotes?: string;
   screenshots?: Array<{ name: string; dataUrl: string }>;
+  planFollowed?: boolean;
+  stopLossFollowed?: 'yes' | 'no' | 'na';
+  targetFollowed?: 'yes' | 'no' | 'na';
+  disciplineMistakes?: string[];
+  disciplineImprovement?: string;
 }
 
 export interface WeeklyIncomeRecord {
