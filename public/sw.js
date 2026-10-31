@@ -1,10 +1,11 @@
 // MOTI Service Worker for PWA offline caching & instant load
-const CACHE_NAME = 'moti-v1';
+const CACHE_NAME = 'moti-v2';
+const BASE_PATH = new URL('.', self.location).pathname;
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/logo.svg'
+  BASE_PATH,
+  `${BASE_PATH}index.html`,
+  `${BASE_PATH}manifest.json`,
+  `${BASE_PATH}logo.svg`
 ];
 
 self.addEventListener('install', (event) => {
