@@ -56,6 +56,9 @@ export interface StockTrade {
   status: 'OPEN' | 'CLOSED';
   currentMarketPrice?: number; // for open position unrealized P&L
   notes?: string;
+  entryReason?: string;
+  exitNotes?: string;
+  screenshots?: Array<{ name: string; dataUrl: string }>;
 }
 
 export interface WeeklyIncomeRecord {
