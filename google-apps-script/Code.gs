@@ -71,11 +71,11 @@ function writeModuleSheets_(data) {
     const qty = Number(t.quantity) || 0;
     const pnl = t.status === 'CLOSED' ? (Number(t.actualPnl) || ((exit - entry) * qty)) : '';
     const cumulative = all.slice(0, i + 1).reduce((sum, item) =>
-      sum + (item.status === 'CLOSED' ? (Number(item.actualPnl) || ((Number(item.exitPrice) - Number(item.entryPrice)) * Number(item.quantity))) : 0), 0);
+      sum + (item.status === 'CLOSED' ? (Number(item.actualPnl) || (((Number(item.exitPrice) || 0) - (Number(item.entryPrice) || 0)) * (Number(item.quantity) || 0))) : 0), 0);
     return [t.serialNumber || i + 1, t.entryDate || '', t.stockName || '', entry || '', qty || '',
       Number(t.totalInvestment) || (entry * qty) || '', t.exitDate || '', exit || '',
       '', Number(t.targetEarnings) || (entry && qty ? (Number(t.targetEarnings) || 0) : ''),
-      pnl, cumulative || '', entry ? ((exit - entry) / entry) * 100 : ''];
+      pnl, cumulative || '', entry && exit ? ((exit - entry) / entry) * 100 : ''];
   });
   writeTab_(ss, 'Stock Trading',
     ['Sr No.', 'DATE', 'STOCK', 'ENTRY', 'QTY', 'INVESTMENT', 'EXIT DATE', 'EXIT', 'CMI', 'TARGET EARN', 'P&L', 'TOTAL P&L', '%'],
