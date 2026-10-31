@@ -106,9 +106,11 @@ export default function App() {
   // On later launches, restore the user's own latest cloud snapshot as usual.
   useEffect(() => {
     if (!CloudSyncService.getUrl()) return;
-    if (demoReset) {
+    const cloudResetPending = localStorage.getItem('moti_equity_cloud_reset_pending') === '1';
+    if (demoReset || cloudResetPending) {
       const cleanData = JSON.parse(StorageService.exportCompleteBackup(userId));
       void CloudSyncService.save({ exportedAt: new Date().toISOString(), data: cleanData })
+        .then(() => localStorage.removeItem('moti_equity_cloud_reset_pending'))
         .catch((error) => console.warn('MOTI clean cloud snapshot:', error));
       return;
     }
