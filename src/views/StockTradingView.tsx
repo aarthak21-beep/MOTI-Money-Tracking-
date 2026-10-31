@@ -480,155 +480,59 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         </div>
       </div>
 
-      {/* Main Ledger Table */}
+      {/* Spreadsheet-style Stock Trading Ledger */}
       <div className="overflow-x-auto rounded-2xl border border-[#1e2e4f] bg-[#0d1527] shadow-xl">
-        <table className="w-full text-left border-collapse min-w-[950px]">
+        <table className="w-full text-left border-collapse min-w-[1250px]">
           <thead>
             <tr className="border-b border-[#1e2e4f] bg-[#0a101f] text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-              <th className="py-3 px-3">S.No</th>
-              <th className="py-3 px-3">Entry Date</th>
-              <th className="py-3 px-3">Stock Name</th>
-              <th className="py-3 px-3 text-right">Entry Price</th>
+              <th className="py-3 px-3">Sr No.</th>
+              <th className="py-3 px-3">Date</th>
+              <th className="py-3 px-3">Stock</th>
+              <th className="py-3 px-3 text-right">Entry</th>
               <th className="py-3 px-3 text-right">Qty</th>
               <th className="py-3 px-3 text-right">Investment</th>
-              <th className="py-3 px-3 text-center">Status</th>
-              <th className="py-3 px-3 text-right">Exit / CMP</th>
-              <th className="py-3 px-3 text-right">Brokerage</th>
-              <th className="py-3 px-3 text-right">Net P&L</th>
-              <th className="py-3 px-3 text-right">P&L %</th>
+              <th className="py-3 px-3">Exit Date</th>
+              <th className="py-3 px-3 text-right">Exit</th>
+              <th className="py-3 px-3 text-right">CMI</th>
+              <th className="py-3 px-3 text-right">Target Earn</th>
+              <th className="py-3 px-3 text-right">P&amp;L</th>
+              <th className="py-3 px-3 text-right">Total P&amp;L</th>
+              <th className="py-3 px-3 text-right">%</th>
               <th className="py-3 px-3 text-center">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#1e2e4f]/50 text-xs">
             {filteredTrades.length === 0 ? (
-              <tr>
-                <td colSpan={12} className="py-8 text-center text-slate-500">
-                  No stock trades found matching current criteria.
-                </td>
-              </tr>
+              <tr><td colSpan={14} className="py-8 text-center text-slate-500">No stock trades yet. Add your first trade.</td></tr>
             ) : (
               filteredTrades.map((t) => {
-                const isClosed = t.status === 'CLOSED';
-                const hasCmp = !isClosed && t.currentMarketPrice && t.currentMarketPrice > 0;
-                let unrealizedNet = 0;
-                let unrealizedPct = 0;
-                if (hasCmp) {
-                  const gross = (t.currentMarketPrice! - t.entryPrice) * t.quantity;
-                  unrealizedNet = gross - t.brokerage - t.otherCharges;
-                  unrealizedPct = t.totalInvestment > 0 ? (unrealizedNet / t.totalInvestment) * 100 : 0;
-                }
-
+                const closed = t.status === 'CLOSED' && Number(t.exitPrice) > 0;
+                const exit = closed ? Number(t.exitPrice) : 0;
+                const targetEarn = closed ? exit - t.entryPrice : 0;
+                const pnl = closed ? (exit - t.entryPrice) * t.quantity : 0;
+                const pct = t.entryPrice > 0 && closed ? (targetEarn / t.entryPrice) * 100 : 0;
+                const totalPnl = trades.slice(0, trades.indexOf(t) + 1)
+                  .reduce((sum, trade) => sum + (trade.status === 'CLOSED' ? (Number(trade.actualPnl) || 0) : 0), 0);
                 return (
                   <tr key={t.id} className="hover:bg-[#131f38]/50 transition-colors">
                     <td className="py-3 px-3 font-mono text-slate-500 font-bold">{t.serialNumber}</td>
-                    <td className="py-3 px-3 text-slate-300 whitespace-nowrap">{t.entryDate}</td>
-                    <td className="py-3 px-3">
-                      <span className="font-extrabold text-white">{t.stockName}</span>
-                      {t.notes && <p className="text-[10px] text-slate-500 truncate max-w-[150px]">{t.notes}</p>}
-                    </td>
-                    <td className="py-3 px-3 text-right font-medium text-slate-200">
-                      ₹{formatINR(t.entryPrice)}
-                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap text-slate-300">{t.entryDate}</td>
+                    <td className="py-3 px-3 font-extrabold text-white">{t.stockName}</td>
+                    <td className="py-3 px-3 text-right text-slate-200">₹{formatINR(t.entryPrice)}</td>
                     <td className="py-3 px-3 text-right font-bold text-white">{t.quantity}</td>
-                    <td className="py-3 px-3 text-right font-bold text-amber-300">
-                      ₹{formatINR(t.totalInvestment)}
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      <span
-                        className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-bold border ${
-                          isClosed
-                            ? 'border-slate-700 bg-slate-800 text-slate-300'
-                            : 'border-amber-500/40 bg-amber-500/10 text-amber-400'
-                        }`}
-                      >
-                        {t.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-right">
-                      {isClosed ? (
-                        <div>
-                          <span className="font-bold text-white">₹{formatINR(t.exitPrice || 0)}</span>
-                          <p className="text-[10px] text-slate-500">{t.exitDate}</p>
-                        </div>
-                      ) : (
-                        <div>
-                          <span className="font-bold text-cyan-300">₹{formatINR(t.currentMarketPrice || t.entryPrice)}</span>
-                          <p className="text-[10px] text-slate-500">Live CMP</p>
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-3 px-3 text-right text-slate-400">
-                      ₹{formatINR(t.brokerage + t.otherCharges)}
-                    </td>
-                    <td className="py-3 px-3 text-right">
-                      {isClosed ? (
-                        <span
-                          className={`font-black ${
-                            (t.netPnl || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                          }`}
-                        >
-                          {(t.netPnl || 0) >= 0 ? '+' : ''}₹{formatINR(t.netPnl || 0)}
-                        </span>
-                      ) : hasCmp ? (
-                        <span
-                          className={`font-semibold text-xs ${
-                            unrealizedNet >= 0 ? 'text-emerald-400/80' : 'text-rose-400/80'
-                          }`}
-                        >
-                          {unrealizedNet >= 0 ? '+' : ''}₹{formatINR(unrealizedNet)} (Unrl)
-                        </span>
-                      ) : (
-                        <span className="text-slate-500 italic">Open (CMP)</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3 text-right">
-                      {isClosed ? (
-                        <span
-                          className={`font-bold ${
-                            (t.pnlPercentage || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                          }`}
-                        >
-                          {(t.pnlPercentage || 0) >= 0 ? '+' : ''}
-                          {t.pnlPercentage?.toFixed(2)}%
-                        </span>
-                      ) : hasCmp ? (
-                        <span
-                          className={`font-medium ${
-                            unrealizedPct >= 0 ? 'text-emerald-400/80' : 'text-rose-400/80'
-                          }`}
-                        >
-                          {unrealizedPct >= 0 ? '+' : ''}
-                          {unrealizedPct.toFixed(2)}%
-                        </span>
-                      ) : (
-                        <span className="text-slate-500">-</span>
-                      )}
-                    </td>
+                    <td className="py-3 px-3 text-right font-bold text-amber-300">₹{formatINR(t.totalInvestment)}</td>
+                    <td className="py-3 px-3 whitespace-nowrap text-slate-300">{closed ? (t.exitDate || '-') : '-'}</td>
+                    <td className="py-3 px-3 text-right font-bold text-white">{closed ? '₹' + formatINR(exit) : '-'}</td>
+                    <td className="py-3 px-3 text-right text-slate-400">-</td>
+                    <td className="py-3 px-3 text-right text-slate-200">{closed ? '₹' + formatINR(targetEarn) : '-'}</td>
+                    <td className={`py-3 px-3 text-right font-bold ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{closed ? (pnl >= 0 ? '+' : '-') + '₹' + formatINR(Math.abs(pnl)) : '-'}</td>
+                    <td className="py-3 px-3 text-right font-black text-white">{closed ? '₹' + formatINR(totalPnl) : '-'}</td>
+                    <td className={`py-3 px-3 text-right font-bold ${pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{closed ? pct.toFixed(2) + '%' : '-'}</td>
                     <td className="py-3 px-3 text-center">
                       <div className="flex items-center justify-center space-x-1.5">
-                        {!isClosed && (
-                          <button
-                            onClick={() => handleQuickClose(t)}
-                            title="Exit Position"
-                            className="rounded-lg p-1.5 text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"
-                          >
-                            <CheckCircle className="h-4 w-4" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleOpenModal(t)}
-                          title="Edit Trade"
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-[#1e2e4f] hover:text-white cursor-pointer"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteTrade(t.id, t.stockName)}
-                          title="Delete Trade"
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400 cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        {!closed && <button onClick={() => handleQuickClose(t)} title="Exit Trade" className="rounded-lg p-1.5 text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"><CheckCircle className="h-4 w-4" /></button>}
+                        <button onClick={() => handleOpenModal(t)} title="Edit Trade" className="rounded-lg p-1.5 text-slate-400 hover:bg-[#1e2e4f] hover:text-white cursor-pointer"><Edit2 className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => handleDeleteTrade(t.id, t.stockName)} title="Delete Trade" className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
                       </div>
                     </td>
                   </tr>

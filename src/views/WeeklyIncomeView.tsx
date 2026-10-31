@@ -111,58 +111,45 @@ export const WeeklyIncomeView: React.FC<WeeklyIncomeViewProps> = ({
     const oth = Number(otherIncome) || 0;
     const wExp = Number(weeklyExpenses) || 0;
 
-    // Formulas:
-    // Total Income = Weekly Income + Salary + Business Income + Freelance Income + Commission + Bonus + Other Income
-    // Final Amount = Opening Balance + Total Income - Weekly Expenses
-    const totIncome = wInc + sal + bInc + fInc + comm + bon + oth;
-    const finalAmt = op + totIncome - wExp;
+    // Spreadsheet formula: 3% growth is calculated on Base.
+    // Final Amount = Base + Weekly Income + (Base * 3%).
+    const growth = op * 0.03;
+    const totIncome = wInc;
+    const finalAmt = op + wInc + growth;
 
+    let updated: WeeklyIncomeRecord[];
     if (editingRecord) {
-      const updated = records.map((r) =>
+      updated = records.map((r) =>
         r.id === editingRecord.id
-          ? {
-              ...r,
-              weekStartDate,
-              weekEndDate,
-              openingBalance: op,
-              weeklyIncome: wInc,
-              salary: sal,
-              businessIncome: bInc,
-              freelanceIncome: fInc,
-              commission: comm,
-              bonus: bon,
-              otherIncome: oth,
-              totalIncome: totIncome,
-              weeklyExpenses: wExp,
-              finalAmount: finalAmt,
-              paymentStatus,
-              notes,
-            }
+          ? { ...r, weekStartDate, weekEndDate, openingBalance: op, weeklyIncome: wInc,
+              salary: 0, businessIncome: 0, freelanceIncome: 0, commission: 0, bonus: 0,
+              otherIncome: 0, totalIncome: totIncome, weeklyExpenses: 0, finalAmount: finalAmt,
+              paymentStatus, notes }
           : r
       );
-      onSaveRecords(updated);
     } else {
       const newRec: WeeklyIncomeRecord = {
-        id: `week_${Date.now()}`,
-        serialNumber: records.length + 1,
-        weekStartDate,
-        weekEndDate,
-        openingBalance: op,
-        weeklyIncome: wInc,
-        salary: sal,
-        businessIncome: bInc,
-        freelanceIncome: fInc,
-        commission: comm,
-        bonus: bon,
-        otherIncome: oth,
-        totalIncome: totIncome,
-        weeklyExpenses: wExp,
-        finalAmount: finalAmt,
-        paymentStatus,
-        notes,
+        id: `week_${Date.now()}`, serialNumber: records.length + 1,
+        weekStartDate, weekEndDate, openingBalance: op, weeklyIncome: wInc,
+        salary: 0, businessIncome: 0, freelanceIncome: 0, commission: 0, bonus: 0,
+        otherIncome: 0, totalIncome: totIncome, weeklyExpenses: 0, finalAmount: finalAmt,
+        paymentStatus, notes,
       };
-      onSaveRecords([...records, newRec]);
+      updated = [...records, newRec];
     }
+
+    // Recalculate the running balance so every week's Base carries forward automatically.
+    let runningBase = Number(updated[0]?.openingBalance) || 0;
+    updated = updated.map((record, index) => {
+      const base = runningBase;
+      const income = Number(record.weeklyIncome) || 0;
+      const growthAmount = base * 0.03;
+      const finalAmount = base + income + growthAmount;
+      runningBase = finalAmount;
+      return { ...record, serialNumber: index + 1, openingBalance: base,
+        totalIncome: income, weeklyExpenses: 0, finalAmount };
+    });
+    onSaveRecords(updated);
 
     setIsModalOpen(false);
   };
@@ -222,13 +209,13 @@ export const WeeklyIncomeView: React.FC<WeeklyIncomeViewProps> = ({
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center border-b border-[#1e2e4f] pb-4">
         <div>
           <div className="flex items-center space-x-2">
-            <h1 className="text-2xl font-black text-white sm:text-3xl">UNIVERSAL WEEKLY INCOME</h1>
+            <h1 className="text-2xl font-black text-white sm:text-3xl">WEEKLY INCOME</h1>
             <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-400 border border-emerald-500/30">
               CARRY-FORWARD
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
-            Automated balance roll-forward across weeks. Replaces rigid company models with dynamic income sources.
+            Weekly base, income, 3% growth and final amount with automatic balance carry-forward.
           </p>
         </div>
 
@@ -299,94 +286,43 @@ export const WeeklyIncomeView: React.FC<WeeklyIncomeViewProps> = ({
         </div>
       </div>
 
-      {/* Main Ledger Table */}
+      {/* Spreadsheet-style Weekly Income Ledger */}
       <div className="overflow-x-auto rounded-2xl border border-[#1e2e4f] bg-[#0d1527] shadow-xl">
-        <table className="w-full text-left border-collapse min-w-[1050px]">
+        <table className="w-full text-left border-collapse min-w-[850px]">
           <thead>
             <tr className="border-b border-[#1e2e4f] bg-[#0a101f] text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-              <th className="py-3 px-3">Wk</th>
-              <th className="py-3 px-3">Date Range</th>
-              <th className="py-3 px-3 text-right">Opening Bal</th>
-              <th className="py-3 px-3 text-right">Weekly Inc</th>
-              <th className="py-3 px-3 text-right">Salary / B2B</th>
-              <th className="py-3 px-3 text-right">Bonus/Oth</th>
-              <th className="py-3 px-3 text-right">Total Income</th>
-              <th className="py-3 px-3 text-right">Expenses</th>
+              <th className="py-3 px-3">Sr. No.</th>
+              <th className="py-3 px-3">Date</th>
+              <th className="py-3 px-3 text-right">Base</th>
+              <th className="py-3 px-3 text-right">ZOMATO</th>
+              <th className="py-3 px-3 text-right">3.00%</th>
               <th className="py-3 px-3 text-right">Final Amount</th>
-              <th className="py-3 px-3 text-center">Status</th>
               <th className="py-3 px-3 text-center">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#1e2e4f]/50 text-xs">
             {records.length === 0 ? (
-              <tr>
-                <td colSpan={11} className="py-8 text-center text-slate-500">
-                  No weekly records logged. Click "Add Week" to start tracking.
-                </td>
-              </tr>
-            ) : (
-              records.map((r, idx) => {
-                const isCarriedForward = idx < records.length - 1;
-                return (
-                  <tr key={r.id} className="hover:bg-[#131f38]/50 transition-colors">
-                    <td className="py-3 px-3 font-mono font-bold text-amber-400">
-                      W{r.serialNumber}
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap text-slate-300">
-                      {r.weekStartDate} <span className="text-slate-500">to</span> {r.weekEndDate}
-                    </td>
-                    <td className="py-3 px-3 text-right text-slate-300 font-medium">
-                      ₹{formatINR(r.openingBalance)}
-                    </td>
-                    <td className="py-3 px-3 text-right text-emerald-400 font-semibold">
-                      ₹{formatINR(r.weeklyIncome)}
-                    </td>
-                    <td className="py-3 px-3 text-right text-slate-300">
-                      ₹{formatINR(r.salary + r.businessIncome + r.freelanceIncome)}
-                    </td>
-                    <td className="py-3 px-3 text-right text-slate-400">
-                      ₹{formatINR(r.bonus + r.commission + r.otherIncome)}
-                    </td>
-                    <td className="py-3 px-3 text-right font-black text-emerald-400">
-                      ₹{formatINR(r.totalIncome)}
-                    </td>
-                    <td className="py-3 px-3 text-right font-semibold text-rose-400">
-                      -₹{formatINR(r.weeklyExpenses)}
-                    </td>
-                    <td className="py-3 px-3 text-right font-black text-white bg-slate-900/40">
-                      ₹{formatINR(r.finalAmount)}
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      <span
-                        className={`rounded-md px-2 py-0.5 text-[10px] font-bold border ${
-                          r.paymentStatus === 'Paid'
-                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                            : 'border-amber-500/40 bg-amber-500/10 text-amber-400'
-                        }`}
-                      >
-                        {r.paymentStatus}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      <div className="flex items-center justify-center space-x-1.5">
-                        <button
-                          onClick={() => handleOpenModal(r)}
-                          className="rounded p-1 text-slate-400 hover:text-white hover:bg-[#1e2e4f]"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(r.id, r.serialNumber)}
-                          className="rounded p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
+              <tr><td colSpan={7} className="py-8 text-center text-slate-500">No weekly records yet. Add your first week.</td></tr>
+            ) : records.map((r) => {
+              const growth = (Number(r.openingBalance) || 0) * 0.03;
+              const finalAmount = (Number(r.openingBalance) || 0) + (Number(r.weeklyIncome) || 0) + growth;
+              return (
+                <tr key={r.id} className="hover:bg-[#131f38]/50 transition-colors">
+                  <td className="py-3 px-3 font-mono font-bold text-amber-400">{r.serialNumber}</td>
+                  <td className="py-3 px-3 whitespace-nowrap text-slate-300">{r.weekStartDate}</td>
+                  <td className="py-3 px-3 text-right font-semibold text-slate-200">₹{formatINR(r.openingBalance)}</td>
+                  <td className="py-3 px-3 text-right font-semibold text-emerald-400">₹{formatINR(r.weeklyIncome)}</td>
+                  <td className="py-3 px-3 text-right font-semibold text-cyan-300">₹{formatINR(growth)}</td>
+                  <td className="py-3 px-3 text-right font-black text-white">₹{formatINR(finalAmount)}</td>
+                  <td className="py-3 px-3 text-center">
+                    <div className="flex items-center justify-center space-x-1.5">
+                      <button onClick={() => handleOpenModal(r)} title="Edit Week" className="rounded p-1 text-slate-400 hover:text-white hover:bg-[#1e2e4f]"><Edit2 className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => handleDelete(r.id, r.serialNumber)} title="Delete Week" className="rounded p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

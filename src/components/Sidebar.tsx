@@ -1,19 +1,5 @@
 import React from 'react';
-import {
-  LayoutDashboard,
-  TrendingUp,
-  CalendarDays,
-  Clock,
-  Briefcase,
-  Receipt,
-  Wallet,
-  PiggyBank,
-  Calculator,
-  BarChart3,
-  Sparkles,
-  Settings,
-  ShieldCheck
-} from 'lucide-react';
+import { LayoutDashboard, TrendingUp, CalendarDays, Clock, ShieldCheck } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface SidebarProps {
@@ -24,18 +10,10 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, profile }) => {
   const navItems = [
-    { id: 'dashboard', label: 'Main Overview', icon: LayoutDashboard, tag: 'CORE' },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, tag: 'HOME' },
     { id: 'stockTrading', label: 'Stock Trading', icon: TrendingUp, tag: 'P&L' },
-    { id: 'weeklyIncome', label: 'Universal Weekly', icon: CalendarDays, tag: 'INCOME' },
-    { id: 'dailyEarnings', label: 'Daily Shifts', icon: Clock, tag: 'SHIFTS' },
-    { id: 'business', label: 'Business & Invoices', icon: Briefcase, tag: 'B2B' },
-    { id: 'expenses', label: 'Expense Tracker', icon: Receipt, tag: 'BUDGET' },
-    { id: 'cashflow', label: 'Cashflow & Banks', icon: Wallet, tag: 'ACCOUNTS' },
-    { id: 'savings', label: 'Savings & Goals', icon: PiggyBank, tag: 'GOALS' },
-    { id: 'calculators', label: '12 Calculators', icon: Calculator, tag: 'TOOLS' },
-    { id: 'reports', label: 'Analytics & Reports', icon: BarChart3, tag: 'AUDIT' },
-    { id: 'aiAssistant', label: 'MOTI AI Assistant', icon: Sparkles, tag: 'INTELLIGENCE' },
-    { id: 'settings', label: 'Settings & Cloud', icon: Settings, tag: 'CONFIG' },
+    { id: 'weeklyIncome', label: 'Weekly Income', icon: CalendarDays, tag: 'WEEKLY' },
+    { id: 'dailyEarnings', label: 'Daily Earnings', icon: Clock, tag: 'DAILY' },
   ];
 
   // Highlight items particularly tailored to profession

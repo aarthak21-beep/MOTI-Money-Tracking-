@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, Profession } from '../types';
 import { StorageService } from '../services/storageService';
+import { CloudSyncService } from '../services/cloudSyncService';
 
 interface SettingsViewProps {
   profile: UserProfile;
@@ -35,6 +36,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [pinEnabled, setPinEnabled] = useState(profile.pinEnabled);
   const [pinCode, setPinCode] = useState(profile.pinCode || '1234');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [cloudUrl, setCloudUrl] = useState(CloudSyncService.getUrl());
+  const [cloudStatus, setCloudStatus] = useState('');
+  const [cloudBusy, setCloudBusy] = useState(false);
 
   const professions: Profession[] = [
     'Stock Trader',
@@ -95,6 +99,56 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleSaveCloudUrl = () => {
+    CloudSyncService.setUrl(cloudUrl);
+    setCloudStatus(cloudUrl.trim() ? 'Apps Script URL saved on this device.' : 'Cloud sync disconnected.');
+  };
+
+  const handleCloudUpload = async () => {
+    if (!CloudSyncService.getUrl()) {
+      setCloudStatus('Paste and save your Apps Script Web App URL first.');
+      return;
+    }
+    setCloudBusy(true);
+    try {
+      const data = JSON.parse(StorageService.exportCompleteBackup(profile.id));
+      await CloudSyncService.save({ exportedAt: new Date().toISOString(), data });
+      setCloudStatus('Sync request sent. Your Google account must be signed in and authorized.');
+    } catch (error) {
+      setCloudStatus(error instanceof Error ? error.message : 'Cloud sync failed.');
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const handleCloudRestore = async () => {
+    if (!CloudSyncService.getUrl()) {
+      setCloudStatus('Paste and save your Apps Script Web App URL first.');
+      return;
+    }
+    setCloudBusy(true);
+    try {
+      const snapshot = await CloudSyncService.load();
+      if (!snapshot?.data) {
+        setCloudStatus('No cloud backup found for this Google account yet.');
+      } else if (window.confirm('Restore the cloud backup to this device? Current local data will be replaced.')) {
+        const restored = StorageService.importCompleteBackup(JSON.stringify(snapshot.data), profile.id);
+        if (restored) {
+          onRefreshData();
+          setCloudStatus('Cloud backup restored to this device.');
+        } else {
+          setCloudStatus('The cloud backup format is invalid.');
+        }
+      } else {
+        setCloudStatus('Restore cancelled. Local data was not changed.');
+      }
+    } catch (error) {
+      setCloudStatus(error instanceof Error ? error.message : 'Could not restore cloud backup.');
+    } finally {
+      setCloudBusy(false);
+    }
   };
 
   // Seed sample data
@@ -296,6 +350,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 />
               </label>
             </div>
+          </div>
+
+          <div className="rounded-3xl border border-emerald-500/30 bg-[#0d1527] p-6 shadow-xl">
+            <div className="flex items-center space-x-2 border-b border-[#1e2e4f] pb-3">
+              <Globe className="h-5 w-5 text-emerald-400" />
+              <h2 className="text-base font-bold text-white">Google Sheets Cloud Sync</h2>
+            </div>
+            <p className="mt-3 text-xs text-slate-400 leading-relaxed">
+              Connect your own Google Apps Script Web App. Changes are backed up to your Google Sheet and can be restored on another device.
+            </p>
+            <label className="mt-4 block text-xs font-semibold text-slate-300">Apps Script Web App URL</label>
+            <input
+              type="url"
+              value={cloudUrl}
+              onChange={(e) => setCloudUrl(e.target.value)}
+              placeholder="https://script.google.com/macros/s/.../exec"
+              className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2.5 text-xs text-white outline-none focus:border-emerald-400"
+            />
+            <button onClick={handleSaveCloudUrl} className="mt-2 w-full rounded-xl border border-emerald-500/40 bg-emerald-500/10 py-2.5 text-xs font-bold text-emerald-300 hover:bg-emerald-500/20">
+              Save Apps Script URL
+            </button>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button disabled={cloudBusy} onClick={handleCloudUpload} className="rounded-xl bg-emerald-500 py-2.5 text-xs font-bold text-slate-950 disabled:opacity-50">
+                Sync to Sheet
+              </button>
+              <button disabled={cloudBusy} onClick={handleCloudRestore} className="rounded-xl border border-[#1e2e4f] bg-[#070d18] py-2.5 text-xs font-bold text-slate-200 disabled:opacity-50">
+                Restore from Sheet
+              </button>
+            </div>
+            {cloudStatus && <p className="mt-3 text-[11px] text-emerald-300">{cloudStatus}</p>}
+            <p className="mt-3 text-[10px] leading-relaxed text-amber-300/80">
+              Use the Google account that owns the Sheet. Keep the Sheet private; do not share the Apps Script URL publicly.
+            </p>
           </div>
 
           {/* Test & Production Data Management (Section 19) */}

@@ -19,6 +19,7 @@ import { AiAssistantView } from './views/AiAssistantView';
 import { SettingsView } from './views/SettingsView';
 
 import { StorageService } from './services/storageService';
+import { CloudSyncService } from './services/cloudSyncService';
 import {
   UserProfile,
   StockTrade,
@@ -37,15 +38,8 @@ export default function App() {
   const [userId] = useState('usr_default');
   const [profile, setProfile] = useState<UserProfile>(() => StorageService.getProfile(userId));
   const [accounts, setAccounts] = useState<AccountRecord[]>(() => StorageService.getAccounts(userId));
-  const [trades, setTrades] = useState<StockTrade[]>(() => {
-    const loaded = StorageService.getStockTrades(userId);
-    if (loaded.length === 0) {
-      // First run: seed sample records so application starts alive and full-featured
-      StorageService.seedDemoData(userId);
-      return StorageService.getStockTrades(userId);
-    }
-    return loaded;
-  });
+  // Start with the user's saved records only. Never insert sample/demo trades automatically.
+  const [trades, setTrades] = useState<StockTrade[]>(() => StorageService.getStockTrades(userId));
   const [weekly, setWeekly] = useState<WeeklyIncomeRecord[]>(() => StorageService.getWeeklyIncome(userId));
   const [daily, setDaily] = useState<DailyEarningsRecord[]>(() => StorageService.getDailyEarnings(userId));
   const [invoices, setInvoices] = useState<BusinessInvoice[]>(() => StorageService.getInvoices(userId));
@@ -68,7 +62,7 @@ export default function App() {
   // Register service worker and catch install prompt
   useEffect(() => {
     if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
-      navigator.serviceWorker.register('/sw.js').catch((err) => {
+      navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch((err) => {
         console.log('SW registration note:', err);
       });
     }
@@ -107,6 +101,26 @@ export default function App() {
     setNotifications(StorageService.getNotifications(userId));
   }, [userId]);
 
+  // Restore the latest cloud snapshot on a new device/browser when cloud sync is configured.
+  useEffect(() => {
+    if (!CloudSyncService.getUrl()) return;
+    let active = true;
+    CloudSyncService.load().then((snapshot) => {
+      if (active && snapshot?.data) {
+        StorageService.importCompleteBackup(JSON.stringify(snapshot.data), userId);
+        reloadAllData();
+      }
+    }).catch((error) => console.warn('MOTI cloud restore:', error));
+    return () => { active = false; };
+  }, [userId, reloadAllData]);
+
+  const syncCloudSnapshot = () => {
+    if (!CloudSyncService.getUrl()) return;
+    const data = JSON.parse(StorageService.exportCompleteBackup(userId));
+    void CloudSyncService.save({ exportedAt: new Date().toISOString(), data })
+      .catch((error) => console.warn('MOTI cloud sync:', error));
+  };
+
   // Compute live financial summary
   const summary = useMemo(() => {
     return StorageService.computeFinancialSummary(userId);
@@ -116,52 +130,62 @@ export default function App() {
   const handleSaveTrades = (updatedTrades: StockTrade[]) => {
     setTrades(updatedTrades);
     StorageService.saveStockTrades(updatedTrades, userId);
+    syncCloudSnapshot();
   };
 
   const handleSaveWeekly = (updatedWeekly: WeeklyIncomeRecord[]) => {
     setWeekly(updatedWeekly);
     StorageService.saveWeeklyIncome(updatedWeekly, userId);
+    syncCloudSnapshot();
   };
 
   const handleSaveDaily = (updatedDaily: DailyEarningsRecord[]) => {
     setDaily(updatedDaily);
     StorageService.saveDailyEarnings(updatedDaily, userId);
+    syncCloudSnapshot();
   };
 
   const handleSaveInvoices = (updatedInvoices: BusinessInvoice[]) => {
     setInvoices(updatedInvoices);
     StorageService.saveInvoices(updatedInvoices, userId);
+    syncCloudSnapshot();
   };
 
   const handleSaveExpenses = (updatedExpenses: ExpenseRecord[]) => {
     setExpenses(updatedExpenses);
     StorageService.saveExpenses(updatedExpenses, userId);
+    syncCloudSnapshot();
   };
 
   const handleSaveBudgets = (updatedBudgets: BudgetLimit[]) => {
     setBudgets(updatedBudgets);
     StorageService.saveBudgets(updatedBudgets, userId);
+    syncCloudSnapshot();
   };
 
   const handleSaveAccounts = (updatedAccounts: AccountRecord[]) => {
     setAccounts(updatedAccounts);
     StorageService.saveAccounts(updatedAccounts, userId);
+    syncCloudSnapshot();
   };
 
   const handleSaveSavings = (updatedSavings: SavingsGoal[]) => {
     setSavings(updatedSavings);
     StorageService.saveSavingsGoals(updatedSavings, userId);
+    syncCloudSnapshot();
   };
 
   const handleUpdateProfile = (updatedProfile: UserProfile) => {
     setProfile(updatedProfile);
     StorageService.saveProfile(updatedProfile);
+    syncCloudSnapshot();
   };
 
   const handleMarkNotificationRead = (notifId: string) => {
     const updated = notifications.map((n) => (n.id === notifId ? { ...n, read: true } : n));
     setNotifications(updated);
     StorageService.saveNotifications(updated, userId);
+    syncCloudSnapshot();
   };
 
   // Quick Add Action Dispatchers
