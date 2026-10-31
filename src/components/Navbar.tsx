@@ -102,25 +102,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* Quick Add Button */}
-          <button
-            onClick={onOpenQuickAdd}
-            className="flex items-center space-x-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 px-3 py-1.5 text-xs font-bold text-slate-950 shadow-md shadow-amber-500/20 hover:from-amber-400 hover:to-amber-500 transition-all cursor-pointer"
-          >
-            <Plus className="h-4 w-4 stroke-[3]" />
-            <span className="hidden sm:inline">Quick Add</span>
-          </button>
-
-          {/* MOTI AI Advisor Button */}
-          <button
-            onClick={onOpenAi}
-            className="relative flex items-center space-x-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-all cursor-pointer"
-            title="Open MOTI AI Assistant"
-          >
-            <Sparkles className="h-4 w-4 text-emerald-400 animate-pulse" />
-            <span className="hidden sm:inline">MOTI AI</span>
-          </button>
-
           {/* Notifications Bell */}
           <div className="relative">
             <button

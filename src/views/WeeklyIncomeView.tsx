@@ -1,518 +1,186 @@
-import React, { useState } from 'react';
-import {
-  CalendarDays,
-  Plus,
-  TrendingUp,
-  Download,
-  Printer,
-  Trash2,
-  Edit2,
-  CheckCircle2,
-  Clock,
-  ArrowRight,
-  Target
-} from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { CalendarDays, Plus, Download, Pencil, Trash2, X, Save, TrendingUp } from 'lucide-react';
 import { WeeklyIncomeRecord, UserProfile } from '../types';
-import { formatINR, downloadCSV, printFinancialReport } from '../utils/exportUtils';
+import { formatINR, downloadCSV } from '../utils/exportUtils';
 
-interface WeeklyIncomeViewProps {
+interface Props {
   records: WeeklyIncomeRecord[];
   profile: UserProfile;
   onSaveRecords: (records: WeeklyIncomeRecord[]) => void;
   onSelectTab: (tab: string) => void;
 }
 
-export const WeeklyIncomeView: React.FC<WeeklyIncomeViewProps> = ({
-  records,
-  profile,
-  onSaveRecords,
-  onSelectTab,
-}) => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingRecord, setEditingRecord] = useState<WeeklyIncomeRecord | null>(null);
+const toISODate = (value: string) => {
+  const parts = value.split('-');
+  if (parts.length !== 3) return '';
+  return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+};
+const toDisplayDate = (value: string) => {
+  if (!value) return '';
+  const [year, month, day] = value.split('-');
+  return `${day}-${month}-${year}`;
+};
+const money = (value: number, symbol: string) => `${symbol}${formatINR(Number.isFinite(value) ? value : 0)}`;
 
-  // Form State
-  const [weekStartDate, setWeekStartDate] = useState('');
-  const [weekEndDate, setWeekEndDate] = useState('');
-  const [openingBalance, setOpeningBalance] = useState('');
-  const [weeklyIncome, setWeeklyIncome] = useState('');
-  const [salary, setSalary] = useState('');
-  const [businessIncome, setBusinessIncome] = useState('');
-  const [freelanceIncome, setFreelanceIncome] = useState('');
-  const [commission, setCommission] = useState('');
-  const [bonus, setBonus] = useState('');
-  const [otherIncome, setOtherIncome] = useState('');
-  const [weeklyExpenses, setWeeklyExpenses] = useState('');
-  const [paymentStatus, setPaymentStatus] = useState<'Paid' | 'Partially Paid' | 'Pending'>('Paid');
-  const [notes, setNotes] = useState('');
-  const [targetIncome, setTargetIncome] = useState('50000');
+export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, onSaveRecords }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<WeeklyIncomeRecord | null>(null);
+  const [date, setDate] = useState('');
+  const [firstBase, setFirstBase] = useState('0');
+  const [addition, setAddition] = useState('0');
+  const [rate, setRate] = useState('3');
+  const [actualCapital, setActualCapital] = useState('');
 
-  // Aggregated calculations
-  const totalInflow = records.reduce((sum, r) => sum + r.totalIncome, 0);
-  const totalOutflow = records.reduce((sum, r) => sum + r.weeklyExpenses, 0);
-  const netSaved = totalInflow - totalOutflow;
-  const avgWeekly = records.length > 0 ? totalInflow / records.length : 0;
+  const latest = records[records.length - 1];
+  const latestTarget = latest?.finalAmount || 0;
+  const latestActual = Number(latest?.customFields?.actualCapital) || 0;
+  const totalAdded = records.reduce((sum, item) => sum + (Number(item.weeklyIncome) || 0), 0);
 
-  // Open modal
-  const handleOpenModal = (record?: WeeklyIncomeRecord) => {
-    if (record) {
-      setEditingRecord(record);
-      setWeekStartDate(record.weekStartDate);
-      setWeekEndDate(record.weekEndDate);
-      setOpeningBalance(String(record.openingBalance));
-      setWeeklyIncome(String(record.weeklyIncome));
-      setSalary(String(record.salary));
-      setBusinessIncome(String(record.businessIncome));
-      setFreelanceIncome(String(record.freelanceIncome));
-      setCommission(String(record.commission));
-      setBonus(String(record.bonus));
-      setOtherIncome(String(record.otherIncome));
-      setWeeklyExpenses(String(record.weeklyExpenses));
-      setPaymentStatus(record.paymentStatus);
-      setNotes(record.notes || '');
-    } else {
-      // Auto-calculate Opening Balance = Previous Week Final Amount per requirement!
-      const lastRec = records[records.length - 1];
-      const autoOpening = lastRec ? lastRec.finalAmount : 0;
-
-      const now = new Date();
-      const start = new Date(now);
-      start.setDate(now.getDate() - 6);
-      const fmt = (d: Date) =>
-        `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
-
-      setEditingRecord(null);
-      setWeekStartDate(fmt(start));
-      setWeekEndDate(fmt(now));
-      setOpeningBalance(String(autoOpening));
-      setWeeklyIncome('');
-      setSalary('');
-      setBusinessIncome('');
-      setFreelanceIncome('');
-      setCommission('');
-      setBonus('');
-      setOtherIncome('');
-      setWeeklyExpenses('');
-      setPaymentStatus('Paid');
-      setNotes('');
-    }
-    setIsModalOpen(true);
-  };
-
-  const handleSaveRecord = (e: React.FormEvent) => {
-    e.preventDefault();
-    const op = Number(openingBalance) || 0;
-    const wInc = Number(weeklyIncome) || 0;
-    const sal = Number(salary) || 0;
-    const bInc = Number(businessIncome) || 0;
-    const fInc = Number(freelanceIncome) || 0;
-    const comm = Number(commission) || 0;
-    const bon = Number(bonus) || 0;
-    const oth = Number(otherIncome) || 0;
-    const wExp = Number(weeklyExpenses) || 0;
-
-    // Spreadsheet formula: 3% growth is calculated on Base.
-    // Final Amount = Base + Weekly Income + (Base * 3%).
-    const growth = op * 0.03;
-    const totIncome = wInc;
-    const finalAmt = op + wInc + growth;
-
-    let updated: WeeklyIncomeRecord[];
-    if (editingRecord) {
-      updated = records.map((r) =>
-        r.id === editingRecord.id
-          ? { ...r, weekStartDate, weekEndDate, openingBalance: op, weeklyIncome: wInc,
-              salary: 0, businessIncome: 0, freelanceIncome: 0, commission: 0, bonus: 0,
-              otherIncome: 0, totalIncome: totIncome, weeklyExpenses: 0, finalAmount: finalAmt,
-              paymentStatus, notes }
-          : r
-      );
-    } else {
-      const newRec: WeeklyIncomeRecord = {
-        id: `week_${Date.now()}`, serialNumber: records.length + 1,
-        weekStartDate, weekEndDate, openingBalance: op, weeklyIncome: wInc,
-        salary: 0, businessIncome: 0, freelanceIncome: 0, commission: 0, bonus: 0,
-        otherIncome: 0, totalIncome: totIncome, weeklyExpenses: 0, finalAmount: finalAmt,
-        paymentStatus, notes,
-      };
-      updated = [...records, newRec];
-    }
-
-    // Recalculate the running balance so every week's Base carries forward automatically.
-    let runningBase = Number(updated[0]?.openingBalance) || 0;
-    updated = updated.map((record, index) => {
-      const base = runningBase;
-      const income = Number(record.weeklyIncome) || 0;
-      const growthAmount = base * 0.03;
-      const finalAmount = base + income + growthAmount;
+  const calculated = useMemo(() => {
+    let runningBase = 0;
+    return records.map((record, index) => {
+      const base = index === 0 ? (Number(record.openingBalance) || 0) : runningBase;
+      const extra = Number(record.weeklyIncome) || 0;
+      const targetRate = Number(record.customFields?.targetRate ?? 3);
+      const targetProfit = (base + extra) * targetRate / 100;
+      const finalAmount = base + extra + targetProfit;
       runningBase = finalAmount;
-      return { ...record, serialNumber: index + 1, openingBalance: base,
-        totalIncome: income, weeklyExpenses: 0, finalAmount };
+      return { ...record, serialNumber: index + 1, openingBalance: base, totalIncome: extra, finalAmount,
+        customFields: { ...(record.customFields || {}), targetRate, actualCapital: Number(record.customFields?.actualCapital) || 0 } };
     });
-    onSaveRecords(updated);
+  }, [records]);
 
-    setIsModalOpen(false);
+  const openNew = () => {
+    setEditing(null);
+    setDate(new Date().toISOString().slice(0, 10));
+    setFirstBase(String(latestTarget || 0));
+    setAddition('0');
+    setRate('3');
+    setActualCapital('');
+    setIsOpen(true);
+  };
+  const openEdit = (record: WeeklyIncomeRecord) => {
+    setEditing(record);
+    setDate(toISODate(record.weekStartDate));
+    setFirstBase(String(record.openingBalance || 0));
+    setAddition(String(record.weeklyIncome || 0));
+    setRate(String(record.customFields?.targetRate ?? 3));
+    setActualCapital(record.customFields?.actualCapital ? String(record.customFields.actualCapital) : '');
+    setIsOpen(true);
   };
 
-  const handleDelete = (id: string, sNo: number) => {
-    if (window.confirm(`Delete Week ${sNo} record?`)) {
-      const updated = records
-        .filter((r) => r.id !== id)
-        .map((r, i) => ({ ...r, serialNumber: i + 1 }));
-      onSaveRecords(updated);
+  const save = (event: React.FormEvent) => {
+    event.preventDefault();
+    const dateText = toDisplayDate(date);
+    if (!dateText) return;
+    const next = editing
+      ? records.map((record) => record.id === editing.id ? {
+          ...record, weekStartDate: dateText, weekEndDate: dateText,
+          openingBalance: Number(firstBase) || 0, weeklyIncome: Number(addition) || 0,
+          totalIncome: Number(addition) || 0, customFields: {
+            ...(record.customFields || {}), targetRate: Math.max(0, Number(rate) || 0),
+            actualCapital: Number(actualCapital) || 0,
+          },
+        } : record)
+      : [...records, {
+          id: `capital_${Date.now()}`, serialNumber: records.length + 1,
+          weekStartDate: dateText, weekEndDate: dateText,
+          openingBalance: Number(firstBase) || 0, weeklyIncome: Number(addition) || 0,
+          salary: 0, businessIncome: 0, freelanceIncome: 0, commission: 0, bonus: 0,
+          otherIncome: 0, totalIncome: Number(addition) || 0, weeklyExpenses: 0,
+          finalAmount: 0, paymentStatus: 'Paid' as const,
+          customFields: { targetRate: Math.max(0, Number(rate) || 0), actualCapital: Number(actualCapital) || 0 },
+        }];
+    let runningBase = 0;
+    const recalculated = next.map((record, index) => {
+      const base = index === 0 ? (Number(record.openingBalance) || 0) : runningBase;
+      const extra = Number(record.weeklyIncome) || 0;
+      const targetRate = Math.max(0, Number(record.customFields?.targetRate ?? 3) || 0);
+      const targetProfit = (base + extra) * targetRate / 100;
+      const finalAmount = base + extra + targetProfit;
+      runningBase = finalAmount;
+      return { ...record, serialNumber: index + 1, openingBalance: base, totalIncome: extra, weeklyExpenses: 0, finalAmount };
+    });
+    onSaveRecords(recalculated);
+    setIsOpen(false);
+  };
+
+  const remove = (id: string, serial: number) => {
+    if (window.confirm(`Week ${serial} delete karaycha?`)) {
+      const remaining = records.filter((record) => record.id !== id);
+      let runningBase = 0;
+      const recalculated = remaining.map((record, index) => {
+        const base = index === 0 ? (Number(record.openingBalance) || 0) : runningBase;
+        const extra = Number(record.weeklyIncome) || 0;
+        const targetRate = Number(record.customFields?.targetRate ?? 3);
+        const finalAmount = base + extra + (base + extra) * targetRate / 100;
+        runningBase = finalAmount;
+        return { ...record, serialNumber: index + 1, openingBalance: base, totalIncome: extra, finalAmount };
+      });
+      onSaveRecords(recalculated);
     }
   };
 
-  const handleExportCSV = () => {
-    const headers = [
-      'S.No',
-      'Start Date',
-      'End Date',
-      'Opening Balance',
-      'Weekly Income',
-      'Salary',
-      'Business Income',
-      'Freelance Income',
-      'Commission',
-      'Bonus',
-      'Other Income',
-      'Total Income',
-      'Weekly Expenses',
-      'Final Amount',
-      'Payment Status',
-      'Notes',
-    ];
-    const rows = records.map((r) => [
-      r.serialNumber,
-      r.weekStartDate,
-      r.weekEndDate,
-      r.openingBalance,
-      r.weeklyIncome,
-      r.salary,
-      r.businessIncome,
-      r.freelanceIncome,
-      r.commission,
-      r.bonus,
-      r.otherIncome,
-      r.totalIncome,
-      r.weeklyExpenses,
-      r.finalAmount,
-      r.paymentStatus,
-      r.notes || '',
-    ]);
-    downloadCSV('MOTI_Universal_Weekly_Income', headers, rows);
-  };
+  const exportRows = calculated.map((r) => [
+    r.serialNumber, r.weekStartDate, r.openingBalance, r.weeklyIncome,
+    Number(r.customFields?.targetRate ?? 3), (r.openingBalance + r.weeklyIncome) * Number(r.customFields?.targetRate ?? 3) / 100,
+    r.finalAmount, Number(r.customFields?.actualCapital) || 0,
+  ]);
 
-  return (
-    <div className="space-y-6 animate-in fade-in pb-12">
-      {/* Header */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center border-b border-[#1e2e4f] pb-4">
-        <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="text-2xl font-black text-white sm:text-3xl">WEEKLY INCOME</h1>
-            <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-400 border border-emerald-500/30">
-              CARRY-FORWARD
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-slate-400">
-            Weekly base, income, 3% growth and final amount with automatic balance carry-forward.
-          </p>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => onSelectTab('dailyEarnings')}
-            className="flex items-center space-x-1.5 rounded-xl border border-[#1e2e4f] bg-[#0d1527] px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
-          >
-            <Clock className="h-4 w-4" />
-            <span className="hidden sm:inline">Daily Shifts</span>
-          </button>
-          <button
-            onClick={handleExportCSV}
-            className="flex items-center space-x-1.5 rounded-xl border border-[#1e2e4f] bg-[#0d1527] px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
-          >
-            <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">Export CSV</span>
-          </button>
-          <button
-            onClick={() => printFinancialReport('Universal Weekly Income Ledger')}
-            className="flex items-center space-x-1.5 rounded-xl border border-[#1e2e4f] bg-[#0d1527] px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
-          >
-            <Printer className="h-4 w-4" />
-            <span className="hidden sm:inline">Print PDF</span>
-          </button>
-          <button
-            onClick={() => handleOpenModal()}
-            className="flex items-center space-x-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-xs font-bold text-slate-950 shadow-lg shadow-emerald-500/20 hover:from-emerald-400 hover:to-emerald-500 transition-all cursor-pointer"
-          >
-            <Plus className="h-4 w-4 stroke-[3]" />
-            <span>Add Week</span>
-          </button>
-        </div>
+  return <div className="space-y-6 animate-in fade-in pb-24">
+    <div className="flex flex-col justify-between gap-4 border-b border-[#1e2e4f] pb-4 sm:flex-row sm:items-center">
+      <div>
+        <div className="flex items-center gap-2"><h1 className="text-2xl font-black text-white sm:text-3xl">WEEKLY CAPITAL GROWTH</h1><span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-300">3% TARGET</span></div>
+        <p className="mt-1 text-xs text-slate-400">Add outside earnings to trading capital and track the weekly growth target.</p>
       </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-2xl border border-emerald-500/30 bg-[#0d1527] p-4">
-          <span className="text-xs font-semibold text-slate-400">Total Income Generated</span>
-          <div className="mt-1 text-xl font-black text-emerald-400 sm:text-2xl">
-            {profile.currencySymbol}{formatINR(totalInflow)}
-          </div>
-          <p className="text-[10px] text-slate-500">{records.length} weeks tracked</p>
-        </div>
-
-        <div className="rounded-2xl border border-rose-500/30 bg-[#0d1527] p-4">
-          <span className="text-xs font-semibold text-slate-400">Total Weekly Expenses</span>
-          <div className="mt-1 text-xl font-black text-rose-400 sm:text-2xl">
-            {profile.currencySymbol}{formatINR(totalOutflow)}
-          </div>
-          <p className="text-[10px] text-slate-500">Living & operational burn</p>
-        </div>
-
-        <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4">
-          <span className="text-xs font-semibold text-slate-400">Net Weekly Retention</span>
-          <div className="mt-1 text-xl font-black text-white sm:text-2xl">
-            {profile.currencySymbol}{formatINR(netSaved)}
-          </div>
-          <p className="text-[10px] text-slate-500">Accumulated savings retained</p>
-        </div>
-
-        <div className="rounded-2xl border border-amber-500/30 bg-[#0d1527] p-4">
-          <span className="text-xs font-semibold text-slate-400">Weekly Run Rate</span>
-          <div className="mt-1 text-xl font-black text-amber-300 sm:text-2xl">
-            {profile.currencySymbol}{formatINR(avgWeekly)}
-          </div>
-          <p className="text-[10px] text-slate-500">Average weekly gross</p>
-        </div>
+      <div className="flex gap-2">
+        <button onClick={() => downloadCSV('MOTI_Weekly_Capital_Growth', ['Sr. No.','Date','Previous Capital','Extra Addition','Target %','Target Growth','Final Target','Actual Capital'], exportRows)} className="flex items-center gap-2 rounded-xl border border-[#1e2e4f] bg-[#0d1527] px-3 py-2 text-xs font-semibold text-slate-300"><Download className="h-4 w-4"/>Export CSV</button>
+        <button onClick={openNew} className="flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950"><Plus className="h-4 w-4"/>Add Week</button>
       </div>
-
-      {/* Spreadsheet-style Weekly Income Ledger */}
-      <div className="overflow-x-auto rounded-2xl border border-[#1e2e4f] bg-[#0d1527] shadow-xl">
-        <table className="w-full text-left border-collapse min-w-[850px]">
-          <thead>
-            <tr className="border-b border-[#1e2e4f] bg-[#0a101f] text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-              <th className="py-3 px-3">Sr. No.</th>
-              <th className="py-3 px-3">Date</th>
-              <th className="py-3 px-3 text-right">Base</th>
-              <th className="py-3 px-3 text-right">ZOMATO</th>
-              <th className="py-3 px-3 text-right">3.00%</th>
-              <th className="py-3 px-3 text-right">Final Amount</th>
-              <th className="py-3 px-3 text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#1e2e4f]/50 text-xs">
-            {records.length === 0 ? (
-              <tr><td colSpan={7} className="py-8 text-center text-slate-500">No weekly records yet. Add your first week.</td></tr>
-            ) : records.map((r) => {
-              const growth = (Number(r.openingBalance) || 0) * 0.03;
-              const finalAmount = (Number(r.openingBalance) || 0) + (Number(r.weeklyIncome) || 0) + growth;
-              return (
-                <tr key={r.id} className="hover:bg-[#131f38]/50 transition-colors">
-                  <td className="py-3 px-3 font-mono font-bold text-amber-400">{r.serialNumber}</td>
-                  <td className="py-3 px-3 whitespace-nowrap text-slate-300">{r.weekStartDate}</td>
-                  <td className="py-3 px-3 text-right font-semibold text-slate-200">₹{formatINR(r.openingBalance)}</td>
-                  <td className="py-3 px-3 text-right font-semibold text-emerald-400">₹{formatINR(r.weeklyIncome)}</td>
-                  <td className="py-3 px-3 text-right font-semibold text-cyan-300">₹{formatINR(growth)}</td>
-                  <td className="py-3 px-3 text-right font-black text-white">₹{formatINR(finalAmount)}</td>
-                  <td className="py-3 px-3 text-center">
-                    <div className="flex items-center justify-center space-x-1.5">
-                      <button onClick={() => handleOpenModal(r)} title="Edit Week" className="rounded p-1 text-slate-400 hover:text-white hover:bg-[#1e2e4f]"><Edit2 className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => handleDelete(r.id, r.serialNumber)} title="Delete Week" className="rounded p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"><Trash2 className="h-3.5 w-3.5" /></button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Add / Edit Weekly Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl border border-[#1e2e4f] bg-[#0d1527] p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#1e2e4f] pb-3">
-              <h3 className="text-base font-bold text-white">
-                {editingRecord ? `Edit Week ${editingRecord.serialNumber}` : 'Record New Universal Week'}
-              </h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveRecord} className="mt-4 space-y-3.5">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300">Week Start Date (DD-MM-YYYY)</label>
-                  <input
-                    type="text"
-                    required
-                    value={weekStartDate}
-                    onChange={(e) => setWeekStartDate(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white outline-none focus:border-emerald-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300">Week End Date (DD-MM-YYYY)</label>
-                  <input
-                    type="text"
-                    required
-                    value={weekEndDate}
-                    onChange={(e) => setWeekEndDate(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white outline-none focus:border-emerald-400"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300">
-                  Opening Balance (Auto Carried Forward) (₹)
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  value={openingBalance}
-                  onChange={(e) => setOpeningBalance(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white outline-none focus:border-amber-400"
-                />
-              </div>
-
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-                <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
-                  Multiple Income Streams
-                </span>
-                <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-[11px] text-slate-400">Weekly Income (₹)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="0.00"
-                      value={weeklyIncome}
-                      onChange={(e) => setWeeklyIncome(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-[#1e2e4f] bg-[#070d18] px-2.5 py-1.5 text-xs font-bold text-white outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-slate-400">Salary (₹)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="0.00"
-                      value={salary}
-                      onChange={(e) => setSalary(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-[#1e2e4f] bg-[#070d18] px-2.5 py-1.5 text-xs font-bold text-white outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-slate-400">Business Income (₹)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="0.00"
-                      value={businessIncome}
-                      onChange={(e) => setBusinessIncome(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-[#1e2e4f] bg-[#070d18] px-2.5 py-1.5 text-xs font-bold text-white outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-slate-400">Freelance (₹)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="0.00"
-                      value={freelanceIncome}
-                      onChange={(e) => setFreelanceIncome(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-[#1e2e4f] bg-[#070d18] px-2.5 py-1.5 text-xs font-bold text-white outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-slate-400">Commission (₹)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="0.00"
-                      value={commission}
-                      onChange={(e) => setCommission(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-[#1e2e4f] bg-[#070d18] px-2.5 py-1.5 text-xs font-bold text-white outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-slate-400">Bonus / Incentives (₹)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="0.00"
-                      value={bonus}
-                      onChange={(e) => setBonus(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-[#1e2e4f] bg-[#070d18] px-2.5 py-1.5 text-xs font-bold text-white outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-3">
-                  <label className="text-[11px] text-slate-400">Other Miscellaneous Income (₹)</label>
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="0.00"
-                    value={otherIncome}
-                    onChange={(e) => setOtherIncome(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-[#1e2e4f] bg-[#070d18] px-2.5 py-1.5 text-xs font-bold text-white outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300">Weekly Expenses (₹)</label>
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="0.00"
-                    value={weeklyExpenses}
-                    onChange={(e) => setWeeklyExpenses(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-rose-400 outline-none focus:border-rose-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300">Payment Status</label>
-                  <select
-                    value={paymentStatus}
-                    onChange={(e) => setPaymentStatus(e.target.value as any)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white outline-none"
-                  >
-                    <option value="Paid">Paid</option>
-                    <option value="Partially Paid">Partially Paid</option>
-                    <option value="Pending">Pending</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300">Notes / Highlights</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Strong consulting retainers & holiday bonus"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white outline-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="mt-3 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-3 text-xs font-bold text-slate-950 shadow-lg hover:from-emerald-400 hover:to-emerald-500 transition-all cursor-pointer"
-              >
-                {editingRecord ? 'Update Weekly Record' : 'Save & Calculate Final Amount'}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
-  );
+
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="rounded-2xl border border-amber-500/30 bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Latest Target Capital</p><p className="mt-1 text-xl font-black text-amber-300">{money(latestTarget, profile.currencySymbol)}</p><p className="text-[10px] text-slate-500">Planned final amount</p></div>
+      <div className="rounded-2xl border border-emerald-500/30 bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Actual Capital</p><p className="mt-1 text-xl font-black text-emerald-300">{money(latestActual, profile.currencySymbol)}</p><p className="text-[10px] text-slate-500">Latest actual amount entered</p></div>
+      <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Extra Added</p><p className="mt-1 text-xl font-black text-white">{money(totalAdded, profile.currencySymbol)}</p><p className="text-[10px] text-slate-500">Outside earnings added</p></div>
+      <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Ahead / Short</p><p className={`mt-1 text-xl font-black ${latestActual >= latestTarget && latestActual > 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{latestActual ? money(latestActual - latestTarget, profile.currencySymbol) : '—'}</p><p className="text-[10px] text-slate-500">Actual minus target</p></div>
+    </div>
+
+    <div className="overflow-x-auto rounded-2xl border border-[#1e2e4f] bg-[#0d1527] shadow-xl">
+      <table className="w-full min-w-[1000px] border-collapse text-left text-xs">
+        <thead><tr className="border-b border-[#1e2e4f] bg-[#0a101f] text-[10px] font-bold uppercase tracking-wider text-slate-400">
+          {['Sr. No.','Date','Previous Capital','Extra Addition','3% / Rate','Target Growth','Final Target','Actual Capital','Ahead / Short','Actions'].map((label)=><th key={label} className="px-3 py-3 text-right first:text-left">{label}</th>)}
+        </tr></thead>
+        <tbody className="divide-y divide-[#1e2e4f]/50">
+          {calculated.length === 0 ? <tr><td colSpan={10} className="py-10 text-center text-slate-500">No capital records yet. Add your first week to begin.</td></tr> :
+          calculated.map((r)=>
+            <tr key={r.id} className="hover:bg-[#131f38]/50">
+              <td className="px-3 py-3 font-bold text-amber-400">{r.serialNumber}</td>
+              <td className="px-3 py-3 whitespace-nowrap text-slate-300">{r.weekStartDate}</td>
+              <td className="px-3 py-3 text-right">{money(r.openingBalance, profile.currencySymbol)}</td>
+              <td className="px-3 py-3 text-right text-cyan-300">{money(r.weeklyIncome, profile.currencySymbol)}</td>
+              <td className="px-3 py-3 text-right">{Number(r.customFields?.targetRate ?? 3).toFixed(2)}%</td>
+              <td className="px-3 py-3 text-right text-emerald-300">{money((r.openingBalance+r.weeklyIncome)*Number(r.customFields?.targetRate ?? 3)/100, profile.currencySymbol)}</td>
+              <td className="px-3 py-3 text-right font-bold text-amber-300">{money(r.finalAmount, profile.currencySymbol)}</td>
+              <td className="px-3 py-3 text-right">{Number(r.customFields?.actualCapital) ? money(Number(r.customFields?.actualCapital), profile.currencySymbol) : '—'}</td>
+              <td className={`px-3 py-3 text-right font-semibold ${Number(r.customFields?.actualCapital) >= r.finalAmount ? 'text-emerald-300' : 'text-rose-300'}`}>{Number(r.customFields?.actualCapital) ? money(Number(r.customFields?.actualCapital)-r.finalAmount, profile.currencySymbol) : '—'}</td>
+              <td className="px-3 py-3 text-center"><div className="flex justify-center gap-2"><button onClick={()=>openEdit(r)} title="Edit" className="rounded-lg p-2 text-amber-300 hover:bg-amber-500/10"><Pencil className="h-4 w-4"/></button><button onClick={()=>remove(r.id,r.serialNumber)} title="Delete" className="rounded-lg p-2 text-rose-300 hover:bg-rose-500/10"><Trash2 className="h-4 w-4"/></button></div></td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+
+    {isOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <form onSubmit={save} className="w-full max-w-lg space-y-4 rounded-2xl border border-[#263858] bg-[#0d1527] p-5 shadow-2xl">
+        <div className="flex items-center justify-between"><div><h2 className="text-lg font-black text-white">{editing ? 'Edit Week' : 'Add Weekly Capital'}</h2><p className="text-xs text-slate-400">Change values anytime; later weeks recalculate automatically.</p></div><button type="button" onClick={()=>setIsOpen(false)} className="rounded-lg p-2 text-slate-400"><X className="h-4 w-4"/></button></div>
+        <label className="block text-xs text-slate-300">Week Date<input type="date" value={date} onChange={e=>setDate(e.target.value)} required className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
+        <label className="block text-xs text-slate-300">Previous Capital (first week / starting capital)<input type="number" min="0" step="0.01" value={firstBase} onChange={e=>setFirstBase(e.target.value)} disabled={Boolean(editing && records.findIndex(r=>r.id===editing.id)>0)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white disabled:opacity-50"/></label>
+        <label className="block text-xs text-slate-300">Extra Addition (outside earnings)<input type="number" min="0" step="0.01" value={addition} onChange={e=>setAddition(e.target.value)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
+        <label className="block text-xs text-slate-300">Weekly Target Rate (%)<input type="number" min="0" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
+        <label className="block text-xs text-slate-300">Actual Capital (optional)<input type="number" min="0" step="0.01" value={actualCapital} onChange={e=>setActualCapital(e.target.value)} placeholder="Enter actual capital at week end" className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
+        <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={()=>setIsOpen(false)} className="rounded-lg border border-[#263858] px-4 py-2 text-xs text-slate-300">Cancel</button><button type="submit" className="flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950"><Save className="h-4 w-4"/>Save Week</button></div>
+      </form>
+    </div>}
+  </div>;
 };
