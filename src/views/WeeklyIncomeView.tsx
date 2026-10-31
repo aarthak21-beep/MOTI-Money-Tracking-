@@ -117,52 +117,36 @@ export const WeeklyIncomeView: React.FC<WeeklyIncomeViewProps> = ({
     const totIncome = wInc;
     const finalAmt = op + wInc + growth;
 
+    let updated: WeeklyIncomeRecord[];
     if (editingRecord) {
-      const updated = records.map((r) =>
+      updated = records.map((r) =>
         r.id === editingRecord.id
-          ? {
-              ...r,
-              weekStartDate,
-              weekEndDate,
-              openingBalance: op,
-              weeklyIncome: wInc,
-              salary: sal,
-              businessIncome: bInc,
-              freelanceIncome: fInc,
-              commission: comm,
-              bonus: bon,
-              otherIncome: oth,
-              totalIncome: totIncome,
-              weeklyExpenses: wExp,
-              finalAmount: finalAmt,
-              paymentStatus,
-              notes,
-            }
+          ? { ...r, weekStartDate, weekEndDate, openingBalance: op, weeklyIncome: wInc,
+              salary: 0, businessIncome: 0, freelanceIncome: 0, commission: 0, bonus: 0,
+              otherIncome: 0, totalIncome: totIncome, weeklyExpenses: 0, finalAmount: finalAmt,
+              paymentStatus, notes }
           : r
       );
-      onSaveRecords(updated);
     } else {
       const newRec: WeeklyIncomeRecord = {
-        id: `week_${Date.now()}`,
-        serialNumber: records.length + 1,
-        weekStartDate,
-        weekEndDate,
-        openingBalance: op,
-        weeklyIncome: wInc,
-        salary: sal,
-        businessIncome: bInc,
-        freelanceIncome: fInc,
-        commission: comm,
-        bonus: bon,
-        otherIncome: oth,
-        totalIncome: totIncome,
-        weeklyExpenses: wExp,
-        finalAmount: finalAmt,
-        paymentStatus,
-        notes,
+        id: `week_${Date.now()}`, serialNumber: records.length + 1,
+        weekStartDate, weekEndDate, openingBalance: op, weeklyIncome: wInc,
+        salary: 0, businessIncome: 0, freelanceIncome: 0, commission: 0, bonus: 0,
+        otherIncome: 0, totalIncome: totIncome, weeklyExpenses: 0, finalAmount: finalAmt,
+        paymentStatus, notes,
       };
-      onSaveRecords([...records, newRec]);
+      updated = [...records, newRec];
     }
+
+    // Recalculate the running balance so every week's Base carries forward automatically.
+    updated = updated.map((record, index) => {
+      const base = index === 0 ? (Number(record.openingBalance) || 0) : updated[index - 1].finalAmount;
+      const income = Number(record.weeklyIncome) || 0;
+      const growthAmount = base * 0.03;
+      return { ...record, serialNumber: index + 1, openingBalance: base,
+        totalIncome: income, weeklyExpenses: 0, finalAmount: base + income + growthAmount };
+    });
+    onSaveRecords(updated);
 
     setIsModalOpen(false);
   };
@@ -222,13 +206,13 @@ export const WeeklyIncomeView: React.FC<WeeklyIncomeViewProps> = ({
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center border-b border-[#1e2e4f] pb-4">
         <div>
           <div className="flex items-center space-x-2">
-            <h1 className="text-2xl font-black text-white sm:text-3xl">UNIVERSAL WEEKLY INCOME</h1>
+            <h1 className="text-2xl font-black text-white sm:text-3xl">WEEKLY INCOME</h1>
             <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-400 border border-emerald-500/30">
               CARRY-FORWARD
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
-            Automated balance roll-forward across weeks. Replaces rigid company models with dynamic income sources.
+            Weekly base, income, 3% growth and final amount with automatic balance carry-forward.
           </p>
         </div>
 
