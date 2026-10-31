@@ -619,7 +619,20 @@ export class StorageService {
     const expenses = this.getExpenses(userId);
     const savings = this.getSavingsGoals(userId);
 
-    const totalBalance = accounts.reduce((acc, a) => acc + (Number(a.balance) || 0), 0);
+    const accountBalance = accounts.reduce((acc, a) => acc + (Number(a.balance) || 0), 0);
+
+    // Weekly Capital Growth is the user's rolling trading-capital plan.
+    // Carry forward each week's addition and target growth so it contributes
+    // to Available even when there are no open stock positions.
+    let weeklyCapital = 0;
+    for (const record of weekly) {
+      const base = weeklyCapital === 0
+        ? (Number(record.openingBalance) || 0)
+        : weeklyCapital;
+      const extra = Number(record.weeklyIncome) || 0;
+      const rate = Math.max(0, Number(record.customFields?.targetRate ?? 3) || 0);
+      weeklyCapital = base + extra + ((base + extra) * rate / 100);
+    }
 
     // Stock metrics
     let totalStockInvestment = 0; // open trades investment
@@ -661,7 +674,11 @@ export class StorageService {
     const totalExpenses = expenses.reduce((acc, exp) => acc + (Number(exp.amount) || 0), 0);
     const totalSavings = savings.reduce((acc, s) => acc + (Number(s.savedAmount) || 0), 0);
 
-    // Net worth = Available Balance + Open Stock Value (Investment + Unrealized P&L) + Savings + Pending Payments received
+    // Available cash = account cash + carried-forward weekly capital + realized
+    // trading P&L, less capital currently committed to open delivery positions.
+    const totalBalance = accountBalance + weeklyCapital + stockRealizedPnl - totalStockInvestment;
+
+    // Net worth includes the capital deployed in open positions and unrealized P&L.
     const netWorth = totalBalance + totalStockInvestment + stockUnrealizedPnl + totalSavings;
 
     return {
