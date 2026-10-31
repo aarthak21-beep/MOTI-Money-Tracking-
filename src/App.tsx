@@ -37,15 +37,8 @@ export default function App() {
   const [userId] = useState('usr_default');
   const [profile, setProfile] = useState<UserProfile>(() => StorageService.getProfile(userId));
   const [accounts, setAccounts] = useState<AccountRecord[]>(() => StorageService.getAccounts(userId));
-  const [trades, setTrades] = useState<StockTrade[]>(() => {
-    const loaded = StorageService.getStockTrades(userId);
-    if (loaded.length === 0) {
-      // First run: seed sample records so application starts alive and full-featured
-      StorageService.seedDemoData(userId);
-      return StorageService.getStockTrades(userId);
-    }
-    return loaded;
-  });
+  // Start with the user's saved records only. Never insert sample/demo trades automatically.
+  const [trades, setTrades] = useState<StockTrade[]>(() => StorageService.getStockTrades(userId));
   const [weekly, setWeekly] = useState<WeeklyIncomeRecord[]>(() => StorageService.getWeeklyIncome(userId));
   const [daily, setDaily] = useState<DailyEarningsRecord[]>(() => StorageService.getDailyEarnings(userId));
   const [invoices, setInvoices] = useState<BusinessInvoice[]>(() => StorageService.getInvoices(userId));
