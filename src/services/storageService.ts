@@ -42,29 +42,22 @@ export const DEFAULT_PROFILE: UserProfile = {
   createdAt: new Date().toISOString()
 };
 
-export const DEFAULT_ACCOUNTS: AccountRecord[] = [
-  { id: 'acc_cash', name: 'Primary Cash', type: 'CASH', balance: 14500, isDefault: true },
-  { id: 'acc_bank', name: 'HDFC Savings Bank', type: 'BANK', accountNumber: '•••8921', balance: 84500 },
-  { id: 'acc_upi', name: 'GPay UPI', type: 'UPI', balance: 12800 },
-  { id: 'acc_wallet', name: 'Digital Wallet', type: 'WALLET', balance: 3200 }
-];
+export const DEFAULT_ACCOUNTS: AccountRecord[] = [];
 
-export const DEFAULT_BUDGETS: BudgetLimit[] = [
-  { category: 'Food', monthlyLimit: 12000 },
-  { category: 'Fuel', monthlyLimit: 6000 },
-  { category: 'Rent', monthlyLimit: 25000 },
-  { category: 'Electricity', monthlyLimit: 3500 },
-  { category: 'Mobile Recharge', monthlyLimit: 1500 },
-  { category: 'Travel', monthlyLimit: 5000 },
-  { category: 'Vehicle Maintenance', monthlyLimit: 4000 },
-  { category: 'Shopping', monthlyLimit: 8000 },
-  { category: 'Business Expenses', monthlyLimit: 15000 },
-  { category: 'Personal Expenses', monthlyLimit: 7000 },
-  { category: 'Medical', monthlyLimit: 5000 },
-  { category: 'Other', monthlyLimit: 5000 },
-];
+export const DEFAULT_BUDGETS: BudgetLimit[] = [];
 
 export class StorageService {
+  // One-time clean slate for the demo workspace. Keep the user's profile and sync URL.
+  static clearDemoDataOnce(userId = 'usr_default'): boolean {
+    const resetKey = `moti_equity_workspace_reset_v1_${userId}`;
+    if (localStorage.getItem(resetKey) === 'done') return false;
+    ['accounts', 'stock_trades', 'weekly_income', 'daily_earnings', 'invoices',
+      'expenses', 'budgets', 'savings_goals', 'notifications', 'account_transactions']
+      .forEach((key) => localStorage.removeItem(this.getKey(key, userId)));
+    localStorage.setItem(resetKey, 'done');
+    return true;
+  }
+
   private static getKey(key: string, userId = 'usr_default'): string {
     return `${STORAGE_KEY_PREFIX}${userId}_${key}`;
   }
