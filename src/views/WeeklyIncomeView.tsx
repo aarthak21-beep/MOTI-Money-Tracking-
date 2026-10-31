@@ -31,7 +31,13 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
   const [addition, setAddition] = useState('0');
   const [rate, setRate] = useState('3');
 
-  const latest = records[records.length - 1];
+  const latest = [...records].sort((a, b) => {
+    const toKey = (value: string) => {
+      const [day, month, year] = (value || '').split('-');
+      return Number(`${year || '0'}${(month || '0').padStart(2, '0')}${(day || '0').padStart(2, '0')}`);
+    };
+    return toKey(a.weekStartDate) - toKey(b.weekStartDate);
+  }).at(-1);
   const latestTarget = latest?.finalAmount || 0;
   const totalAdded = records.reduce((sum, item) => sum + (Number(item.weeklyIncome) || 0), 0);
 
@@ -69,8 +75,14 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
 
   const openNew = () => {
     setEditing(null);
-    const today = new Date();
-    setDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
+    if (latest?.weekStartDate) {
+      const [day, month, year] = latest.weekStartDate.split('-').map(Number);
+      const nextWeekDate = new Date(year, month - 1, day + 7);
+      setDate(`${nextWeekDate.getFullYear()}-${String(nextWeekDate.getMonth() + 1).padStart(2, '0')}-${String(nextWeekDate.getDate()).padStart(2, '0')}`);
+    } else {
+      const today = new Date();
+      setDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
+    }
     setFirstBase(String(latestTarget || 0));
     setAddition('0');
     setRate('3');
