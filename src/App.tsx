@@ -101,9 +101,16 @@ export default function App() {
     setNotifications(StorageService.getNotifications(userId));
   }, [userId]);
 
-  // Restore the latest cloud snapshot on a new device/browser when cloud sync is configured.
+  // On first launch of the equity-only workspace, replace any old demo cloud snapshot with a clean backup.
+  // On later launches, restore the user's own latest cloud snapshot as usual.
   useEffect(() => {
     if (!CloudSyncService.getUrl()) return;
+    if (demoReset) {
+      const cleanData = JSON.parse(StorageService.exportCompleteBackup(userId));
+      void CloudSyncService.save({ exportedAt: new Date().toISOString(), data: cleanData })
+        .catch((error) => console.warn('MOTI clean cloud snapshot:', error));
+      return;
+    }
     let active = true;
     CloudSyncService.load().then((snapshot) => {
       if (active && snapshot?.data) {
@@ -112,7 +119,7 @@ export default function App() {
       }
     }).catch((error) => console.warn('MOTI cloud restore:', error));
     return () => { active = false; };
-  }, [userId, reloadAllData]);
+  }, [userId, reloadAllData, demoReset]);
 
   const syncCloudSnapshot = () => {
     if (!CloudSyncService.getUrl()) return;
@@ -315,12 +322,8 @@ export default function App() {
               profile={profile}
               summary={summary}
               trades={trades}
-              expenses={expenses}
-              accounts={accounts}
               weekly={weekly}
               onSelectTab={setCurrentTab}
-              onOpenQuickAdd={() => setIsQuickAddOpen(true)}
-              onOpenAi={() => setCurrentTab('aiAssistant')}
             />
           )}
 
@@ -341,66 +344,21 @@ export default function App() {
             />
           )}
 
-          {currentTab === 'dailyEarnings' && (
-            <DailyEarningsView
-              records={daily}
-              profile={profile}
-              onSaveRecords={handleSaveDaily}
-            />
-          )}
 
-          {currentTab === 'business' && (
-            <BusinessInvoicesView
-              invoices={invoices}
-              profile={profile}
-              onSaveInvoices={handleSaveInvoices}
-            />
-          )}
 
-          {currentTab === 'expenses' && (
-            <ExpenseManagementView
-              expenses={expenses}
-              budgets={budgets}
-              profile={profile}
-              onSaveExpenses={handleSaveExpenses}
-              onSaveBudgets={handleSaveBudgets}
-            />
-          )}
 
-          {currentTab === 'cashflow' && (
-            <CashflowManagementView
-              accounts={accounts}
-              profile={profile}
-              onSaveAccounts={handleSaveAccounts}
-            />
-          )}
 
-          {currentTab === 'savings' && (
-            <SavingsGoalsView
-              goals={savings}
-              profile={profile}
-              onSaveGoals={handleSaveSavings}
-            />
-          )}
 
-          {currentTab === 'calculators' && <CalculatorsView profile={profile} />}
 
-          {currentTab === 'reports' && (
-            <AnalyticsReportsView
-              profile={profile}
-              summary={summary}
-              trades={trades}
-              weekly={weekly}
-              daily={daily}
-              invoices={invoices}
-              expenses={expenses}
-              savings={savings}
-            />
-          )}
 
-          {currentTab === 'aiAssistant' && (
-            <AiAssistantView profile={profile} summary={summary} />
-          )}
+
+
+
+
+
+
+
+
 
           {currentTab === 'settings' && (
             <SettingsView
