@@ -148,7 +148,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         if (!bestTrade || net > (bestTrade.netPnl || 0)) {
           bestTrade = t;
         }
-        if (!worstTrade || net < (worstTrade.netPnl || 0)) {
+        // Worst Trade should only represent an actual losing trade.
+        if (net < 0 && (!worstTrade || net < (worstTrade.netPnl || 0))) {
           worstTrade = t;
         }
       }
