@@ -56,8 +56,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   const [quantity, setQuantity] = useState('');
   const [exitDate, setExitDate] = useState('');
   const [exitPrice, setExitPrice] = useState('');
-  const [brokerage, setBrokerage] = useState('0');
-  const [otherCharges, setOtherCharges] = useState('0');
   const [targetEarnings, setTargetEarnings] = useState('');
   const [tradeStatus, setTradeStatus] = useState<'OPEN' | 'CLOSED'>('OPEN');
   const [currentMarketPrice, setCurrentMarketPrice] = useState('');
@@ -144,8 +142,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       setQuantity(String(trade.quantity));
       setExitDate(trade.exitDate || '');
       setExitPrice(trade.exitPrice ? String(trade.exitPrice) : '');
-      setBrokerage(String(trade.brokerage));
-      setOtherCharges(String(trade.otherCharges));
       setTargetEarnings(trade.targetEarnings ? String(trade.targetEarnings) : '');
       setTradeStatus(trade.status);
       setCurrentMarketPrice(trade.currentMarketPrice ? String(trade.currentMarketPrice) : '');
@@ -162,8 +158,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       setQuantity('');
       setExitDate('');
       setExitPrice('');
-      setBrokerage('0');
-      setOtherCharges('0');
       setTargetEarnings('');
       setTradeStatus('OPEN');
       setCurrentMarketPrice('');
