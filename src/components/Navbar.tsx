@@ -53,7 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           className="flex cursor-pointer items-center space-x-3 transition-opacity hover:opacity-90"
         >
           <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#0e172a] to-[#030712] p-1 border border-amber-500/30 shadow-lg shadow-amber-500/10">
-            <img src="/logo.svg" alt="MOTI Logo" className="h-full w-full object-contain" />
+            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="MOTI Logo" className="h-full w-full object-contain" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
