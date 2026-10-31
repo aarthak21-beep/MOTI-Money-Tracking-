@@ -55,6 +55,8 @@ export class StorageService {
       'expenses', 'budgets', 'savings_goals', 'notifications', 'account_transactions']
       .forEach((key) => localStorage.removeItem(this.getKey(key, userId)));
     localStorage.setItem(resetKey, 'done');
+    // If cloud sync is configured now or later, replace the old demo snapshot before restoring it.
+    localStorage.setItem('moti_equity_cloud_reset_pending', '1');
     return true;
   }
 
