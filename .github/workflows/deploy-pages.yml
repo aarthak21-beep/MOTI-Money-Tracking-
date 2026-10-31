@@ -2,7 +2,7 @@ name: Deploy MOTI to GitHub Pages
 
 on:
   push:
-    branches: [cleanup/personal-tracker]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
