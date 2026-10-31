@@ -19,6 +19,20 @@ import {
 import { StockTrade, UserProfile } from '../types';
 import { formatINR, downloadCSV, printFinancialReport } from '../utils/exportUtils';
 
+// Zerodha NSE equity-delivery estimate (resident individual account).
+// Brokerage is zero; statutory/exchange fees still apply.
+const estimateDeliveryCharges = (buyValue: number, sellValue = 0, includeDp = false) => {
+  const turnover = buyValue + sellValue;
+  const stt = turnover * 0.001; // 0.1% on both buy and sell
+  const exchange = turnover * 0.0000307; // NSE equity cash transaction charge
+  const sebi = turnover * 0.0000001; // ₹10 per crore
+  const stamp = buyValue * 0.00015; // 0.015% on buy side
+  const gst = (exchange + sebi) * 0.18;
+  const dp = includeDp ? 15.34 : 0; // one scrip sold; estimate for standard male account
+  return Math.round((stt + exchange + sebi + stamp + gst + dp) * 100) / 100;
+};
+
+
 interface StockTradingViewProps {
   trades: StockTrade[];
   profile: UserProfile;
@@ -42,8 +56,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   const [quantity, setQuantity] = useState('');
   const [exitDate, setExitDate] = useState('');
   const [exitPrice, setExitPrice] = useState('');
-  const [brokerage, setBrokerage] = useState('20');
-  const [otherCharges, setOtherCharges] = useState('15');
   const [targetEarnings, setTargetEarnings] = useState('');
   const [tradeStatus, setTradeStatus] = useState<'OPEN' | 'CLOSED'>('OPEN');
   const [currentMarketPrice, setCurrentMarketPrice] = useState('');
@@ -67,7 +79,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         openInvestment += t.totalInvestment;
         if (t.currentMarketPrice && t.currentMarketPrice > 0) {
           const gross = (t.currentMarketPrice - t.entryPrice) * t.quantity;
-          const net = gross - (t.brokerage || 0) - (t.otherCharges || 0);
+          const estimatedRoundTripCharges = estimateDeliveryCharges(t.totalInvestment, t.currentMarketPrice * t.quantity, true);
+          const net = gross - estimatedRoundTripCharges;
           unrealizedGrossPnl += gross;
           unrealizedNetPnl += net;
         }
@@ -129,8 +142,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       setQuantity(String(trade.quantity));
       setExitDate(trade.exitDate || '');
       setExitPrice(trade.exitPrice ? String(trade.exitPrice) : '');
-      setBrokerage(String(trade.brokerage));
-      setOtherCharges(String(trade.otherCharges));
       setTargetEarnings(trade.targetEarnings ? String(trade.targetEarnings) : '');
       setTradeStatus(trade.status);
       setCurrentMarketPrice(trade.currentMarketPrice ? String(trade.currentMarketPrice) : '');
@@ -147,8 +158,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       setQuantity('');
       setExitDate('');
       setExitPrice('');
-      setBrokerage('20');
-      setOtherCharges('15');
       setTargetEarnings('');
       setTradeStatus('OPEN');
       setCurrentMarketPrice('');
@@ -165,8 +174,9 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
     if (!stockName || ep <= 0 || qty <= 0) return;
 
     const totalInvestment = ep * qty;
-    const brok = Number(brokerage) || 0;
-    const other = Number(otherCharges) || 0;
+    const brok = 0; // Zerodha equity delivery brokerage
+    const sellValueForCharges = tradeStatus === 'CLOSED' && Number(exitPrice) > 0 ? Number(exitPrice) * qty : 0;
+    const other = estimateDeliveryCharges(totalInvestment, sellValueForCharges, sellValueForCharges > 0);
     const target = targetEarnings ? Number(targetEarnings) : undefined;
     const cmp = currentMarketPrice ? Number(currentMarketPrice) : ep;
 
@@ -263,7 +273,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
     ).padStart(2, '0')}-${today.getFullYear()}`;
 
     const gross = (xp - trade.entryPrice) * trade.quantity;
-    const net = gross - trade.brokerage - trade.otherCharges;
+    const deliveryCharges = estimateDeliveryCharges(trade.totalInvestment, xp * trade.quantity, true);
+    const net = gross - deliveryCharges;
     const pct = trade.totalInvestment > 0 ? (net / trade.totalInvestment) * 100 : 0;
 
     const updated = trades.map((t) =>
@@ -274,6 +285,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
             exitDate: formatted,
             exitPrice: xp,
             actualPnl: gross,
+            brokerage: 0,
+            otherCharges: deliveryCharges,
             netPnl: net,
             pnlPercentage: pct,
           }
@@ -337,7 +350,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
-            Track equity entries, quantity, investment, exit price, target earn and cumulative P&L.
+            Equity Delivery only · Zerodha-style charges estimate · No intraday or F&O.
           </p>
         </div>
 
@@ -685,36 +698,31 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                 </div>
               )}
 
-              {/* Charges */}
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300">Brokerage (₹)</label>
-                  <input
-                    type="number"
-                    value={brokerage}
-                    onChange={(e) => setBrokerage(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-1.5 text-xs text-white outline-none"
-                  />
+              {/* Zerodha Equity Delivery charges */}
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="font-semibold text-slate-200">Zerodha Equity Delivery Brokerage</span>
+                  <span className="font-bold text-emerald-300">₹0</span>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300">Other Charges (₹)</label>
-                  <input
-                    type="number"
-                    value={otherCharges}
-                    onChange={(e) => setOtherCharges(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-1.5 text-xs text-white outline-none"
-                  />
+                <div className="flex justify-between text-xs text-slate-300">
+                  <span>Estimated statutory & exchange charges</span>
+                  <span className="font-bold text-white">₹{estimateDeliveryCharges(
+                    (Number(entryPrice) || 0) * (Number(quantity) || 0),
+                    tradeStatus === 'CLOSED' ? (Number(exitPrice) || 0) * (Number(quantity) || 0) : 0,
+                    tradeStatus === 'CLOSED' && Number(exitPrice) > 0
+                  ).toFixed(2)}</span>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300">Target Profit (₹)</label>
-                  <input
-                    type="number"
-                    placeholder="e.g. 5000"
-                    value={targetEarnings}
-                    onChange={(e) => setTargetEarnings(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-1.5 text-xs text-white outline-none"
-                  />
-                </div>
+                <p className="text-[10px] text-slate-500">NSE estimate: STT, exchange charges, SEBI fee, stamp duty, GST and (on sell) estimated DP fee ₹15.34. Final broker contract note may differ slightly.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300">Target Profit (₹)</label>
+                <input
+                  type="number"
+                  placeholder="e.g. 5000"
+                  value={targetEarnings}
+                  onChange={(e) => setTargetEarnings(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-1.5 text-xs text-white outline-none"
+                />
               </div>
 
               <div>
