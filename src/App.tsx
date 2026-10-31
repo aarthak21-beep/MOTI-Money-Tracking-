@@ -341,6 +341,7 @@ export default function App() {
           {currentTab === 'weeklyIncome' && (
             <WeeklyIncomeView
               records={weekly}
+              trades={stockTrades}
               profile={profile}
               onSaveRecords={handleSaveWeekly}
               onSelectTab={setCurrentTab}
