@@ -33,7 +33,6 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
 
   const latest = records[records.length - 1];
   const latestTarget = latest?.finalAmount || 0;
-  const latestActual = Number(latest?.customFields?.actualCapital) || 0;
   const totalAdded = records.reduce((sum, item) => sum + (Number(item.weeklyIncome) || 0), 0);
 
   const calculated = useMemo(() => {
