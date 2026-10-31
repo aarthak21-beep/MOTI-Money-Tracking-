@@ -141,7 +141,7 @@ export const WeeklyIncomeView: React.FC<WeeklyIncomeViewProps> = ({
     // Recalculate the running balance so every week's Base carries forward automatically.
     let runningBase = Number(updated[0]?.openingBalance) || 0;
     updated = updated.map((record, index) => {
-      const base = index === 0 ? runningBase : runningBase;
+      const base = runningBase;
       const income = Number(record.weeklyIncome) || 0;
       const growthAmount = base * 0.03;
       const finalAmount = base + income + growthAmount;
@@ -294,7 +294,7 @@ export const WeeklyIncomeView: React.FC<WeeklyIncomeViewProps> = ({
               <th className="py-3 px-3">Sr. No.</th>
               <th className="py-3 px-3">Date</th>
               <th className="py-3 px-3 text-right">Base</th>
-              <th className="py-3 px-3 text-right">Weekly Income</th>
+              <th className="py-3 px-3 text-right">ZOMATO</th>
               <th className="py-3 px-3 text-right">3.00%</th>
               <th className="py-3 px-3 text-right">Final Amount</th>
               <th className="py-3 px-3 text-center">Actions</th>
