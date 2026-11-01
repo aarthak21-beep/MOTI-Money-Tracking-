@@ -45,14 +45,14 @@ export const Navbar: React.FC<NavbarProps> = ({
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-[#1e2e4f] bg-[#070d18]/95 backdrop-blur-md">
+    <header className="sticky top-0 z-40 w-full border-b border-white/[0.09] bg-[#050a12]/90 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-3 sm:px-6">
         {/* Brand & Logo */}
         <div
           onClick={() => onSelectTab('dashboard')}
           className="flex cursor-pointer items-center space-x-3 transition-opacity hover:opacity-90"
         >
-          <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#0e172a] to-[#030712] p-1 border border-amber-500/30 shadow-lg shadow-amber-500/10">
+          <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#0e172a] to-[#030712] p-1 border border-emerald-300/25 shadow-lg shadow-amber-500/10">
             <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="MOTI Logo" className="h-full w-full object-contain" />
           </div>
           <div>
@@ -60,7 +60,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="text-xl font-black tracking-wider text-white">
                 MOTI
               </span>
-              <span className="hidden rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400 border border-amber-500/20 sm:inline-block">
+              <span className="hidden rounded bg-emerald-300/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300 border border-emerald-300/20 sm:inline-block">
                 PRO
               </span>
             </div>
@@ -72,16 +72,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Quick Financial Tickers (Desktop) */}
         <div className="hidden lg:flex items-center space-x-3">
-          <div className="flex items-center space-x-2 rounded-lg border border-[#1e2e4f] bg-[#0d1527] px-3 py-1.5 shadow-inner">
+          <div className="flex items-center space-x-2 rounded-lg border border-white/[0.09] bg-[#0b1421] px-3 py-1.5 shadow-inner">
             <span className="text-xs text-slate-400">Available:</span>
             <span className="font-semibold text-emerald-400">
               {profile.currencySymbol}
               {formatINR(summary.totalBalance)}
             </span>
           </div>
-          <div className="flex items-center space-x-2 rounded-lg border border-[#1e2e4f] bg-[#0d1527] px-3 py-1.5 shadow-inner">
+          <div className="flex items-center space-x-2 rounded-lg border border-white/[0.09] bg-[#0b1421] px-3 py-1.5 shadow-inner">
             <span className="text-xs text-slate-400">Net Worth:</span>
-            <span className="font-semibold text-amber-400">
+            <span className="font-semibold text-emerald-300">
               {profile.currencySymbol}
               {formatINR(summary.netWorth)}
             </span>
@@ -94,7 +94,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {installPrompt && (
             <button
               onClick={onInstallApp}
-              className="hidden sm:flex items-center space-x-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 transition-colors"
+              className="hidden sm:flex items-center space-x-1.5 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-300/15 transition-colors"
               title="Install MOTI App"
             >
               <Download className="h-3.5 w-3.5" />
@@ -106,7 +106,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="relative">
             <button
               onClick={() => setShowNotifications(!showNotifications)}
-              className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-[#1e2e4f] bg-[#0d1527] text-slate-300 hover:text-white hover:border-slate-500 transition-colors cursor-pointer"
+              className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.09] bg-[#0b1421] text-slate-300 hover:text-white hover:border-slate-500 transition-colors cursor-pointer"
               title="Notifications"
             >
               <Bell className="h-4 w-4" />
@@ -119,10 +119,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Notification Drawer Popover */}
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4 shadow-2xl shadow-black z-50 animate-in fade-in slide-in-from-top-2">
-                <div className="flex items-center justify-between border-b border-[#1e2e4f] pb-2.5">
+              <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl border border-white/[0.09] bg-[#0b1421] p-4 shadow-2xl shadow-black z-50 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center justify-between border-b border-white/[0.09] pb-2.5">
                   <div className="flex items-center space-x-2">
-                    <Bell className="h-4 w-4 text-amber-400" />
+                    <Bell className="h-4 w-4 text-emerald-300" />
                     <span className="text-sm font-bold text-white">Notifications</span>
                   </div>
                   <button
@@ -145,7 +145,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         className={`rounded-lg border p-2.5 text-xs transition-colors ${
                           notif.read
                             ? 'border-slate-800 bg-[#070d18]/50 text-slate-400'
-                            : 'border-amber-500/30 bg-amber-500/5 text-slate-200'
+                            : 'border-emerald-300/25 bg-emerald-300/5 text-slate-200'
                         }`}
                       >
                         <div className="flex items-start justify-between">
@@ -154,7 +154,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                               <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
                             )}
                             {notif.type === 'WARNING' && (
-                              <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                              <AlertTriangle className="h-3.5 w-3.5 text-emerald-300" />
                             )}
                             {notif.type === 'SUCCESS' && (
                               <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
@@ -174,7 +174,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                                 onMarkNotificationRead(notif.id);
                                 setShowNotifications(false);
                               }}
-                              className="text-[10px] font-semibold text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                              className="text-[10px] font-semibold text-emerald-300 hover:underline flex items-center gap-1 cursor-pointer"
                             >
                               Open Module <ExternalLink className="h-2.5 w-2.5" />
                             </button>
@@ -200,7 +200,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {profile.pinEnabled && (
             <button
               onClick={onLockApp}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#1e2e4f] bg-[#0d1527] text-amber-400 hover:border-amber-500/50 transition-colors cursor-pointer"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.09] bg-[#0b1421] text-emerald-300 hover:border-amber-500/50 transition-colors cursor-pointer"
               title="Lock Screen"
             >
               <Lock className="h-4 w-4" />
@@ -210,12 +210,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* User Profile Pill */}
           <div
             onClick={onOpenSettings}
-            className="flex items-center space-x-2 rounded-lg border border-[#1e2e4f] bg-[#0d1527] p-1 pr-2.5 cursor-pointer hover:border-slate-600 transition-colors"
+            className="flex items-center space-x-2 rounded-lg border border-white/[0.09] bg-[#0b1421] p-1 pr-2.5 cursor-pointer hover:border-slate-600 transition-colors"
           >
             <img
               src={profile.avatar}
               alt={profile.name}
-              className="h-7 w-7 rounded-md object-cover border border-amber-500/30"
+              className="h-7 w-7 rounded-md object-cover border border-emerald-300/25"
               onError={(e) => {
                 // fallback avatar
                 (e.target as HTMLElement).style.display = 'none';
@@ -223,7 +223,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             />
             <div className="hidden sm:block text-left">
               <p className="text-xs font-bold text-white leading-none">{profile.name}</p>
-              <p className="text-[10px] text-amber-400/90 leading-tight mt-0.5">
+              <p className="text-[10px] text-emerald-300/90 leading-tight mt-0.5">
                 {profile.profession}
               </p>
             </div>
