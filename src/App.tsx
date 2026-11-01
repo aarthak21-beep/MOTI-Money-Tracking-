@@ -32,7 +32,7 @@ import {
   SavingsGoal,
   AppNotification
 } from './types';
-import { Sparkles, Download } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 export default function App() {
   const [userId] = useState('usr_default');
@@ -58,7 +58,6 @@ export default function App() {
 
   // PWA Install State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showPwaBanner, setShowPwaBanner] = useState(false);
 
   // Register service worker and catch install prompt
   useEffect(() => {
@@ -71,7 +70,6 @@ export default function App() {
     const handleBeforeInstall = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      setShowPwaBanner(true);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -83,7 +81,6 @@ export default function App() {
     deferredPrompt.prompt();
     const choiceResult = await deferredPrompt.userChoice;
     if (choiceResult.outcome === 'accepted') {
-      setShowPwaBanner(false);
     }
     setDeferredPrompt(null);
   };
@@ -281,33 +278,6 @@ export default function App() {
         installPrompt={deferredPrompt}
         onInstallApp={handleInstallApp}
       />
-
-      {/* PWA In-App Install Banner if installable */}
-      {showPwaBanner && (
-        <div className="bg-gradient-to-r from-amber-500/20 via-emerald-500/10 to-transparent border-b border-amber-500/30 px-4 py-2.5 flex items-center justify-between">
-          <div className="flex items-center space-x-2 text-xs">
-            <span className="flex h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-slate-200">
-              <strong className="text-white">Install MOTI Mobile PWA</strong> for instant offline finance & stock journaling.
-            </span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={handleInstallApp}
-              className="rounded-lg bg-amber-500 px-3 py-1 text-xs font-bold text-slate-950 hover:bg-amber-400 transition-colors cursor-pointer flex items-center gap-1"
-            >
-              <Download className="h-3 w-3" />
-              <span>Install</span>
-            </button>
-            <button
-              onClick={() => setShowPwaBanner(false)}
-              className="text-slate-400 hover:text-white text-xs px-1.5 py-1"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Main Body Layout */}
       <div className="flex flex-1 max-w-7xl w-full mx-auto">
