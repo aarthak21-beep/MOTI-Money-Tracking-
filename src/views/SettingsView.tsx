@@ -54,6 +54,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
+    if (pinEnabled && !/^\d{4}$/.test(pinCode)) {
+      alert('Enter exactly 4 digits for the security PIN.');
+      return;
+    }
     const updated: UserProfile = {
       ...profile,
       name,
@@ -76,7 +80,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `MOTI_Encrypted_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `MOTI_Backup_${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -300,9 +304,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <span className="text-xs font-semibold text-slate-300">4-Digit PIN:</span>
                   <input
                     type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     maxLength={4}
                     value={pinCode}
-                    onChange={(e) => setPinCode(e.target.value)}
+                    onChange={(e) => setPinCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
                     className="w-24 rounded-lg border border-amber-500/50 bg-[#0d1527] px-3 py-1 text-center font-mono text-sm tracking-widest text-amber-300 outline-none"
                   />
                 </div>
@@ -327,7 +333,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             <p className="mt-3 text-xs text-slate-400 leading-relaxed">
-              Export an encrypted, complete snapshot of all trades, invoices, weekly ledgers, accounts, and budgets.
+              Export a complete JSON snapshot of your financial records. The file is not encrypted; store it somewhere private.
             </p>
 
             <div className="mt-4 space-y-2.5">
