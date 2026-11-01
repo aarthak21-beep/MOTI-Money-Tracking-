@@ -154,45 +154,45 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
     r.finalAmount, Number(r.customFields?.actualCapital) || 0, Number(r.customFields?.closedTradePnl) || 0, Number(r.customFields?.aheadShort) || 0,
   ]);
 
-  return <div className="space-y-6 animate-in fade-in pb-24">
-    <div className="flex flex-col justify-between gap-4 border-b border-[#1e2e4f] pb-4 sm:flex-row sm:items-center">
+  return <div className="moti-dashboard space-y-6 pb-24">
+    <div className="flex flex-col justify-between gap-4 border-b border-white/[0.09] pb-4 sm:flex-row sm:items-center">
       <div>
-        <div className="flex items-center gap-2"><h1 className="text-2xl font-black text-white sm:text-3xl">WEEKLY CAPITAL GROWTH</h1><span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-300">3% TARGET</span></div>
+        <div className="flex items-center gap-2"><h1 className="text-2xl font-black text-white sm:text-3xl">WEEKLY CAPITAL GROWTH</h1><span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-300">EDITABLE TARGET</span></div>
         <p className="mt-1 text-xs text-slate-400">Add outside earnings to trading capital and track the weekly growth target.</p>
       </div>
       <div className="flex gap-2">
-        <button onClick={() => downloadCSV('MOTI_Weekly_Capital_Growth', ['Sr. No.','Date','Previous Capital','Extra Addition','Target %','Target Growth','Final Target','Actual Capital','Closed Trade Net P&L','Ahead / Short'], exportRows)} className="flex items-center gap-2 rounded-xl border border-[#1e2e4f] bg-[#0d1527] px-3 py-2 text-xs font-semibold text-slate-300"><Download className="h-4 w-4"/>Export CSV</button>
-        <button onClick={openNew} className="flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950"><Plus className="h-4 w-4"/>Add Week</button>
+        <button onClick={() => downloadCSV('MOTI_Weekly_Capital_Growth', ['Sr. No.','Date','Previous Capital','Extra Addition','Target %','Target Growth','Final Target','Actual Capital','Closed Trade Net P&L','Ahead / Short'], exportRows)} className="flex items-center gap-2 rounded-xl border border-white/[0.09] bg-gradient-to-br from-[#111d2d] to-[#0b1421] px-3 py-2 text-xs font-semibold text-slate-300"><Download className="h-4 w-4"/>Export CSV</button>
+        <button onClick={openNew} className="flex items-center gap-2 rounded-xl bg-emerald-300 px-4 py-2 text-xs font-bold text-[#04110d]"><Plus className="h-4 w-4"/>Add Week</button>
       </div>
     </div>
 
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <div className="rounded-2xl border border-amber-500/30 bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Latest Target Capital</p><p className="mt-1 text-xl font-black text-amber-300">{money(latestTarget, profile.currencySymbol)}</p><p className="text-[10px] text-slate-500">Planned final amount</p></div>
-      <div className="rounded-2xl border border-emerald-500/30 bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Actual Capital</p><p className="mt-1 text-xl font-black text-emerald-300">{money(latestActual, profile.currencySymbol)}</p><p className="text-[10px] text-slate-500">Extra additions + closed trade net P&L</p></div>
-      <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Extra Added</p><p className="mt-1 text-xl font-black text-white">{money(totalAdded, profile.currencySymbol)}</p><p className="text-[10px] text-slate-500">Outside earnings added</p></div>
-      <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Ahead / Short</p><p className={`mt-1 text-xl font-black ${latestActual >= latestTarget && latestActual > 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{calculated.length ? money(latestActual - latestTarget, profile.currencySymbol) : '—'}</p><p className="text-[10px] text-slate-500">Actual minus target</p></div>
+      <div className="rounded-2xl border border-cyan-300/20 bg-gradient-to-br from-[#102333] to-[#0b1421] p-4"><p className="text-xs text-slate-400">Latest Target Capital</p><p className="mt-1 text-xl font-black text-cyan-300">{money(latestTarget, profile.currencySymbol)}</p><p className="text-[10px] text-slate-500">Planned final amount</p></div>
+      <div className="rounded-2xl border border-emerald-300/20 bg-gradient-to-br from-[#102820] to-[#0b1421] p-4"><p className="text-xs text-slate-400">Actual Capital</p><p className="mt-1 text-xl font-black text-emerald-300">{money(latestActual, profile.currencySymbol)}</p><p className="text-[10px] text-slate-500">Extra additions + closed trade net P&L</p></div>
+      <div className="rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#111d2d] to-[#0b1421] p-4"><p className="text-xs text-slate-400">Extra Added</p><p className="mt-1 text-xl font-black text-white">{money(totalAdded, profile.currencySymbol)}</p><p className="text-[10px] text-slate-500">Outside earnings added</p></div>
+      <div className="rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#111d2d] to-[#0b1421] p-4"><p className="text-xs text-slate-400">Ahead / Short</p><p className={`mt-1 text-xl font-black ${latestActual >= latestTarget && latestActual > 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{calculated.length ? money(latestActual - latestTarget, profile.currencySymbol) : '—'}</p><p className="text-[10px] text-slate-500">Actual minus target</p></div>
     </div>
 
-    <div className="overflow-x-auto rounded-2xl border border-[#1e2e4f] bg-[#0d1527] shadow-xl">
+    <div className="overflow-x-auto rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#111d2d] to-[#0b1421] shadow-xl">
       <table className="w-full min-w-[1000px] border-collapse text-left text-xs">
-        <thead><tr className="border-b border-[#1e2e4f] bg-[#0a101f] text-[10px] font-bold uppercase tracking-wider text-slate-400">
-          {['Sr. No.','Date','Previous Capital','Extra Addition','3% / Rate','Target Growth','Final Target','Closed Trade P&L','Actual Capital','Ahead / Short','Actions'].map((label)=><th key={label} className="px-3 py-3 text-right first:text-left">{label}</th>)}
+        <thead><tr className="border-b border-white/[0.09] bg-[#09121e] text-[10px] font-bold uppercase tracking-wider text-slate-400">
+          {['Sr. No.','Date','Previous Capital','Extra Addition','Rate','Target Growth','Final Target','Closed Trade P&L','Actual Capital','Ahead / Short','Actions'].map((label)=><th key={label} className="px-3 py-3 text-right first:text-left">{label}</th>)}
         </tr></thead>
         <tbody className="divide-y divide-[#1e2e4f]/50">
           {calculated.length === 0 ? <tr><td colSpan={11} className="py-10 text-center text-slate-500">No capital records yet. Add your first week to begin.</td></tr> :
           calculated.map((r)=>
             <tr key={r.id} className={Number(r.customFields?.actualCapital) >= Number(r.finalAmount) && Number(r.finalAmount) > 0 ? "bg-emerald-500/10 border-l-4 border-emerald-400 opacity-70" : "hover:bg-[#131f38]/50"} title={Number(r.customFields?.actualCapital) >= Number(r.finalAmount) && Number(r.finalAmount) > 0 ? "Target completed — no action needed for this week" : "Target not completed yet"}>
-              <td className="px-3 py-3 font-bold text-amber-400">{r.serialNumber}{Number(r.customFields?.actualCapital) >= Number(r.finalAmount) && Number(r.finalAmount) > 0 ? <span className="ml-1 text-emerald-300" title="Target completed">✓</span> : null}</td>
+              <td className="px-3 py-3 font-bold text-cyan-300">{r.serialNumber}{Number(r.customFields?.actualCapital) >= Number(r.finalAmount) && Number(r.finalAmount) > 0 ? <span className="ml-1 text-emerald-300" title="Target completed">✓</span> : null}</td>
               <td className="px-3 py-3 whitespace-nowrap text-slate-300">{r.weekStartDate}</td>
               <td className="px-3 py-3 text-right">{money(r.openingBalance, profile.currencySymbol)}</td>
               <td className="px-3 py-3 text-right text-cyan-300">{money(r.weeklyIncome, profile.currencySymbol)}</td>
               <td className="px-3 py-3 text-right">{Number(r.customFields?.targetRate ?? 3).toFixed(2)}%</td>
               <td className="px-3 py-3 text-right text-emerald-300">{money((r.openingBalance+r.weeklyIncome)*Number(r.customFields?.targetRate ?? 3)/100, profile.currencySymbol)}</td>
-              <td className="px-3 py-3 text-right font-bold text-amber-300">{money(r.finalAmount, profile.currencySymbol)}</td>
+              <td className="px-3 py-3 text-right font-bold text-cyan-300">{money(r.finalAmount, profile.currencySymbol)}</td>
               <td className={`px-3 py-3 text-right font-semibold ${Number(r.customFields?.closedTradePnl) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{money(Number(r.customFields?.closedTradePnl) || 0, profile.currencySymbol)}</td>
               <td className="px-3 py-3 text-right font-bold text-white">{money(Number(r.customFields?.actualCapital) || 0, profile.currencySymbol)}</td>
               <td className={`px-3 py-3 text-right font-semibold ${Number(r.customFields?.aheadShort) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{money(Number(r.customFields?.aheadShort) || 0, profile.currencySymbol)} {Number(r.customFields?.aheadShort) >= 0 ? 'Ahead' : 'Short'}</td>
-              <td className="px-3 py-3 text-center"><div className="flex justify-center gap-2"><button onClick={()=>openEdit(r)} title="Edit" className="rounded-lg p-2 text-amber-300 hover:bg-amber-500/10"><Pencil className="h-4 w-4"/></button><button onClick={()=>remove(r.id,r.serialNumber)} title="Delete" className="rounded-lg p-2 text-rose-300 hover:bg-rose-500/10"><Trash2 className="h-4 w-4"/></button></div></td>
+              <td className="px-3 py-3 text-center"><div className="flex justify-center gap-2"><button onClick={()=>openEdit(r)} title="Edit" className="rounded-lg p-2 text-cyan-300 hover:bg-amber-500/10"><Pencil className="h-4 w-4"/></button><button onClick={()=>remove(r.id,r.serialNumber)} title="Delete" className="rounded-lg p-2 text-rose-300 hover:bg-rose-500/10"><Trash2 className="h-4 w-4"/></button></div></td>
             </tr>
           )}
         </tbody>
@@ -200,14 +200,14 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
     </div>
 
     {isOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <form onSubmit={save} className="w-full max-w-lg space-y-4 rounded-2xl border border-[#263858] bg-[#0d1527] p-5 shadow-2xl">
+      <form onSubmit={save} className="w-full max-w-lg space-y-4 rounded-2xl border border-[#263858] bg-gradient-to-br from-[#111d2d] to-[#0b1421] p-5 shadow-2xl">
         <div className="flex items-center justify-between"><div><h2 className="text-lg font-black text-white">{editing ? 'Edit Week' : 'Add Weekly Capital'}</h2><p className="text-xs text-slate-400">Change values anytime; later weeks recalculate automatically.</p></div><button type="button" onClick={()=>setIsOpen(false)} className="rounded-lg p-2 text-slate-400"><X className="h-4 w-4"/></button></div>
         <label className="block text-xs text-slate-300">Week Date<input type="date" value={date} onChange={e=>setDate(e.target.value)} required className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
         <label className="block text-xs text-slate-300">Previous Capital (first week / starting capital)<input type="number" min="0" step="0.01" value={firstBase} onChange={e=>setFirstBase(e.target.value)} disabled={Boolean(editing && records.findIndex(r=>r.id===editing.id)>0)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white disabled:opacity-50"/></label>
         <label className="block text-xs text-slate-300">Extra Addition (outside earnings)<input type="number" min="0" step="0.01" value={addition} onChange={e=>setAddition(e.target.value)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
-        <label className="block text-xs text-slate-300">Weekly Target Rate (%)<input type="number" min="0" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
+        <label className="block text-xs text-slate-300">Weekly Hypothetical Target Rate (%)<input type="number" min="0" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
         <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-slate-300">Actual Capital is calculated automatically from Extra Addition and closed equity trades net P&amp;L for this week. No manual entry needed.</p>
-        <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={()=>setIsOpen(false)} className="rounded-lg border border-[#263858] px-4 py-2 text-xs text-slate-300">Cancel</button><button type="submit" className="flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950"><Save className="h-4 w-4"/>Save Week</button></div>
+        <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={()=>setIsOpen(false)} className="rounded-lg border border-[#263858] px-4 py-2 text-xs text-slate-300">Cancel</button><button type="submit" className="flex items-center gap-2 rounded-lg bg-emerald-300 px-4 py-2 text-xs font-bold text-[#04110d]"><Save className="h-4 w-4"/>Save Week</button></div>
       </form>
     </div>}
   </div>;
