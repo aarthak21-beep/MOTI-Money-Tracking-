@@ -94,3 +94,81 @@
     box-shadow: none !important;
   }
 }
+
+
+/* ── MOTI full-site design system ─────────────────────────────────────── */
+:root {
+  --moti-panel: rgba(12, 23, 38, 0.88);
+  --moti-panel-raised: rgba(17, 32, 50, 0.94);
+  --moti-line: rgba(148, 190, 210, 0.13);
+  --moti-green: #4adea5;
+  --moti-cyan: #67e8f9;
+}
+body { background-attachment: fixed; }
+#root { min-height: 100vh; }
+main, [role="main"] { min-width: 0; }
+h1, h2, h3 { letter-spacing: -0.025em; }
+h1 { text-wrap: balance; }
+
+/* Consistent glass-fintech surfaces across every module and nested report. */
+div[class*="rounded-2xl"][class*="border"],
+div[class*="rounded-xl"][class*="border"] {
+  border-color: var(--moti-line);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.12);
+}
+div[class*="rounded-2xl"][class*="bg-[#0d1527]"],
+div[class*="rounded-xl"][class*="bg-[#0d1527]"] {
+  background-image: linear-gradient(145deg, rgba(18, 35, 53, 0.92), rgba(8, 17, 29, 0.96));
+}
+
+/* Crisp, consistent controls with comfortable mobile tap targets. */
+input:not([type="checkbox"]):not([type="radio"]),
+select, textarea {
+  border-color: rgba(148, 190, 210, 0.18);
+  border-radius: 0.75rem;
+  background-color: rgba(5, 13, 23, 0.88);
+  color: #f1f5f9;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+input::placeholder, textarea::placeholder { color: #718096; }
+input:focus, select:focus, textarea:focus {
+  border-color: rgba(74, 222, 165, 0.7);
+  box-shadow: 0 0 0 3px rgba(74, 222, 165, 0.10);
+}
+input[type="date"] { color-scheme: dark; }
+button { transition: filter 150ms ease, transform 150ms ease, box-shadow 150ms ease; }
+button:active { transform: translateY(1px); }
+button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+/* Ledger and report tables: readable headers, row hover, mobile scrolling. */
+table { border-collapse: separate; border-spacing: 0; }
+thead th {
+  color: #9fb1c4;
+  letter-spacing: 0.075em;
+  font-size: 0.66rem;
+  background: rgba(5, 13, 23, 0.82);
+}
+tbody tr { transition: background-color 140ms ease; }
+tbody tr:hover { background-color: rgba(103, 232, 249, 0.035); }
+td, th { border-color: rgba(148, 190, 210, 0.09); }
+div[class*="overflow-x-auto"] { scrollbar-width: thin; scrollbar-color: #29465a transparent; }
+
+/* Dialogs and overlays retain contrast and a premium surface. */
+div[class*="fixed"][class*="inset-0"][class*="bg-black"] form,
+div[class*="fixed"][class*="inset-0"] > div[class*="rounded"] {
+  border-color: rgba(103, 232, 249, 0.18);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
+}
+
+/* Give page transitions a unified rhythm without changing page behavior. */
+.animate-in { animation-duration: 260ms; }
+@media (max-width: 640px) {
+  body { font-size: 14px; }
+  h1 { font-size: clamp(1.35rem, 6vw, 1.8rem); }
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { min-height: 42px; }
+  button { touch-action: manipulation; }
+  table { font-size: 0.72rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  button, input, select, textarea, * { scroll-behavior: auto !important; }
+}
