@@ -21,18 +21,22 @@ function doPost(e) {
   try {
     const payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (payload.action !== 'save' || !payload.snapshot) throw new Error('Invalid sync payload');
-    const email = Session.getActiveUser().getEmail();
-    if (!email) throw new Error('Sign in with the Google account that owns the spreadsheet.');
+    // Use one shared backup row so approved Google accounts can access the same MOTI data.
+    // Each accessing Google account must have Editor access to this private spreadsheet.
     const sheet = getSheet_();
     const values = sheet.getDataRange().getValues();
     const json = JSON.stringify(payload.snapshot);
     writeModuleSheets_(payload.snapshot.data || {});
     const updatedAt = new Date();
-    let row = values.findIndex((r, i) => i > 0 && r[0] === email) + 1;
+    let row = values.findIndex((r, i) => i > 0 && r[0] === 'SHARED') + 1;
     if (row === 0) {
-      sheet.appendRow([email, json, updatedAt]);
+      // Migrate the first existing account-specific backup in place, preserving its data row.
+      row = values.findIndex((r, i) => i > 0 && r[1]) + 1;
+    }
+    if (row === 0) {
+      sheet.appendRow(['SHARED', json, updatedAt]);
     } else {
-      sheet.getRange(row, 2, 1, 2).setValues([[json, updatedAt]]);
+      sheet.getRange(row, 1, 1, 3).setValues([['SHARED', json, updatedAt]]);
     }
     return ContentService.createTextOutput(JSON.stringify({ ok: true }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -43,12 +47,12 @@ function doPost(e) {
 }
 
 function readSnapshot_() {
-  const email = Session.getActiveUser().getEmail();
-  if (!email) return { ok: false, error: 'Google sign-in is required.' };
   const sheet = getSheet_();
   const values = sheet.getDataRange().getValues();
-  const row = values.find((r, i) => i > 0 && r[0] === email);
-  return { ok: true, snapshot: row ? JSON.parse(row[1]) : null };
+  // Prefer the shared row; fall back to an older account-specific row for a safe first migration.
+  const row = values.find((r, i) => i > 0 && r[0] === 'SHARED')
+    || values.find((r, i) => i > 0 && r[1]);
+  return { ok: true, snapshot: row && row[1] ? JSON.parse(row[1]) : null };
 }
 
 function getSheet_() {
@@ -56,7 +60,7 @@ function getSheet_() {
   let sheet = spreadsheet.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = spreadsheet.insertSheet(SHEET_NAME);
-    sheet.appendRow(['Google account', 'MOTI data (JSON)', 'Last synced']);
+    sheet.appendRow(['Backup scope', 'MOTI data (JSON)', 'Last synced']);
     sheet.setFrozenRows(1);
   }
   return sheet;
