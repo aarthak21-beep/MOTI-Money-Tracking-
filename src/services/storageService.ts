@@ -583,6 +583,7 @@ export class StorageService {
       invoices: this.getInvoices(userId),
       expenses: this.getExpenses(userId),
       savingsGoals: this.getSavingsGoals(userId),
+      notifications: this.getNotifications(userId),
     };
     return JSON.stringify(backupData, null, 2);
   }
@@ -590,7 +591,19 @@ export class StorageService {
   static importCompleteBackup(jsonString: string, userId = 'usr_default'): boolean {
     try {
       const data = JSON.parse(jsonString);
-      if (!data || typeof data !== 'object') return false;
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+
+      // Validate the complete payload before writing anything, so malformed files
+      // cannot partially overwrite the user's existing records.
+      const arrayFields = [
+        'accounts', 'budgets', 'stockTrades', 'weeklyIncome',
+        'dailyEarnings', 'invoices', 'expenses', 'savingsGoals', 'notifications',
+      ] as const;
+      const hasKnownData = Boolean(data.profile && typeof data.profile === 'object')
+        || arrayFields.some((field) => Object.prototype.hasOwnProperty.call(data, field));
+      if (!hasKnownData) return false;
+      if (data.profile !== undefined && (!data.profile || typeof data.profile !== 'object' || Array.isArray(data.profile))) return false;
+      if (arrayFields.some((field) => data[field] !== undefined && !Array.isArray(data[field]))) return false;
 
       if (data.profile) this.saveProfile({ ...data.profile, id: userId });
       if (Array.isArray(data.accounts)) this.saveAccounts(data.accounts, userId);
@@ -601,6 +614,7 @@ export class StorageService {
       if (Array.isArray(data.invoices)) this.saveInvoices(data.invoices, userId);
       if (Array.isArray(data.expenses)) this.saveExpenses(data.expenses, userId);
       if (Array.isArray(data.savingsGoals)) this.saveSavingsGoals(data.savingsGoals, userId);
+      if (Array.isArray(data.notifications)) this.saveNotifications(data.notifications, userId);
 
       return true;
     } catch (e) {
