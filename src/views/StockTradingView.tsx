@@ -572,7 +572,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       )}
 
       {activeTab === 'overview' && (
-      {/* Stock Trading KPI Metrics */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
         <div className="rounded-2xl border border-emerald-500/30 bg-[#0d1527] p-3.5">
           <span className="text-[11px] font-semibold text-slate-400">Realized Net P&L</span>
