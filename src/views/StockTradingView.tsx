@@ -479,13 +479,13 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in pb-12">
+    <div className="moti-dashboard space-y-6 pb-12">
       {/* Header Bar */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center border-b border-[#1e2e4f] pb-4">
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-2xl font-black text-white sm:text-3xl">EQUITY TRADING JOURNAL</h1>
-            <span className="rounded bg-amber-500/10 px-2 py-0.5 text-xs font-bold text-amber-400 border border-amber-500/30">
+            <span className="rounded bg-emerald-300/10 px-2 py-0.5 text-xs font-bold text-cyan-300 border border-cyan-300/20">
               EQUITY ONLY
             </span>
           </div>
@@ -511,7 +511,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           </button>
           <button
             onClick={() => handleOpenModal()}
-            className="flex items-center space-x-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2 text-xs font-bold text-slate-950 shadow-lg shadow-amber-500/20 hover:from-amber-400 hover:to-amber-500 transition-all cursor-pointer"
+            className="flex items-center space-x-1.5 rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 px-4 py-2 text-xs font-bold text-slate-950 shadow-lg shadow-emerald-400/15 hover:from-emerald-200 hover:to-cyan-200 transition-all cursor-pointer"
           >
             <Plus className="h-4 w-4 stroke-[3]" />
             <span>New Trade</span>
@@ -531,7 +531,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`rounded-xl px-3 py-3 text-left transition-all ${activeTab === tab.id ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/10' : 'bg-[#070d18] text-slate-300 hover:bg-[#131f38] hover:text-white'}`}
+              className={`rounded-xl px-3 py-3 text-left transition-all ${activeTab === tab.id ? 'bg-emerald-300 text-[#04110d] shadow-lg shadow-amber-500/10' : 'bg-[#070d18] text-slate-300 hover:bg-[#131f38] hover:text-white'}`}
             >
               <span className="block text-xs font-bold">{tab.label}</span>
               {'count' in tab && <span className={`mt-1 block text-[10px] ${activeTab === tab.id ? 'text-slate-800' : 'text-slate-500'}`}>{tab.count} records</span>}
@@ -566,7 +566,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
             placeholder="Search stock, date, notes..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-xl border border-[#1e2e4f] bg-[#0d1527] pl-9 pr-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-amber-400"
+            className="w-full rounded-xl border border-[#1e2e4f] bg-[#0d1527] pl-9 pr-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-emerald-300"
           />
         </div>
       )}
@@ -585,9 +585,9 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           <p className="text-[10px] text-slate-500">Gross: ₹{formatINR(metrics.realizedGrossPnl)}</p>
         </div>
 
-        <div className="rounded-2xl border border-amber-500/30 bg-[#0d1527] p-3.5">
+        <div className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-3.5">
           <span className="text-[11px] font-semibold text-slate-400">Open Capital</span>
-          <div className="mt-1 text-lg font-black text-amber-300">
+          <div className="mt-1 text-lg font-black text-cyan-300">
             ₹{formatINR(metrics.openInvestment)}
           </div>
           <p className="text-[10px] text-slate-500">Across open holdings</p>
@@ -685,7 +685,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                     <td className="py-3 px-3 font-extrabold text-white">{t.stockName}</td>
                     <td className="py-3 px-3 text-right text-slate-200">₹{formatINR(t.entryPrice)}</td>
                     <td className="py-3 px-3 text-right font-bold text-white">{t.quantity}</td>
-                    <td className="py-3 px-3 text-right font-bold text-amber-300">₹{formatINR(t.totalInvestment)}</td>
+                    <td className="py-3 px-3 text-right font-bold text-cyan-300">₹{formatINR(t.totalInvestment)}</td>
                     <td className="py-3 px-3 whitespace-nowrap text-slate-300">{closed ? (t.exitDate || '-') : '-'}</td>
                     <td className="py-3 px-3 text-right font-bold text-white">{closed ? '₹' + formatINR(exit) : '-'}</td>
                     <td className="py-3 px-3 text-right text-slate-400">-</td>
@@ -721,8 +721,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         <div><h2 className="text-sm font-black text-white">BROKERAGE &amp; DP CHARGES REPORT</h2><p className="text-[10px] text-slate-400">Closed Equity Delivery trades · grouped by exit date · estimated Zerodha resident-individual charges</p></div>
         <div className="grid gap-4 lg:grid-cols-2">
           {([{ title: 'Weekly Charges', rows: chargeReports.weekly }, { title: 'Monthly Charges', rows: chargeReports.monthly }] as const).map((report) => <div key={report.title} className="overflow-x-auto rounded-xl border border-[#1e2e4f]">
-            <h3 className="px-3 py-2 text-xs font-bold text-amber-300">{report.title}</h3>
-            <table className="w-full min-w-[440px] text-xs"><thead><tr className="bg-[#0a101f] text-[10px] uppercase text-slate-400"><th className="px-2 py-2 text-left">Period</th><th className="px-2 py-2 text-right">Brokerage</th><th className="px-2 py-2 text-right">DP</th><th className="px-2 py-2 text-right">Other Taxes</th><th className="px-2 py-2 text-right">Total</th></tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{report.rows.length ? report.rows.map((row) => <tr key={row.key}><td className="px-2 py-2 text-slate-300">{row.label}</td><td className="px-2 py-2 text-right">{formatINR(row.brokerage)}</td><td className="px-2 py-2 text-right">{formatINR(row.dp)}</td><td className="px-2 py-2 text-right">{formatINR(row.statutory)}</td><td className="px-2 py-2 text-right font-bold text-amber-300">{formatINR(row.total)}</td></tr>) : <tr><td colSpan={5} className="px-2 py-4 text-center text-slate-500">No closed trades yet</td></tr>}</tbody></table>
+            <h3 className="px-3 py-2 text-xs font-bold text-cyan-300">{report.title}</h3>
+            <table className="w-full min-w-[440px] text-xs"><thead><tr className="bg-[#0a101f] text-[10px] uppercase text-slate-400"><th className="px-2 py-2 text-left">Period</th><th className="px-2 py-2 text-right">Brokerage</th><th className="px-2 py-2 text-right">DP</th><th className="px-2 py-2 text-right">Other Taxes</th><th className="px-2 py-2 text-right">Total</th></tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{report.rows.length ? report.rows.map((row) => <tr key={row.key}><td className="px-2 py-2 text-slate-300">{row.label}</td><td className="px-2 py-2 text-right">{formatINR(row.brokerage)}</td><td className="px-2 py-2 text-right">{formatINR(row.dp)}</td><td className="px-2 py-2 text-right">{formatINR(row.statutory)}</td><td className="px-2 py-2 text-right font-bold text-cyan-300">{formatINR(row.total)}</td></tr>) : <tr><td colSpan={5} className="px-2 py-4 text-center text-slate-500">No closed trades yet</td></tr>}</tbody></table>
           </div>)}
         </div>
         <p className="text-[10px] leading-relaxed text-slate-500">Zerodha equity-delivery brokerage is ₹0. DP estimate is ₹15.34 per stock per sell-day (standard male primary-holder rate); actual DP can differ by account holder category. Other taxes are derived from the saved trade charge estimates.</p>
@@ -765,7 +765,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                     required
                     value={entryDate}
                     onChange={(e) => setEntryDate(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
+                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white focus:border-emerald-300 outline-none"
                   />
                 </div>
                 <div>
@@ -776,7 +776,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                     placeholder="RELIANCE, INFY"
                     value={stockName}
                     onChange={(e) => setStockName(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs uppercase font-bold text-white focus:border-amber-400 outline-none"
+                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs uppercase font-bold text-white focus:border-emerald-300 outline-none"
                   />
                 </div>
               </div>
@@ -790,7 +790,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                     required
                     value={entryPrice}
                     onChange={(e) => setEntryPrice(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white focus:border-amber-400 outline-none"
+                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white focus:border-emerald-300 outline-none"
                   />
                 </div>
                 <div>
@@ -800,14 +800,14 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                     required
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white focus:border-amber-400 outline-none"
+                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white focus:border-emerald-300 outline-none"
                   />
                 </div>
               </div>
 
               {/* Automatic Total Investment preview */}
               {entryPrice && quantity && (
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-300 font-semibold flex justify-between">
+                <div className="rounded-xl border border-cyan-300/20 bg-emerald-300/10 p-2.5 text-xs text-cyan-300 font-semibold flex justify-between">
                   <span>Calculated Investment:</span>
                   <span>₹{(Number(entryPrice) * Number(quantity)).toLocaleString('en-IN')}</span>
                 </div>
@@ -822,7 +822,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                     onClick={() => setTradeStatus('OPEN')}
                     className={`rounded-xl py-2 text-xs font-bold cursor-pointer border ${
                       tradeStatus === 'OPEN'
-                        ? 'border-amber-400 bg-amber-500/20 text-amber-300'
+                        ? 'border-amber-400 bg-amber-500/20 text-cyan-300'
                         : 'border-[#1e2e4f] bg-[#070d18] text-slate-400'
                     }`}
                   >
@@ -943,7 +943,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
 
               <button
                 type="submit"
-                className="mt-3 w-full rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 py-3 text-xs font-bold text-slate-950 shadow-lg hover:from-amber-400 hover:to-amber-500 transition-all cursor-pointer"
+                className="mt-3 w-full rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 py-3 text-xs font-bold text-slate-950 shadow-lg hover:from-emerald-200 hover:to-cyan-200 transition-all cursor-pointer"
               >
                 {editingTrade ? 'Update Trade Record' : 'Save & Open Position'}
               </button>
