@@ -91,7 +91,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   profile,
   onSaveTrades,
 }) => {
-  const [activeTab, setActiveTab] = useState<'all' | 'OPEN' | 'CLOSED'>('all');
+  const [activeTab, setActiveTab] = useState<'overview' | 'OPEN' | 'CLOSED' | 'tools'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState<StockTrade | null>(null);
@@ -228,7 +228,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   // Filtered trades
   const filteredTrades = useMemo(() => {
     return trades.filter((t) => {
-      const matchesTab = activeTab === 'all' || t.status === activeTab;
+      const matchesTab = activeTab === 'overview' || activeTab === 'tools' || t.status === activeTab;
       const matchesSearch =
         t.stockName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.entryDate.includes(searchTerm) ||
@@ -519,29 +519,59 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         </div>
       </div>
 
-      {/* Brokerage and DP charge reports */}
-      <section className="space-y-3 rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4">
-        <div><h2 className="text-sm font-black text-white">BROKERAGE &amp; DP CHARGES REPORT</h2><p className="text-[10px] text-slate-400">Closed Equity Delivery trades · grouped by exit date · estimated Zerodha resident-individual charges</p></div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {([{ title: 'Weekly Charges', rows: chargeReports.weekly }, { title: 'Monthly Charges', rows: chargeReports.monthly }] as const).map((report) => <div key={report.title} className="overflow-x-auto rounded-xl border border-[#1e2e4f]">
-            <h3 className="px-3 py-2 text-xs font-bold text-amber-300">{report.title}</h3>
-            <table className="w-full min-w-[440px] text-xs"><thead><tr className="bg-[#0a101f] text-[10px] uppercase text-slate-400"><th className="px-2 py-2 text-left">Period</th><th className="px-2 py-2 text-right">Brokerage</th><th className="px-2 py-2 text-right">DP</th><th className="px-2 py-2 text-right">Other Taxes</th><th className="px-2 py-2 text-right">Total</th></tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{report.rows.length ? report.rows.map((row) => <tr key={row.key}><td className="px-2 py-2 text-slate-300">{row.label}</td><td className="px-2 py-2 text-right">{formatINR(row.brokerage)}</td><td className="px-2 py-2 text-right">{formatINR(row.dp)}</td><td className="px-2 py-2 text-right">{formatINR(row.statutory)}</td><td className="px-2 py-2 text-right font-bold text-amber-300">{formatINR(row.total)}</td></tr>) : <tr><td colSpan={5} className="px-2 py-4 text-center text-slate-500">No closed trades yet</td></tr>}</tbody></table>
-          </div>)}
+      {/* Equity Trading workspace navigation */}
+      <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {([
+            { id: 'overview', label: 'Overview', count: trades.length },
+            { id: 'OPEN', label: 'Open Positions', count: trades.filter((t) => t.status === 'OPEN').length },
+            { id: 'CLOSED', label: 'Closed Trades', count: trades.filter((t) => t.status === 'CLOSED').length },
+            { id: 'tools', label: 'Reports & Tools' },
+          ] as const).map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`rounded-xl px-3 py-3 text-left transition-all ${activeTab === tab.id ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/10' : 'bg-[#070d18] text-slate-300 hover:bg-[#131f38] hover:text-white'}`}
+            >
+              <span className="block text-xs font-bold">{tab.label}</span>
+              {'count' in tab && <span className={`mt-1 block text-[10px] ${activeTab === tab.id ? 'text-slate-800' : 'text-slate-500'}`}>{tab.count} records</span>}
+            </button>
+          ))}
         </div>
-        <p className="text-[10px] leading-relaxed text-slate-500">Zerodha equity-delivery brokerage is ₹0. DP estimate is ₹15.34 per stock per sell-day (standard male primary-holder rate); actual DP can differ by account holder category. Other taxes are derived from the saved trade charge estimates.</p>
-      </section>
+      </div>
 
-      {/* Detailed trading performance analytics; read-only and never mutates saved trades */}
-      <TradingAnalyticsView trades={trades} />
-      <EquityTradeCalendar trades={trades} />
-      <StrategyPerformanceReport trades={trades} />
-      <MonthlyTradingReview trades={trades} />
-      <OpenPortfolioAllocation trades={trades} />
-      <EquityRiskCalculator />
-      <TradeNotesJournal trades={trades} onSaveTrades={onSaveTrades} />
-      <TradingDisciplineTracker trades={trades} onSaveTrades={onSaveTrades} />
+      {activeTab === 'overview' && (
+        <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] px-4 py-3">
+          <p className="text-sm font-bold text-white">Trading Overview</p>
+          <p className="mt-1 text-xs text-slate-400">Your key performance numbers and complete trade ledger in one place.</p>
+        </div>
+      )}
+      {activeTab === 'OPEN' && (
+        <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] px-4 py-3">
+          <p className="text-sm font-bold text-white">Open Positions</p>
+          <p className="mt-1 text-xs text-slate-400">Only currently held Equity Delivery positions. Close or edit a position from its row.</p>
+        </div>
+      )}
+      {activeTab === 'CLOSED' && (
+        <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] px-4 py-3">
+          <p className="text-sm font-bold text-white">Closed Trades</p>
+          <p className="mt-1 text-xs text-slate-400">Your completed trades and realized performance history.</p>
+        </div>
+      )}
+      {activeTab !== 'tools' && (
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search stock, date, notes..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded-xl border border-[#1e2e4f] bg-[#0d1527] pl-9 pr-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-amber-400"
+          />
+        </div>
+      )}
 
-      {/* Stock Trading KPI Metrics */}
+      {activeTab === 'overview' && (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
         <div className="rounded-2xl border border-emerald-500/30 bg-[#0d1527] p-3.5">
           <span className="text-[11px] font-semibold text-slate-400">Realized Net P&L</span>
@@ -605,57 +635,17 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           </p>
         </div>
       </div>
+      )}
 
-      {/* Filter and Tab Controls */}
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        {/* Status Tab Switches */}
-        <div className="flex rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-1">
-          <button
-            onClick={() => setActiveTab('all')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all ${
-              activeTab === 'all'
-                ? 'bg-amber-500 text-slate-950 font-bold shadow'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            All Trades ({trades.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('OPEN')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all ${
-              activeTab === 'OPEN'
-                ? 'bg-amber-500 text-slate-950 font-bold shadow'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Open Positions ({trades.filter((t) => t.status === 'OPEN').length})
-          </button>
-          <button
-            onClick={() => setActiveTab('CLOSED')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all ${
-              activeTab === 'CLOSED'
-                ? 'bg-amber-500 text-slate-950 font-bold shadow'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Closed Trades ({trades.filter((t) => t.status === 'CLOSED').length})
-          </button>
-        </div>
-
-        {/* Search Input */}
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search stock, date, notes..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-xl border border-[#1e2e4f] bg-[#0d1527] pl-9 pr-4 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-amber-400"
-          />
-        </div>
-      </div>
-
-      {/* Spreadsheet-style Stock Trading Ledger */}
+      {activeTab !== 'tools' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black uppercase tracking-wide text-white">
+              {activeTab === 'OPEN' ? 'Current Holdings' : activeTab === 'CLOSED' ? 'Trade History' : 'All Trades'}
+            </h2>
+            <span className="text-[10px] text-slate-500">{filteredTrades.length} shown</span>
+          </div>
+      {/* Trade ledger */}
       <div className="overflow-x-auto rounded-2xl border border-[#1e2e4f] bg-[#0d1527] shadow-xl">
         <table className="w-full text-left border-collapse min-w-[1250px]">
           <thead>
@@ -717,6 +707,38 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           </tbody>
         </table>
       </div>
+        </div>
+      )}
+
+      {activeTab === 'tools' && (
+        <div className="space-y-5">
+          <div>
+            <h2 className="text-lg font-black text-white">Reports & Tools</h2>
+            <p className="mt-1 text-xs text-slate-400">Detailed analysis and review tools are grouped here to keep the trading workspace clean.</p>
+          </div>
+      {/* Brokerage and DP charge reports */}
+      <section className="space-y-3 rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4">
+        <div><h2 className="text-sm font-black text-white">BROKERAGE &amp; DP CHARGES REPORT</h2><p className="text-[10px] text-slate-400">Closed Equity Delivery trades · grouped by exit date · estimated Zerodha resident-individual charges</p></div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {([{ title: 'Weekly Charges', rows: chargeReports.weekly }, { title: 'Monthly Charges', rows: chargeReports.monthly }] as const).map((report) => <div key={report.title} className="overflow-x-auto rounded-xl border border-[#1e2e4f]">
+            <h3 className="px-3 py-2 text-xs font-bold text-amber-300">{report.title}</h3>
+            <table className="w-full min-w-[440px] text-xs"><thead><tr className="bg-[#0a101f] text-[10px] uppercase text-slate-400"><th className="px-2 py-2 text-left">Period</th><th className="px-2 py-2 text-right">Brokerage</th><th className="px-2 py-2 text-right">DP</th><th className="px-2 py-2 text-right">Other Taxes</th><th className="px-2 py-2 text-right">Total</th></tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{report.rows.length ? report.rows.map((row) => <tr key={row.key}><td className="px-2 py-2 text-slate-300">{row.label}</td><td className="px-2 py-2 text-right">{formatINR(row.brokerage)}</td><td className="px-2 py-2 text-right">{formatINR(row.dp)}</td><td className="px-2 py-2 text-right">{formatINR(row.statutory)}</td><td className="px-2 py-2 text-right font-bold text-amber-300">{formatINR(row.total)}</td></tr>) : <tr><td colSpan={5} className="px-2 py-4 text-center text-slate-500">No closed trades yet</td></tr>}</tbody></table>
+          </div>)}
+        </div>
+        <p className="text-[10px] leading-relaxed text-slate-500">Zerodha equity-delivery brokerage is ₹0. DP estimate is ₹15.34 per stock per sell-day (standard male primary-holder rate); actual DP can differ by account holder category. Other taxes are derived from the saved trade charge estimates.</p>
+      </section>
+
+      {/* Detailed trading performance analytics; read-only and never mutates saved trades */}
+      <TradingAnalyticsView trades={trades} />
+      <EquityTradeCalendar trades={trades} />
+      <StrategyPerformanceReport trades={trades} />
+      <MonthlyTradingReview trades={trades} />
+      <OpenPortfolioAllocation trades={trades} />
+      <EquityRiskCalculator />
+      <TradeNotesJournal trades={trades} onSaveTrades={onSaveTrades} />
+      <TradingDisciplineTracker trades={trades} onSaveTrades={onSaveTrades} />
+        </div>
+      )}
 
       {/* Add / Edit Trade Modal */}
       {isModalOpen && (
