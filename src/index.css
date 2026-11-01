@@ -172,3 +172,127 @@ div[class*="fixed"][class*="inset-0"] > div[class*="rounded"] {
 @media (prefers-reduced-motion: reduce) {
   button, input, select, textarea, * { scroll-behavior: auto !important; }
 }
+
+
+/* ── MOTI Premium 3D experience: shared by every screen ─────────────────── */
+:root {
+  --moti-depth-shadow: 0 22px 48px -24px rgba(0, 0, 0, 0.88), 0 8px 20px -12px rgba(0, 0, 0, 0.72);
+  --moti-edge-light: rgba(148, 220, 238, 0.20);
+  --moti-glow-green: rgba(52, 211, 153, 0.16);
+  --moti-glow-cyan: rgba(34, 211, 238, 0.13);
+}
+html { perspective: 1400px; }
+body {
+  background-image:
+    radial-gradient(ellipse at 10% 8%, rgba(16, 185, 129, 0.105), transparent 36rem),
+    radial-gradient(ellipse at 92% 14%, rgba(34, 211, 238, 0.085), transparent 34rem),
+    radial-gradient(ellipse at 50% 100%, rgba(37, 99, 235, 0.07), transparent 42rem),
+    linear-gradient(155deg, #050a12 0%, #07111e 48%, #050a12 100%);
+  background-attachment: fixed;
+}
+
+/* Every bordered card/panel gets layered depth, a lit edge and gentle lift. */
+div[class*="rounded-2xl"][class*="border"],
+div[class*="rounded-xl"][class*="border"] {
+  position: relative;
+  isolation: isolate;
+  border-color: var(--moti-edge-light);
+  background-image: linear-gradient(145deg, rgba(21, 39, 59, 0.76), rgba(7, 16, 28, 0.88));
+  box-shadow:
+    var(--moti-depth-shadow),
+    inset 0 1px 0 rgba(226, 248, 255, 0.055),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.34);
+  transform: translateZ(0);
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  transition:
+    transform 240ms cubic-bezier(.2,.75,.25,1),
+    border-color 240ms ease,
+    box-shadow 240ms ease,
+    background-color 240ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  div[class*="rounded-2xl"][class*="border"]:hover,
+  div[class*="rounded-xl"][class*="border"]:hover {
+    transform: translateY(-4px) rotateX(1.15deg);
+    border-color: rgba(103, 232, 249, 0.34);
+    box-shadow:
+      0 30px 58px -27px rgba(0, 0, 0, 0.96),
+      0 0 26px -14px var(--moti-glow-cyan),
+      inset 0 1px 0 rgba(226, 248, 255, 0.09);
+  }
+}
+
+/* Metric tiles and report cards glow according to the common neon palette. */
+div[class*="rounded-2xl"][class*="border"] > :first-child,
+div[class*="rounded-xl"][class*="border"] > :first-child {
+  transform: translateZ(10px);
+}
+[class*="bg-emerald-"], [class*="text-emerald-"] { --moti-accent-glow: var(--moti-glow-green); }
+[class*="bg-cyan-"], [class*="text-cyan-"] { --moti-accent-glow: var(--moti-glow-cyan); }
+
+/* Tactile raised buttons: bevel, highlight and pressed depth. */
+button, [role="button"] {
+  transform-style: preserve-3d;
+  transition:
+    transform 180ms cubic-bezier(.2,.75,.25,1),
+    box-shadow 180ms ease,
+    filter 180ms ease;
+}
+button:not(:disabled) {
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.28), 0 9px 18px -12px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+@media (hover: hover) and (pointer: fine) {
+  button:not(:disabled):hover {
+    transform: translateY(-2px) translateZ(5px);
+    filter: brightness(1.08);
+    box-shadow: 0 6px 0 rgba(0, 0, 0, 0.22), 0 14px 24px -13px rgba(34, 211, 238, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  }
+}
+button:not(:disabled):active {
+  transform: translateY(2px) translateZ(0);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.28), inset 0 2px 5px rgba(0, 0, 0, 0.24);
+}
+
+/* Inputs feel inset into the dashboard instead of floating above it. */
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  box-shadow: inset 0 2px 7px rgba(0, 0, 0, 0.34), 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+input:focus, select:focus, textarea:focus {
+  box-shadow: inset 0 2px 7px rgba(0, 0, 0, 0.28), 0 0 0 3px rgba(74, 222, 165, 0.12), 0 0 22px -12px rgba(74, 222, 165, 0.55);
+}
+
+/* Charts, icons and data marks gain a restrained luminous finish. */
+svg { overflow: visible; }
+svg [class*="recharts-line"], svg [class*="recharts-area"], svg [class*="recharts-bar"] {
+  filter: drop-shadow(0 2px 5px rgba(52, 211, 153, 0.13));
+}
+[class*="shadow-emerald"], .glow-emerald {
+  box-shadow: 0 0 30px -9px rgba(52, 211, 153, 0.38), 0 16px 34px -20px rgba(0, 0, 0, 0.9);
+}
+
+/* Elevated navigation surfaces and clear active-state depth. */
+nav, aside {
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+}
+[aria-current="page"], [aria-selected="true"] {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 22px -14px rgba(52, 211, 153, 0.45);
+}
+
+/* Keep the 3D feel polished and usable on touch screens and small displays. */
+@media (max-width: 767px) {
+  div[class*="rounded-2xl"][class*="border"],
+  div[class*="rounded-xl"][class*="border"] {
+    box-shadow: 0 14px 30px -22px rgba(0, 0, 0, 0.95), inset 0 1px 0 rgba(226, 248, 255, 0.045);
+  }
+  button:not(:disabled) { box-shadow: 0 3px 0 rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  div[class*="rounded-2xl"][class*="border"],
+  div[class*="rounded-xl"][class*="border"],
+  button, [role="button"] {
+    transform: none !important;
+    transition: none !important;
+  }
+}
