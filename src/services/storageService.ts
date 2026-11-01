@@ -635,17 +635,23 @@ export class StorageService {
 
     const accountBalance = accounts.reduce((acc, a) => acc + (Number(a.balance) || 0), 0);
 
-    // Weekly Capital Growth is the user's rolling trading-capital plan.
-    // Carry forward each week's addition and target growth so it contributes
-    // to Available even when there are no open stock positions.
+    // Only count contributed capital as available cash. The weekly target rate
+    // is hypothetical and must never be added to the real balance or net worth.
+    // Sort by start date so records entered out of order still carry forward correctly.
+    const dateKey = (value: string) => {
+      const [day, month, year] = (value || '').split('-');
+      return Number(`${year || '0'}${(month || '0').padStart(2, '0')}${(day || '0').padStart(2, '0')}`);
+    };
+    const orderedWeekly = [...weekly].sort(
+      (a, b) => dateKey(a.weekStartDate) - dateKey(b.weekStartDate)
+    );
     let weeklyCapital = 0;
-    for (const record of weekly) {
-      const base = weeklyCapital === 0
+    for (const [index, record] of orderedWeekly.entries()) {
+      const base = index === 0
         ? (Number(record.openingBalance) || 0)
         : weeklyCapital;
       const extra = Number(record.weeklyIncome) || 0;
-      const rate = Math.max(0, Number(record.customFields?.targetRate ?? 3) || 0);
-      weeklyCapital = base + extra + ((base + extra) * rate / 100);
+      weeklyCapital = base + extra;
     }
 
     // Stock metrics
