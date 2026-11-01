@@ -54,7 +54,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinEnabled && !/^\\d{4}$/.test(pinCode)) {
+    if (pinEnabled && !/^\d{4}$/.test(pinCode)) {
       alert('Enter exactly 4 digits for the security PIN.');
       return;
     }
@@ -308,7 +308,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     pattern="[0-9]*"
                     maxLength={4}
                     value={pinCode}
-                    onChange={(e) => setPinCode(e.target.value.replace(/\\D/g, '').slice(0, 4))}
+                    onChange={(e) => setPinCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
                     className="w-24 rounded-lg border border-amber-500/50 bg-[#0d1527] px-3 py-1 text-center font-mono text-sm tracking-widest text-amber-300 outline-none"
                   />
                 </div>
