@@ -23,6 +23,7 @@ import { EquityRiskCalculator } from './EquityRiskCalculator';
 import { TradeNotesJournal } from './TradeNotesJournal';
 import { TradingDisciplineTracker } from './TradingDisciplineTracker';
 import { EquityTradeCalendar } from './EquityTradeCalendar';
+import { StrategyPerformanceReport } from './StrategyPerformanceReport';
 
 // Zerodha NSE equity-delivery estimate (resident individual account).
 // Brokerage is zero; statutory/exchange fees still apply.
@@ -104,6 +105,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   const [tradeStatus, setTradeStatus] = useState<'OPEN' | 'CLOSED'>('OPEN');
   const [currentMarketPrice, setCurrentMarketPrice] = useState('');
   const [notes, setNotes] = useState('');
+  const [strategy, setStrategy] = useState('');
 
   // One-time cleanup on load: legacy duplicate OPEN entries become one weighted-average position.
   useEffect(() => {
@@ -247,6 +249,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       setTradeStatus(trade.status);
       setCurrentMarketPrice(trade.currentMarketPrice ? String(trade.currentMarketPrice) : '');
       setNotes(trade.notes || '');
+      setStrategy(trade.strategy || '');
     } else {
       const today = new Date();
       const formatted = `${String(today.getDate()).padStart(2, '0')}-${String(
@@ -263,6 +266,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       setTradeStatus('OPEN');
       setCurrentMarketPrice('');
       setNotes('');
+      setStrategy('');
     }
     setIsModalOpen(true);
   };
@@ -318,6 +322,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
               status: isClosed ? ('CLOSED' as const) : ('OPEN' as const),
               currentMarketPrice: cmp,
               notes,
+              strategy: strategy || undefined,
             }
           : t
       );
@@ -342,6 +347,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         status: isClosed ? ('CLOSED' as const) : ('OPEN' as const),
         currentMarketPrice: cmp,
         notes,
+        strategy: strategy || undefined,
       };
       if (newTrade.status === 'OPEN') {
         const normalizedSymbol = newTrade.stockName.trim().toUpperCase();
@@ -526,6 +532,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       {/* Detailed trading performance analytics; read-only and never mutates saved trades */}
       <TradingAnalyticsView trades={trades} />
       <EquityTradeCalendar trades={trades} />
+      <StrategyPerformanceReport trades={trades} />
       <EquityRiskCalculator />
       <TradeNotesJournal trades={trades} onSaveTrades={onSaveTrades} />
       <TradingDisciplineTracker trades={trades} onSaveTrades={onSaveTrades} />
@@ -874,6 +881,27 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                   onChange={(e) => setTargetEarnings(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-1.5 text-xs text-white outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300">Trade Strategy</label>
+                <select
+                  value={strategy}
+                  onChange={(e) => setStrategy(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white outline-none"
+                >
+                  <option value="">Select strategy (optional)</option>
+                  <option value="Breakout">Breakout</option>
+                  <option value="Breakout Pullback">Breakout Pullback</option>
+                  <option value="Support Bounce">Support Bounce</option>
+                  <option value="Resistance Reversal">Resistance Reversal</option>
+                  <option value="Moving Average Bounce">Moving Average Bounce</option>
+                  <option value="Trend Following">Trend Following</option>
+                  <option value="Volume Breakout">Volume Breakout</option>
+                  <option value="News / Event Based">News / Event Based</option>
+                  <option value="Other">Other</option>
+                </select>
+                <p className="mt-1 text-[10px] text-slate-500">Tag each trade to compare which setups perform best. Existing trades stay Unclassified until you edit and tag them.</p>
               </div>
 
               <div>
