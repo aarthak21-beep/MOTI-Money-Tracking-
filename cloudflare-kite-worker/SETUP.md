@@ -50,14 +50,31 @@ The Worker uses the redirect URL only to finish Kite's login handshake. OAuth st
 2. Enter the Worker URL (without a path) and the `MOTI_APP_PASSWORD`.
 3. Tap **Save settings**, then **Connect Zerodha**.
 4. Complete the normal Zerodha login and 2FA in the official Kite page.
-5. Return to MOTI and tap **Sync orders**.
+5. Return to MOTI. The Worker will perform the daily sync automatically once the Cron Trigger below is enabled. Manual **Sync orders** remains available as a fallback.
 
-The password is kept only in the current browser session. The Worker stores the Kite access token in KV with a 24-hour maximum TTL. Kite access tokens expire the following morning, so connect again for a new trading day.
+The password is kept only in the current browser session. The Worker stores the Kite access token in KV with a 24-hour maximum TTL. Kite access tokens expire at 6:00 AM IST, so you must complete **Connect Zerodha once after 6:00 AM on each trading day**. The scheduled sync cannot renew Kite authentication or bypass Zerodha's login/2FA.
+
+
+## 6. Enable once-daily automatic sync
+
+1. Open your Worker in Cloudflare → **Settings → Triggers** (or **Triggers → Cron Triggers**, depending on the dashboard layout).
+2. Add this Cron Trigger:
+
+```
+15 10 * * 1-5
+```
+
+Cloudflare Cron uses UTC. This runs at **3:45 PM India time, Monday to Friday**, after the normal NSE cash-market session. It fetches the current day's orders and executions once and saves deduplicated history in the existing KV namespace.
+3. Deploy/save the Worker after adding the trigger.
+4. On each trading day, complete **Connect Zerodha** once after 6:00 AM IST. The scheduled Worker then syncs at 3:45 PM; you do not need to press **Sync orders**. If you did not log in that day, the scheduled job records that login is required and cannot fetch orders.
+5. When you open the MOTI Zerodha Orders panel, it loads the saved scheduled history from the Worker. Manual **Sync orders** remains available if you want an immediate update.
+
+The automatic sync runs on weekdays including exchange holidays; on a holiday it may simply save zero rows. It only fetches the order book and trade book, and never places or changes orders.
 
 ## Data and limits
 
-- Kite's order book and trade book endpoints return the current day's records. Sync each trading day so MOTI can keep a local copy before those daily records roll over.
-- MOTI merges order history by `order_id` and fills by `trade_id` to avoid duplicates and stores the synced history in this browser's local storage.
+- Kite's order book and trade book endpoints return the current day's records. The 3:45 PM IST scheduled sync captures them before the day rolls over, provided you authenticated that day after 6:00 AM.
+- The Worker keeps a deduplicated copy of scheduled/manual history in the bound KV namespace. MOTI also merges history by `order_id` and fills by `trade_id` when loading it into this browser's local storage.
 - Local Kite history is device/browser-specific and is not currently included in MOTI's regular JSON backup or Google Sheets snapshot. Do not clear browser storage; use the order tables as a view of synced records and retain any required CSV exports separately.
 - The connector does not automatically convert order fills into the manual P&L ledger. It provides the order book and execution history only, avoiding incorrect matching of partial fills or multi-day positions.
 - The connector makes no order-changing API calls. It cannot place, modify, or cancel a trade.
