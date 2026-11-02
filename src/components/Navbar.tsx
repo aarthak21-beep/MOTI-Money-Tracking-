@@ -223,15 +223,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={onOpenSettings}
             className="flex items-center space-x-2 rounded-lg border border-white/[0.09] bg-[#0b1421] p-1 pr-2.5 cursor-pointer hover:border-slate-600 transition-colors"
           >
-            <img
-              src={profile.avatar}
-              alt={profile.name}
-              className="h-7 w-7 rounded-md object-cover border border-emerald-300/25"
-              onError={(e) => {
-                // fallback avatar
-                (e.target as HTMLElement).style.display = 'none';
-              }}
-            />
+            <span className="flex h-7 w-7 items-center justify-center rounded-md border border-emerald-300/25 bg-[#050a12] p-1">
+              <img
+                src={`${import.meta.env.BASE_URL}logo.svg`}
+                alt="MOTI"
+                className="h-full w-full object-contain"
+              />
+            </span>
             <div className="hidden sm:block text-left">
               <p className="text-xs font-bold text-white leading-none">{profile.name}</p>
               <p className="text-[10px] text-emerald-300/90 leading-tight mt-0.5">
