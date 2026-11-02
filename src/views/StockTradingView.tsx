@@ -767,7 +767,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                   <input
                     type="date"
                     required
-                    value={entryDate ? entryDate.split("-").reverse().join("-").replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$3-$2-$1") : ""}
+                    value={entryDate ? entryDate.split("-").reverse().join("-") : ""}
                     onChange={(e) => setEntryDate(e.target.value ? e.target.value.split("-").reverse().join("-") : "")}
                     className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white [color-scheme:dark] focus:border-emerald-300 outline-none"
                   />
@@ -867,7 +867,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                     <label className="block text-xs font-semibold text-slate-300">Exit Date (DD-MM-YYYY)</label>
                     <input
                       type="date"
-                      value={exitDate ? exitDate.split("-").reverse().join("-").replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$3-$2-$1") : ""}
+                      value={exitDate ? exitDate.split("-").reverse().join("-") : ""}
                       onChange={(e) => setExitDate(e.target.value ? e.target.value.split("-").reverse().join("-") : "")}
                       className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white [color-scheme:dark] outline-none"
                     />
