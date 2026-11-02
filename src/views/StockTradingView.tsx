@@ -26,6 +26,7 @@ import { EquityTradeCalendar } from './EquityTradeCalendar';
 import { StrategyPerformanceReport } from './StrategyPerformanceReport';
 import { MonthlyTradingReview } from './MonthlyTradingReview';
 import { OpenPortfolioAllocation } from './OpenPortfolioAllocation';
+import { ZerodhaOrdersPanel } from '../components/ZerodhaOrdersPanel';
 
 // Zerodha NSE equity-delivery estimate (resident individual account).
 // Brokerage is zero; statutory/exchange fees still apply.
@@ -91,7 +92,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   profile,
   onSaveTrades,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'OPEN' | 'CLOSED' | 'tools'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'OPEN' | 'CLOSED' | 'tools' | 'zerodha'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState<StockTrade | null>(null);
@@ -521,12 +522,13 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
 
       {/* Equity Trading workspace navigation */}
       <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-2">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           {([
             { id: 'overview', label: 'Overview', count: trades.length },
             { id: 'OPEN', label: 'Open Positions', count: trades.filter((t) => t.status === 'OPEN').length },
             { id: 'CLOSED', label: 'Closed Trades', count: trades.filter((t) => t.status === 'CLOSED').length },
             { id: 'tools', label: 'Reports & Tools' },
+            { id: 'zerodha', label: 'Zerodha Orders' },
           ] as const).map((tab) => (
             <button
               key={tab.id}
@@ -558,7 +560,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           <p className="mt-1 text-xs text-slate-400">Your completed trades and realized performance history.</p>
         </div>
       )}
-      {activeTab !== 'tools' && (
+      {activeTab !== 'tools' && activeTab !== 'zerodha' && (
         <div className="relative w-full sm:max-w-sm">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input
@@ -709,6 +711,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       </div>
         </div>
       )}
+
+      {activeTab === 'zerodha' && <ZerodhaOrdersPanel />}
 
       {activeTab === 'tools' && (
         <div className="space-y-5">
