@@ -639,7 +639,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       </div>
       )}
 
-      {activeTab !== 'tools' && (
+      {activeTab !== 'tools' && activeTab !== 'zerodha' && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-black uppercase tracking-wide text-white">
