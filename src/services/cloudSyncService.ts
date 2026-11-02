@@ -1,8 +1,15 @@
+import { WeeklyIncomeRecord } from '../types';
+
 const CONFIG_KEY = 'moti_google_apps_script_url';
 
 export interface CloudSnapshot {
   exportedAt: string;
   data: Record<string, unknown>;
+}
+
+export interface WeeklyCloudResult {
+  records: WeeklyIncomeRecord[];
+  found: boolean;
 }
 
 let writeQueue: Promise<void> = Promise.resolve();
@@ -17,10 +24,58 @@ export const CloudSyncService = {
     else localStorage.removeItem(CONFIG_KEY);
   },
 
+  async saveWeekly(records: WeeklyIncomeRecord[]): Promise<void> {
+    const url = this.getUrl();
+    if (!url) throw new Error('Save your Apps Script URL first.');
+    const body = JSON.stringify({ action: 'weekly-save', records });
+    writeQueue = writeQueue.catch(() => undefined).then(async () => {
+      await fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body,
+      });
+    });
+    await writeQueue;
+  },
+
+  loadWeekly(): Promise<WeeklyCloudResult> {
+    const url = this.getUrl();
+    if (!url) return Promise.reject(new Error('Apps Script URL is not configured.'));
+    return new Promise((resolve, reject) => {
+      const callbackName = `motiWeeklyCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const script = document.createElement('script');
+      const cleanup = () => {
+        delete (window as any)[callbackName];
+        script.remove();
+      };
+      const timeout = window.setTimeout(() => {
+        cleanup();
+        reject(new Error('Google Sheets weekly sync timed out. Check the Apps Script deployment.'));
+      }, 20000);
+      (window as any)[callbackName] = (response: { ok: boolean; records?: WeeklyIncomeRecord[]; found?: boolean; error?: string }) => {
+        window.clearTimeout(timeout);
+        cleanup();
+        if (!response.ok) reject(new Error(response.error || 'Could not load Weekly Capital.'));
+        else resolve({
+          records: Array.isArray(response.records) ? response.records : [],
+          found: response.found === true,
+        });
+      };
+      script.onerror = () => {
+        window.clearTimeout(timeout);
+        cleanup();
+        reject(new Error('Could not connect to Google Apps Script. Check its deployment URL and Google sign-in.'));
+      };
+      script.src = `${url}${url.includes('?') ? '&' : '?'}action=weekly-load&callback=${callbackName}&_=${Date.now()}`;
+      document.body.appendChild(script);
+    });
+  },
+
+  // Retained only for compatibility with manual legacy full-backup controls.
   async save(snapshot: CloudSnapshot): Promise<void> {
     const url = this.getUrl();
     if (!url) return;
-    // Apps Script accepts a simple text/plain POST without a CORS preflight.
     const body = JSON.stringify({ action: 'save', snapshot });
     writeQueue = writeQueue.catch(() => undefined).then(async () => {
       await fetch(url, {
@@ -36,7 +91,6 @@ export const CloudSyncService = {
   load(): Promise<CloudSnapshot | null> {
     const url = this.getUrl();
     if (!url) return Promise.resolve(null);
-
     return new Promise((resolve, reject) => {
       const callbackName = `motiCloudCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       const script = document.createElement('script');
@@ -48,7 +102,6 @@ export const CloudSyncService = {
         cleanup();
         reject(new Error('Google Sheets sync timed out. Check the Apps Script URL and deployment access.'));
       }, 20000);
-
       (window as any)[callbackName] = (response: { ok: boolean; snapshot?: CloudSnapshot; error?: string }) => {
         window.clearTimeout(timeout);
         cleanup();
