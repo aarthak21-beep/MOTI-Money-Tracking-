@@ -117,11 +117,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
     setCloudBusy(true);
     try {
-      const data = JSON.parse(StorageService.exportCompleteBackup(profile.id));
-      await CloudSyncService.save({ exportedAt: new Date().toISOString(), data });
-      setCloudStatus('Sync request sent. Your Google account must be signed in and authorized.');
+      const records = StorageService.getWeeklyIncome(profile.id);
+      await CloudSyncService.saveWeekly(records);
+      setCloudStatus(`Weekly Capital synced (${records.length} records). Other modules were not uploaded.`);
     } catch (error) {
-      setCloudStatus(error instanceof Error ? error.message : 'Cloud sync failed.');
+      setCloudStatus(error instanceof Error ? error.message : 'Weekly cloud sync failed.');
     } finally {
       setCloudBusy(false);
     }
@@ -134,22 +134,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
     setCloudBusy(true);
     try {
-      const snapshot = await CloudSyncService.load();
-      if (!snapshot?.data) {
-        setCloudStatus('No cloud backup found for this Google account yet.');
-      } else if (window.confirm('Restore the cloud backup to this device? Current local data will be replaced.')) {
-        const restored = StorageService.importCompleteBackup(JSON.stringify(snapshot.data), profile.id);
-        if (restored) {
-          onRefreshData();
-          setCloudStatus('Cloud backup restored to this device.');
-        } else {
-          setCloudStatus('The cloud backup format is invalid.');
-        }
+      const result = await CloudSyncService.loadWeekly();
+      if (!result.found) {
+        setCloudStatus('No Weekly Capital cloud record found yet. Use Sync to Sheet on the device with your current entries.');
+      } else if (window.confirm('Replace only Weekly Capital records on this device with the shared Google Sheet records? Other modules will remain unchanged.')) {
+        StorageService.saveWeeklyIncome(result.records, profile.id);
+        onRefreshData();
+        setCloudStatus(`Weekly Capital restored (${result.records.length} records). Other modules were not changed.`);
       } else {
         setCloudStatus('Restore cancelled. Local data was not changed.');
       }
     } catch (error) {
-      setCloudStatus(error instanceof Error ? error.message : 'Could not restore cloud backup.');
+      setCloudStatus(error instanceof Error ? error.message : 'Could not restore Weekly Capital.');
     } finally {
       setCloudBusy(false);
     }
@@ -364,7 +360,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <h2 className="text-base font-bold text-white">Google Sheets Cloud Sync</h2>
             </div>
             <p className="mt-3 text-xs text-slate-400 leading-relaxed">
-              Connect your own Google Apps Script Web App. Changes are backed up to your Google Sheet and can be restored on another device.
+              Connect your Google Apps Script Web App. Only Weekly Capital Growth records sync between devices; other financial modules stay local.
             </p>
             <label className="mt-4 block text-xs font-semibold text-slate-300">Apps Script Web App URL</label>
             <input
