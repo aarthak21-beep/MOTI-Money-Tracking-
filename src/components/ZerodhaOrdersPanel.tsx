@@ -35,7 +35,7 @@ const exportCsv = (filename: string, rows: Array<Record<string, unknown>>) => {
   if (!rows.length) return;
   const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
   const quote = (value: unknown) => '"' + String(value ?? '').replace(/"/g, '""') + '"';
-  const csv = [headers.map(quote).join(','), ...rows.map((row) => headers.map((header) => quote(row[header])).join(','))].join('\\r\\n');
+  const csv = [headers.map(quote).join(','), ...rows.map((row) => headers.map((header) => quote(row[header])).join(','))].join('\r\n');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const anchor = document.createElement('a');
   anchor.href = url; anchor.download = filename; anchor.click();
