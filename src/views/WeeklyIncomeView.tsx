@@ -174,9 +174,9 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
       <div className="rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#111d2d] to-[#0b1421] p-4"><p className="text-xs text-slate-400">Ahead / Short</p><p className={`mt-1 text-xl font-black ${latestActual >= latestTarget && latestActual > 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{calculated.length ? money(latestActual - latestTarget, profile.currencySymbol) : '—'}</p><p className="text-[10px] text-slate-500">Actual minus target</p></div>
     </div>
 
-    <div className="overflow-x-auto rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#111d2d] to-[#0b1421] shadow-xl">
+    <div className="max-h-[72vh] overflow-auto rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#111d2d] to-[#0b1421] shadow-xl">
       <table className="w-full min-w-[1000px] border-collapse text-left text-xs">
-        <thead><tr className="border-b border-white/[0.09] bg-[#09121e] text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        <thead className="sticky top-0 z-20"><tr className="border-b border-white/[0.09] bg-[#09121e] text-[10px] font-bold uppercase tracking-wider text-slate-400">
           {['Sr. No.','Date','Previous Capital','Extra Addition','Rate','Target Growth','Final Target','Closed Trade P&L','Actual Capital','Ahead / Short','Actions'].map((label)=><th key={label} className="px-3 py-3 text-right first:text-left">{label}</th>)}
         </tr></thead>
         <tbody className="divide-y divide-[#1e2e4f]/50">
