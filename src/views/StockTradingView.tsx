@@ -648,9 +648,9 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
             <span className="text-[10px] text-slate-500">{filteredTrades.length} shown</span>
           </div>
       {/* Trade ledger */}
-      <div className="overflow-x-auto rounded-2xl border border-[#1e2e4f] bg-[#0d1527] shadow-xl">
+      <div className="max-h-[72vh] overflow-auto rounded-2xl border border-[#1e2e4f] bg-[#0d1527] shadow-xl">
         <table className="w-full text-left border-collapse min-w-[1250px]">
-          <thead>
+          <thead className="sticky top-0 z-20">
             <tr className="border-b border-[#1e2e4f] bg-[#0a101f] text-[11px] font-bold text-slate-400 uppercase tracking-wider">
               <th className="py-3 px-3">Sr No.</th>
               <th className="py-3 px-3">Date</th>
@@ -765,11 +765,11 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                 <div>
                   <label className="block text-xs font-semibold text-slate-300">Entry Date (DD-MM-YYYY)</label>
                   <input
-                    type="text"
+                    type="date"
                     required
-                    value={entryDate}
-                    onChange={(e) => setEntryDate(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white focus:border-emerald-300 outline-none"
+                    value={entryDate ? entryDate.split("-").reverse().join("-").replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$3-$2-$1") : ""}
+                    onChange={(e) => setEntryDate(e.target.value ? e.target.value.split("-").reverse().join("-") : "")}
+                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white [color-scheme:dark] focus:border-emerald-300 outline-none"
                   />
                 </div>
                 <div>
@@ -866,10 +866,10 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                   <div>
                     <label className="block text-xs font-semibold text-slate-300">Exit Date (DD-MM-YYYY)</label>
                     <input
-                      type="text"
-                      value={exitDate}
-                      onChange={(e) => setExitDate(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white outline-none"
+                      type="date"
+                      value={exitDate ? exitDate.split("-").reverse().join("-").replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$3-$2-$1") : ""}
+                      onChange={(e) => setExitDate(e.target.value ? e.target.value.split("-").reverse().join("-") : "")}
+                      className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white [color-scheme:dark] outline-none"
                     />
                   </div>
                   <div>
