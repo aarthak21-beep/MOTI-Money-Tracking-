@@ -36,7 +36,6 @@ import { Sparkles } from 'lucide-react';
 
 export default function App() {
   const [userId] = useState('usr_default');
-  const [demoReset] = useState(() => StorageService.clearDemoDataOnce(userId));
   const [profile, setProfile] = useState<UserProfile>(() => StorageService.getProfile(userId));
   const [accounts, setAccounts] = useState<AccountRecord[]>(() => StorageService.getAccounts(userId));
   // Start with the user's saved records only. Never insert sample/demo trades automatically.
@@ -99,34 +98,27 @@ export default function App() {
     setNotifications(StorageService.getNotifications(userId));
   }, [userId]);
 
-  // On first launch of the equity-only workspace, replace any old demo cloud snapshot with a clean backup.
-  // On later launches, restore the user's own latest cloud snapshot as usual.
+  // Weekly Capital is the only module synchronized automatically between devices.
+  // Never restore a full cloud snapshot over local financial records.
   useEffect(() => {
     if (!CloudSyncService.getUrl()) return;
-    const cloudResetPending = localStorage.getItem('moti_equity_cloud_reset_pending') === '1';
-    if (demoReset || cloudResetPending) {
-      const cleanData = JSON.parse(StorageService.exportCompleteBackup(userId));
-      void CloudSyncService.save({ exportedAt: new Date().toISOString(), data: cleanData })
-        .then(() => localStorage.removeItem('moti_equity_cloud_reset_pending'))
-        .catch((error) => console.warn('MOTI clean cloud snapshot:', error));
-      return;
-    }
     let active = true;
-    CloudSyncService.load().then((snapshot) => {
-      if (active && snapshot?.data) {
-        StorageService.importCompleteBackup(JSON.stringify(snapshot.data), userId);
-        reloadAllData();
+    CloudSyncService.loadWeekly().then((cloud) => {
+      if (!active) return;
+      if (cloud.found) {
+        StorageService.saveWeeklyIncome(cloud.records, userId);
+        setWeekly(cloud.records);
+      } else {
+        const localWeekly = StorageService.getWeeklyIncome(userId);
+        if (localWeekly.length) {
+          void CloudSyncService.saveWeekly(localWeekly).catch((error) =>
+            console.warn('MOTI weekly cloud seed:', error)
+          );
+        }
       }
-    }).catch((error) => console.warn('MOTI cloud restore:', error));
+    }).catch((error) => console.warn('MOTI weekly cloud load:', error));
     return () => { active = false; };
-  }, [userId, reloadAllData, demoReset]);
-
-  const syncCloudSnapshot = () => {
-    if (!CloudSyncService.getUrl()) return;
-    const data = JSON.parse(StorageService.exportCompleteBackup(userId));
-    void CloudSyncService.save({ exportedAt: new Date().toISOString(), data })
-      .catch((error) => console.warn('MOTI cloud sync:', error));
-  };
+  }, [userId]);
 
   // Compute live financial summary
   const summary = useMemo(() => {
@@ -137,62 +129,55 @@ export default function App() {
   const handleSaveTrades = (updatedTrades: StockTrade[]) => {
     setTrades(updatedTrades);
     StorageService.saveStockTrades(updatedTrades, userId);
-    syncCloudSnapshot();
   };
 
   const handleSaveWeekly = (updatedWeekly: WeeklyIncomeRecord[]) => {
     setWeekly(updatedWeekly);
     StorageService.saveWeeklyIncome(updatedWeekly, userId);
-    syncCloudSnapshot();
+    if (CloudSyncService.getUrl()) {
+      void CloudSyncService.saveWeekly(updatedWeekly).catch((error) => console.warn('MOTI weekly cloud sync:', error));
+    }
   };
 
   const handleSaveDaily = (updatedDaily: DailyEarningsRecord[]) => {
     setDaily(updatedDaily);
     StorageService.saveDailyEarnings(updatedDaily, userId);
-    syncCloudSnapshot();
   };
 
   const handleSaveInvoices = (updatedInvoices: BusinessInvoice[]) => {
     setInvoices(updatedInvoices);
     StorageService.saveInvoices(updatedInvoices, userId);
-    syncCloudSnapshot();
   };
 
   const handleSaveExpenses = (updatedExpenses: ExpenseRecord[]) => {
     setExpenses(updatedExpenses);
     StorageService.saveExpenses(updatedExpenses, userId);
-    syncCloudSnapshot();
   };
 
   const handleSaveBudgets = (updatedBudgets: BudgetLimit[]) => {
     setBudgets(updatedBudgets);
     StorageService.saveBudgets(updatedBudgets, userId);
-    syncCloudSnapshot();
   };
 
   const handleSaveAccounts = (updatedAccounts: AccountRecord[]) => {
     setAccounts(updatedAccounts);
     StorageService.saveAccounts(updatedAccounts, userId);
-    syncCloudSnapshot();
   };
 
   const handleSaveSavings = (updatedSavings: SavingsGoal[]) => {
     setSavings(updatedSavings);
     StorageService.saveSavingsGoals(updatedSavings, userId);
-    syncCloudSnapshot();
   };
 
   const handleUpdateProfile = (updatedProfile: UserProfile) => {
     setProfile(updatedProfile);
     StorageService.saveProfile(updatedProfile);
-    syncCloudSnapshot();
   };
 
   const handleMarkNotificationRead = (notifId: string) => {
     const updated = notifications.map((n) => (n.id === notifId ? { ...n, read: true } : n));
     setNotifications(updated);
     StorageService.saveNotifications(updated, userId);
-    syncCloudSnapshot();
   };
 
   // Quick Add Action Dispatchers
