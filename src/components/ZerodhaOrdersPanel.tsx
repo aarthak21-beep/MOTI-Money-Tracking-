@@ -66,7 +66,7 @@ export const ZerodhaOrdersPanel: React.FC = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('kite') === 'connected') {
-      setMessage('Zerodha connected successfully. Tap Sync orders to fetch today’s order book.');
+      setMessage('Zerodha login completed. The Worker will collect today’s order book automatically at 3:45 PM IST on weekdays.');
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (params.get('kite_error')) {
       setMessage(params.get('kite_error') || 'Zerodha connection failed.');
@@ -77,8 +77,25 @@ export const ZerodhaOrdersPanel: React.FC = () => {
   useEffect(() => {
     if (!baseUrl || !password) return;
     let active = true;
-    api('/kite/status').then((result) => { if (active) setConnected(Boolean(result.connected)); })
-      .catch(() => { if (active) setConnected(false); });
+    api('/kite/status').then(async (result) => {
+      if (!active) return;
+      setConnected(Boolean(result.connected));
+      if (result.lastAutoSync) setLastSync(result.lastAutoSync);
+      const history = await api('/kite/auto-history');
+      if (!active) return;
+      const nextOrders = mergeUnique(orders, history.orders || [], 'order_id');
+      const nextTrades = mergeUnique(executions, history.trades || [], 'trade_id');
+      setOrders(nextOrders); setExecutions(nextTrades);
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(nextOrders));
+      localStorage.setItem(TRADES_KEY, JSON.stringify(nextTrades));
+      if (history.lastAutoSyncStatus === 'success') {
+        setMessage(history.lastAutoSyncMessage || 'Latest scheduled Zerodha sync loaded.');
+      } else if (history.lastAutoSyncStatus === 'needs_login') {
+        setMessage('Daily Zerodha login is required after 6:00 AM for the automatic 3:45 PM sync.');
+      } else if (history.lastAutoSyncStatus === 'error') {
+        setMessage(history.lastAutoSyncMessage || 'The last automatic sync had an error.');
+      }
+    }).catch(() => { if (active) setConnected(false); });
     return () => { active = false; };
   }, [baseUrl, password]);
 
@@ -104,8 +121,8 @@ export const ZerodhaOrdersPanel: React.FC = () => {
     setBusy(true); setMessage('');
     try {
       const result = await api('/kite/orders');
-      const nextOrders = mergeUnique(orders, result.orders || [], 'order_id');
-      const nextTrades = mergeUnique(executions, result.trades || [], 'trade_id');
+      const nextOrders = mergeUnique(orders, result.historyOrders || result.orders || [], 'order_id');
+      const nextTrades = mergeUnique(executions, result.historyTrades || result.trades || [], 'trade_id');
       setOrders(nextOrders); setExecutions(nextTrades);
       localStorage.setItem(ORDERS_KEY, JSON.stringify(nextOrders));
       localStorage.setItem(TRADES_KEY, JSON.stringify(nextTrades));
@@ -160,6 +177,7 @@ export const ZerodhaOrdersPanel: React.FC = () => {
           <button disabled={busy || !password} onClick={disconnect} className="inline-flex items-center gap-2 rounded-xl border border-rose-400/20 px-3 py-2 text-xs font-bold text-rose-300 disabled:opacity-40"><Unplug className="h-4 w-4" /> Disconnect</button>
         </div>
         {message && <p className="mt-3 rounded-xl border border-cyan-300/15 bg-cyan-300/5 p-3 text-xs text-cyan-100">{message}</p>}
+        <p className="mt-2 text-[10px] leading-relaxed text-cyan-100/70">Automatic sync: every weekday at 3:45 PM IST. For it to work, complete Zerodha Connect once after 6:00 AM on each trading day; Kite access tokens expire daily. You do not need to press Sync orders.</p>
         {lastSync && <p className="mt-2 text-[10px] text-slate-500">Last synced: {dateText(lastSync)}</p>}
       </div>
 
@@ -173,7 +191,7 @@ export const ZerodhaOrdersPanel: React.FC = () => {
         <div className="flex items-center justify-between border-b border-[#1e2e4f] p-4"><div><h3 className="text-sm font-black text-white">Order Book</h3><p className="text-[10px] text-slate-500">Includes complete, pending, cancelled and rejected orders</p></div><span className="text-xs text-slate-400">{orders.length} records</span></div>
         <div className="max-h-[420px] overflow-auto">
           <table className="w-full min-w-[720px] text-left text-xs"><thead className="sticky top-0 bg-[#101d33] text-[10px] uppercase text-slate-400"><tr>{['Time','Stock','Side','Qty / Filled','Avg. Price','Order Type','Status'].map((x) => <th key={x} className="px-3 py-3">{x}</th>)}</tr></thead>
-            <tbody className="divide-y divide-[#1e2e4f]/60">{orders.length ? [...orders].reverse().map((o) => <tr key={o.order_id}><td className="whitespace-nowrap px-3 py-3 text-slate-400">{dateText(o.exchange_timestamp || o.order_timestamp)}</td><td className="px-3 py-3 font-bold text-white">{o.tradingsymbol || '—'}<span className="block text-[10px] text-slate-500">{o.exchange || ''}</span></td><td className={`px-3 py-3 font-black ${o.transaction_type === 'BUY' ? 'text-emerald-300' : 'text-rose-300'}`}>{o.transaction_type || '—'}</td><td className="px-3 py-3 text-slate-300">{o.quantity ?? 0} / {o.filled_quantity ?? 0}</td><td className="px-3 py-3 text-right text-slate-200">₹{money(o.average_price)}</td><td className="px-3 py-3 text-slate-400">{o.order_type || '—'}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${o.status === 'COMPLETE' ? 'bg-emerald-400/10 text-emerald-300' : o.status === 'REJECTED' || o.status === 'CANCELLED' ? 'bg-rose-400/10 text-rose-300' : 'bg-amber-400/10 text-amber-200'}`}>{o.status || 'UNKNOWN'}</span></td></tr>) : <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-500">No orders synced yet. Connect Zerodha and tap Sync orders.</td></tr>}</tbody>
+            <tbody className="divide-y divide-[#1e2e4f]/60">{orders.length ? [...orders].reverse().map((o) => <tr key={o.order_id}><td className="whitespace-nowrap px-3 py-3 text-slate-400">{dateText(o.exchange_timestamp || o.order_timestamp)}</td><td className="px-3 py-3 font-bold text-white">{o.tradingsymbol || '—'}<span className="block text-[10px] text-slate-500">{o.exchange || ''}</span></td><td className={`px-3 py-3 font-black ${o.transaction_type === 'BUY' ? 'text-emerald-300' : 'text-rose-300'}`}>{o.transaction_type || '—'}</td><td className="px-3 py-3 text-slate-300">{o.quantity ?? 0} / {o.filled_quantity ?? 0}</td><td className="px-3 py-3 text-right text-slate-200">₹{money(o.average_price)}</td><td className="px-3 py-3 text-slate-400">{o.order_type || '—'}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${o.status === 'COMPLETE' ? 'bg-emerald-400/10 text-emerald-300' : o.status === 'REJECTED' || o.status === 'CANCELLED' ? 'bg-rose-400/10 text-rose-300' : 'bg-amber-400/10 text-amber-200'}`}>{o.status || 'UNKNOWN'}</span></td></tr>) : <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-500">No orders synced yet. Complete today's Zerodha login and wait for the scheduled sync.</td></tr>}</tbody>
           </table>
         </div>
       </div>
@@ -186,7 +204,7 @@ export const ZerodhaOrdersPanel: React.FC = () => {
           </table>
         </div>
       </div>
-      <div className="flex items-start gap-2 rounded-xl border border-amber-300/15 bg-amber-300/5 p-3 text-[10px] leading-relaxed text-amber-100/80"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Read-only connector: MOTI can only fetch orders and executions. It cannot place, modify or cancel orders, and it does not request holdings, positions, funds or live market prices. Kite exposes the current trading day’s order/trade book; MOTI keeps synced history in this browser’s local storage. Sync once each trading day before the day’s records expire. Keep your normal MOTI JSON backup.</p></div>
+      <div className="flex items-start gap-2 rounded-xl border border-amber-300/15 bg-amber-300/5 p-3 text-[10px] leading-relaxed text-amber-100/80"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Read-only connector: MOTI can only fetch orders and executions. It cannot place, modify or cancel orders, and it does not request holdings, positions, funds or live market prices. Kite exposes the current trading day’s order/trade book; MOTI keeps synced history in this browser’s local storage. The Worker can automatically sync once per weekday at 3:45 PM IST after you complete Zerodha login that day. Kite tokens expire at 6:00 AM, so daily login is still required; manual Sync remains available as a fallback. Keep your normal MOTI JSON backup.</p></div>
     </section>
   );
 };

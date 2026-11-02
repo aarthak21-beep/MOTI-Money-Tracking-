@@ -1,5 +1,6 @@
 const APP_ORIGIN = "https://aarthak21-beep.github.io";
 const APP_RETURN_URL = "https://aarthak21-beep.github.io/MOTI-Money-Tracking-/";
+const AUTO_HISTORY_KEY = "kite-auto-history";
 
 function cors(origin) {
   const allowed = origin === APP_ORIGIN ? origin : APP_ORIGIN;
@@ -41,7 +42,68 @@ async function kiteFetch(path, env, accessToken) {
     },
   });
 }
+function mergeById(oldRows, newRows, idField) {
+  const rows = new Map();
+  [...(oldRows || []), ...(newRows || [])].forEach((row) => {
+    const id = String(row?.[idField] ?? "");
+    if (id) rows.set(id, row);
+  });
+  return Array.from(rows.values()).slice(-10000);
+}
+async function saveAutoSnapshot(env, snapshot) {
+  const previous = await env.MOTI_KITE_KV.get(AUTO_HISTORY_KEY, "json") || {};
+  const next = {
+    orders: mergeById(previous.orders, snapshot.orders, "order_id"),
+    trades: mergeById(previous.trades, snapshot.trades, "trade_id"),
+    lastAutoSync: snapshot.fetchedAt,
+    lastAutoSyncDate: snapshot.date,
+    lastAutoSyncStatus: snapshot.status,
+    lastAutoSyncMessage: snapshot.message || "",
+  };
+  await env.MOTI_KITE_KV.put(AUTO_HISTORY_KEY, JSON.stringify(next));
+  return next;
+}
+async function fetchAndSaveDaily(env, scheduledTime) {
+  const fetchedAt = new Date(scheduledTime || Date.now()).toISOString();
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(scheduledTime || Date.now()));
+  const token = await env.MOTI_KITE_KV.get("kite-access-token");
+  if (!token) {
+    await saveAutoSnapshot(env, { orders: [], trades: [], fetchedAt, date, status: "needs_login", message: "Daily Kite login is required before the scheduled sync." });
+    return;
+  }
+  try {
+    const [ordersResponse, tradesResponse] = await Promise.all([
+      kiteFetch("/orders", env, token),
+      kiteFetch("/trades", env, token),
+    ]);
+    const [ordersPayload, tradesPayload] = await Promise.all([ordersResponse.json(), tradesResponse.json()]);
+    if (!ordersResponse.ok || !tradesResponse.ok) {
+      const expired = ordersResponse.status === 403 || tradesResponse.status === 403;
+      if (expired) {
+        await env.MOTI_KITE_KV.delete("kite-access-token");
+        await env.MOTI_KITE_KV.delete("kite-user");
+      }
+      await saveAutoSnapshot(env, {
+        orders: [], trades: [], fetchedAt, date,
+        status: expired ? "needs_login" : "error",
+        message: ordersPayload.message || tradesPayload.message || "Kite API request failed.",
+      });
+      return;
+    }
+    await saveAutoSnapshot(env, {
+      orders: ordersPayload.data || [],
+      trades: tradesPayload.data || [],
+      fetchedAt, date, status: "success",
+      message: `Automatically synced ${(ordersPayload.data || []).length} orders and ${(tradesPayload.data || []).length} executions.`,
+    });
+  } catch {
+    await saveAutoSnapshot(env, { orders: [], trades: [], fetchedAt, date, status: "error", message: "Automatic Kite sync failed. Please check the Worker logs." });
+  }
+}
 export default {
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(fetchAndSaveDaily(env, controller.scheduledTime));
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
     const origin = request.headers.get("Origin") || "";
@@ -102,7 +164,19 @@ export default {
     if (url.pathname === "/kite/status" && request.method === "GET") {
       const token = await env.MOTI_KITE_KV.get("kite-access-token");
       const user = await env.MOTI_KITE_KV.get("kite-user");
-      return json({ ok: true, connected: Boolean(token), user: user ? JSON.parse(user) : null }, 200, origin);
+      const history = await env.MOTI_KITE_KV.get(AUTO_HISTORY_KEY, "json") || {};
+      return json({
+        ok: true, connected: Boolean(token), user: user ? JSON.parse(user) : null,
+        lastAutoSync: history.lastAutoSync || null,
+        lastAutoSyncDate: history.lastAutoSyncDate || null,
+        lastAutoSyncStatus: history.lastAutoSyncStatus || null,
+        lastAutoSyncMessage: history.lastAutoSyncMessage || "",
+      }, 200, origin);
+    }
+
+    if (url.pathname === "/kite/auto-history" && request.method === "GET") {
+      const history = await env.MOTI_KITE_KV.get(AUTO_HISTORY_KEY, "json") || { orders: [], trades: [] };
+      return json({ ok: true, ...history }, 200, origin);
     }
 
     if (url.pathname === "/kite/orders" && request.method === "GET") {
@@ -121,11 +195,18 @@ export default {
         }
         return json({ ok: false, error: message, reconnect: ordersResponse.status === 403 || tradesResponse.status === 403 }, 502, origin);
       }
-      return json({
-        ok: true,
+      const snapshot = {
+        orders: ordersPayload.data || [], trades: tradesPayload.data || [],
         fetchedAt: new Date().toISOString(),
-        orders: ordersPayload.data || [],
-        trades: tradesPayload.data || [],
+        date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
+        status: "success",
+        message: "Manually synced from MOTI.",
+      };
+      const history = await saveAutoSnapshot(env, snapshot);
+      return json({
+        ok: true, fetchedAt: snapshot.fetchedAt,
+        orders: snapshot.orders, trades: snapshot.trades,
+        historyOrders: history.orders, historyTrades: history.trades,
       }, 200, origin);
     }
 
