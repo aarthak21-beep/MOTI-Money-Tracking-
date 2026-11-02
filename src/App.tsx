@@ -52,7 +52,24 @@ export default function App() {
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
   // Security Lock State
-  const [isLocked, setIsLocked] = useState<boolean>(() => Boolean(profile.pinEnabled && profile.pinCode));
+  const [isLocked, setIsLocked] = useState<boolean>(false);
+
+  // Auto-lock only after 10 minutes without user activity; do not prompt PIN on app launch.
+  useEffect(() => {
+    if (!profile.pinEnabled || !profile.pinCode || isLocked) return;
+    let timeout: ReturnType<typeof setTimeout>;
+    const resetInactivityTimer = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setIsLocked(true), 10 * 60 * 1000);
+    };
+    const activityEvents: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
+    activityEvents.forEach((event) => window.addEventListener(event, resetInactivityTimer, { passive: true }));
+    resetInactivityTimer();
+    return () => {
+      clearTimeout(timeout);
+      activityEvents.forEach((event) => window.removeEventListener(event, resetInactivityTimer));
+    };
+  }, [profile.pinEnabled, profile.pinCode, isLocked]);
 
   // PWA Install State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
