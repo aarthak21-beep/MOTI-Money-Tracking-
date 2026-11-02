@@ -44,7 +44,8 @@ export const PinLockModal: React.FC<PinLockModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#070d18] px-4 pb-6 pt-[max(1.5rem,env(safe-area-inset-top))] backdrop-blur-xl sm:pt-8">
-      <div className="w-full max-w-sm rounded-3xl border border-amber-500/30 bg-[#0d1527] p-8 text-center shadow-2xl shadow-black">
+      <div className="flex w-full max-w-sm flex-col items-center">
+      <div className="w-full rounded-3xl border border-amber-500/30 bg-[#0d1527] p-8 text-center shadow-2xl shadow-black">
         {/* Monogram Icon */}
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500/20 to-emerald-500/20 border border-amber-500/30 text-amber-400 mb-4">
           <Lock className="h-8 w-8" />
@@ -111,6 +112,8 @@ export const PinLockModal: React.FC<PinLockModalProps> = ({
           <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
           <span>Client-Side AES & Zero-Knowledge Verification</span>
         </div>
+      </div>
+      <p className="mt-5 text-center text-[11px] font-medium tracking-wide text-slate-500">Developed by <span className="font-bold text-emerald-300">MOTi Technologies</span></p>
       </div>
     </div>
   );
