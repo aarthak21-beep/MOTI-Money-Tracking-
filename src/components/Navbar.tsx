@@ -9,12 +9,22 @@ import {
   CheckCircle,
   AlertTriangle,
   X,
-  ExternalLink
+  ExternalLink,
+  LayoutDashboard,
+  CalendarDays,
+  Receipt,
+  Wallet,
+  ArrowLeftRight,
+  PiggyBank,
+  Calculator,
+  BarChart3,
+  Settings
 } from 'lucide-react';
 import { UserProfile, AppNotification, FinancialContextSummary } from '../types';
 import { formatINR } from '../utils/exportUtils';
 
 interface NavbarProps {
+  currentTab: string;
   profile: UserProfile;
   summary: FinancialContextSummary;
   notifications: AppNotification[];
@@ -29,6 +39,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
+  currentTab,
   profile,
   summary,
   notifications,
@@ -230,6 +241,62 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Desktop top navigation: replaces the left sidebar */}
+      <nav className="hidden lg:block border-t border-white/[0.06] bg-[#080f1b]/95">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-1 overflow-x-auto px-5 py-2 [scrollbar-width:none]">
+          {[
+            { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
+            { id: 'stockTrading', label: 'Stocks', icon: TrendingUp },
+            { id: 'weeklyIncome', label: 'Weekly', icon: CalendarDays },
+            { id: 'dailyEarnings', label: 'Earnings', icon: Wallet },
+            { id: 'businessInvoices', label: 'Invoices', icon: Receipt },
+            { id: 'expenseManagement', label: 'Expenses', icon: Wallet },
+            { id: 'cashflowManagement', label: 'Cashflow', icon: ArrowLeftRight },
+            { id: 'savingsGoals', label: 'Savings', icon: PiggyBank },
+            { id: 'calculators', label: 'Tools', icon: Calculator },
+            { id: 'analyticsReports', label: 'Reports', icon: BarChart3 },
+          ].map((item) => {
+            const Icon = item.icon;
+            const active = currentTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => onSelectTab(item.id)}
+                className={`group inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all duration-200 ${
+                  active
+                    ? 'border-emerald-300/30 bg-gradient-to-b from-emerald-300/15 to-cyan-400/5 text-emerald-200 shadow-[0_0_18px_rgba(52,211,153,0.10)]'
+                    : 'border-transparent text-slate-400 hover:border-white/10 hover:bg-white/[0.04] hover:text-white'
+                }`}
+              >
+                <Icon className={`h-4 w-4 ${active ? 'text-emerald-300' : 'text-slate-500 group-hover:text-cyan-300'}`} />
+                {item.label}
+              </button>
+            );
+          })}
+          <span className="mx-1 h-6 w-px shrink-0 bg-white/10" />
+          <button
+            onClick={onOpenAi}
+            className={`inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${
+              currentTab === 'aiAssistant'
+                ? 'border-cyan-300/30 bg-cyan-300/10 text-cyan-200'
+                : 'border-transparent text-slate-400 hover:border-cyan-300/20 hover:bg-cyan-300/5 hover:text-cyan-200'
+            }`}
+          >
+            <Sparkles className="h-4 w-4" /> AI
+          </button>
+          <button
+            onClick={onOpenSettings}
+            className={`inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${
+              currentTab === 'settings'
+                ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-200'
+                : 'border-transparent text-slate-400 hover:border-white/10 hover:bg-white/[0.04] hover:text-white'
+            }`}
+          >
+            <Settings className="h-4 w-4" /> Settings
+          </button>
+        </div>
+      </nav>
     </header>
   );
 };
