@@ -36,7 +36,6 @@ import { Sparkles } from 'lucide-react';
 
 export default function App() {
   const [userId] = useState('usr_default');
-  const [demoReset] = useState(() => StorageService.clearDemoDataOnce(userId));
   const [profile, setProfile] = useState<UserProfile>(() => StorageService.getProfile(userId));
   const [accounts, setAccounts] = useState<AccountRecord[]>(() => StorageService.getAccounts(userId));
   // Start with the user's saved records only. Never insert sample/demo trades automatically.
