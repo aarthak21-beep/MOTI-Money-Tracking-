@@ -43,7 +43,7 @@ export const PinLockModal: React.FC<PinLockModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#070d18] px-4 backdrop-blur-xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#070d18] px-4 pb-6 pt-[max(1.5rem,env(safe-area-inset-top))] backdrop-blur-xl sm:pt-8">
       <div className="w-full max-w-sm rounded-3xl border border-amber-500/30 bg-[#0d1527] p-8 text-center shadow-2xl shadow-black">
         {/* Monogram Icon */}
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500/20 to-emerald-500/20 border border-amber-500/30 text-amber-400 mb-4">
