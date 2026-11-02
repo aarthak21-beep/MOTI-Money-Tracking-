@@ -22,13 +22,14 @@ const toDisplayDate = (value: string) => {
   return `${day}-${month}-${year}`;
 };
 const money = (value: number, symbol: string) => `${symbol}${formatINR(Number.isFinite(value) ? value : 0)}`;
+const amountInput = (value: number) => (Number.isFinite(value) ? value : 0).toFixed(2);
 
 export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, onSaveRecords }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<WeeklyIncomeRecord | null>(null);
   const [date, setDate] = useState('');
-  const [firstBase, setFirstBase] = useState('0');
-  const [addition, setAddition] = useState('0');
+  const [firstBase, setFirstBase] = useState('0.00');
+  const [addition, setAddition] = useState('0.00');
   const [rate, setRate] = useState('3');
 
   const latest = [...records].sort((a, b) => {
@@ -83,16 +84,16 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
       const today = new Date();
       setDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
     }
-    setFirstBase(String(latestTarget || 0));
-    setAddition('0');
+    setFirstBase(amountInput(latestTarget || 0));
+    setAddition('0.00');
     setRate('3');
     setIsOpen(true);
   };
   const openEdit = (record: WeeklyIncomeRecord) => {
     setEditing(record);
     setDate(toISODate(record.weekStartDate));
-    setFirstBase(String(record.openingBalance || 0));
-    setAddition(String(record.weeklyIncome || 0));
+    setFirstBase(amountInput(Number(record.openingBalance) || 0));
+    setAddition(amountInput(Number(record.weeklyIncome) || 0));
     setRate(String(record.customFields?.targetRate ?? 3));
     setIsOpen(true);
   };
@@ -203,8 +204,8 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
       <form onSubmit={save} className="w-full max-w-lg space-y-4 rounded-2xl border border-[#263858] bg-gradient-to-br from-[#111d2d] to-[#0b1421] p-5 shadow-2xl">
         <div className="flex items-center justify-between"><div><h2 className="text-lg font-black text-white">{editing ? 'Edit Week' : 'Add Weekly Capital'}</h2><p className="text-xs text-slate-400">Change values anytime; later weeks recalculate automatically.</p></div><button type="button" onClick={()=>setIsOpen(false)} className="rounded-lg p-2 text-slate-400"><X className="h-4 w-4"/></button></div>
         <label className="block text-xs text-slate-300">Week Date<input type="date" value={date} onChange={e=>setDate(e.target.value)} required className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
-        <label className="block text-xs text-slate-300">Previous Capital (first week / starting capital)<input type="number" min="0" step="0.01" value={firstBase} onChange={e=>setFirstBase(e.target.value)} disabled={Boolean(editing && records.findIndex(r=>r.id===editing.id)>0)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white disabled:opacity-50"/></label>
-        <label className="block text-xs text-slate-300">Extra Addition (outside earnings)<input type="number" min="0" step="0.01" value={addition} onChange={e=>setAddition(e.target.value)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
+        <label className="block text-xs text-slate-300">Previous Capital (first week / starting capital)<input type="number" min="0" step="0.01" value={firstBase} onChange={e=>setFirstBase(e.target.value)} onBlur={()=>setFirstBase(value=>value.trim() === '' ? '0.00' : amountInput(Number(value)))} disabled={Boolean(editing && records.findIndex(r=>r.id===editing.id)>0)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white disabled:opacity-50"/></label>
+        <label className="block text-xs text-slate-300">Extra Addition (outside earnings)<input type="number" min="0" step="0.01" value={addition} onChange={e=>setAddition(e.target.value)} onBlur={()=>setAddition(value=>value.trim() === '' ? '0.00' : amountInput(Number(value)))} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
         <label className="block text-xs text-slate-300">Weekly Hypothetical Target Rate (%)<input type="number" min="0" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
         <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-slate-300">Actual Capital is calculated automatically from Extra Addition and closed equity trades net P&amp;L for this week. No manual entry needed.</p>
         <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={()=>setIsOpen(false)} className="rounded-lg border border-[#263858] px-4 py-2 text-xs text-slate-300">Cancel</button><button type="submit" className="flex items-center gap-2 rounded-lg bg-emerald-300 px-4 py-2 text-xs font-bold text-[#04110d]"><Save className="h-4 w-4"/>Save Week</button></div>
