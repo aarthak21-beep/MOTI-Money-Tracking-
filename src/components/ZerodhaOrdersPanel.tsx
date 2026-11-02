@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, CheckCircle2, CircleAlert, ExternalLink, Link2, LogOut, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
+import { Activity, Link2, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
 
 type KiteOrder = {
   order_id: string; exchange?: string; tradingsymbol?: string; transaction_type?: string;
