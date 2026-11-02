@@ -31,6 +31,16 @@ const mergeUnique = <T,>(oldRows: T[], newRows: T[], key: keyof T): T[] => {
 };
 const money = (value?: number) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const dateText = (value?: string) => value ? new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+const exportCsv = (filename: string, rows: Array<Record<string, unknown>>) => {
+  if (!rows.length) return;
+  const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
+  const quote = (value: unknown) => '"' + String(value ?? '').replace(/"/g, '""') + '"';
+  const csv = [headers.map(quote).join(','), ...rows.map((row) => headers.map((header) => quote(row[header])).join(','))].join('\\r\\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const anchor = document.createElement('a');
+  anchor.href = url; anchor.download = filename; anchor.click();
+  URL.revokeObjectURL(url);
+};
 
 export const ZerodhaOrdersPanel: React.FC = () => {
   const [workerUrl, setWorkerUrl] = useState(() => localStorage.getItem(URL_KEY) || '');
@@ -143,6 +153,8 @@ export const ZerodhaOrdersPanel: React.FC = () => {
         <p className="mt-2 text-[10px] leading-relaxed text-slate-500">API Secret and access token never belong in this website. They stay inside your Cloudflare Worker. The connector password is kept only in this browser session.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button onClick={saveSettings} className="rounded-xl border border-[#29405e] bg-[#101d33] px-3 py-2 text-xs font-bold text-slate-200 hover:border-cyan-300">Save settings</button>
+          <button onClick={() => exportCsv('MOTI_Zerodha_Orders.csv', orders as unknown as Array<Record<string, unknown>>)} disabled={!orders.length} className="rounded-xl border border-[#29405e] px-3 py-2 text-xs font-bold text-slate-300 disabled:opacity-40">Export Orders CSV</button>
+          <button onClick={() => exportCsv('MOTI_Zerodha_Executions.csv', executions as unknown as Array<Record<string, unknown>>)} disabled={!executions.length} className="rounded-xl border border-[#29405e] px-3 py-2 text-xs font-bold text-slate-300 disabled:opacity-40">Export Fills CSV</button>
           <button disabled={busy} onClick={connect} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 px-4 py-2 text-xs font-black text-slate-950 disabled:opacity-50"><Link2 className="h-4 w-4" /> Connect Zerodha</button>
           <button disabled={busy || !connected} onClick={syncOrders} className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-xs font-bold text-cyan-200 disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} /> Sync orders</button>
           <button disabled={busy || !password} onClick={disconnect} className="inline-flex items-center gap-2 rounded-xl border border-rose-400/20 px-3 py-2 text-xs font-bold text-rose-300 disabled:opacity-40"><Unplug className="h-4 w-4" /> Disconnect</button>
