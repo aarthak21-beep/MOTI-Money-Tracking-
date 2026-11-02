@@ -129,62 +129,55 @@ export default function App() {
   const handleSaveTrades = (updatedTrades: StockTrade[]) => {
     setTrades(updatedTrades);
     StorageService.saveStockTrades(updatedTrades, userId);
-    syncCloudSnapshot();
   };
 
   const handleSaveWeekly = (updatedWeekly: WeeklyIncomeRecord[]) => {
     setWeekly(updatedWeekly);
-    StorageService.saveWeeklyIncome(updatedWeekly, userId);\n    if (CloudSyncService.getUrl()) {\n      void CloudSyncService.saveWeekly(updatedWeekly).catch((error) => console.warn('MOTI weekly cloud sync:', error));\n    }
-    syncCloudSnapshot();
+    StorageService.saveWeeklyIncome(updatedWeekly, userId);
+    if (CloudSyncService.getUrl()) {
+      void CloudSyncService.saveWeekly(updatedWeekly).catch((error) => console.warn('MOTI weekly cloud sync:', error));
+    }
   };
 
   const handleSaveDaily = (updatedDaily: DailyEarningsRecord[]) => {
     setDaily(updatedDaily);
     StorageService.saveDailyEarnings(updatedDaily, userId);
-    syncCloudSnapshot();
   };
 
   const handleSaveInvoices = (updatedInvoices: BusinessInvoice[]) => {
     setInvoices(updatedInvoices);
     StorageService.saveInvoices(updatedInvoices, userId);
-    syncCloudSnapshot();
   };
 
   const handleSaveExpenses = (updatedExpenses: ExpenseRecord[]) => {
     setExpenses(updatedExpenses);
     StorageService.saveExpenses(updatedExpenses, userId);
-    syncCloudSnapshot();
   };
 
   const handleSaveBudgets = (updatedBudgets: BudgetLimit[]) => {
     setBudgets(updatedBudgets);
     StorageService.saveBudgets(updatedBudgets, userId);
-    syncCloudSnapshot();
   };
 
   const handleSaveAccounts = (updatedAccounts: AccountRecord[]) => {
     setAccounts(updatedAccounts);
     StorageService.saveAccounts(updatedAccounts, userId);
-    syncCloudSnapshot();
   };
 
   const handleSaveSavings = (updatedSavings: SavingsGoal[]) => {
     setSavings(updatedSavings);
     StorageService.saveSavingsGoals(updatedSavings, userId);
-    syncCloudSnapshot();
   };
 
   const handleUpdateProfile = (updatedProfile: UserProfile) => {
     setProfile(updatedProfile);
     StorageService.saveProfile(updatedProfile);
-    syncCloudSnapshot();
   };
 
   const handleMarkNotificationRead = (notifId: string) => {
     const updated = notifications.map((n) => (n.id === notifId ? { ...n, read: true } : n));
     setNotifications(updated);
     StorageService.saveNotifications(updated, userId);
-    syncCloudSnapshot();
   };
 
   // Quick Add Action Dispatchers
