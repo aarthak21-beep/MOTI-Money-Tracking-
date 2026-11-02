@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Navbar } from './components/Navbar';
-import { Sidebar } from './components/Sidebar';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { PinLockModal } from './components/PinLockModal';
 import { QuickAddModal } from './components/QuickAddModal';
@@ -251,6 +250,7 @@ export default function App() {
 
       {/* Primary Header */}
       <Navbar
+        currentTab={currentTab}
         profile={profile}
         summary={summary}
         notifications={notifications}
@@ -265,16 +265,9 @@ export default function App() {
       />
 
       {/* Main Body Layout */}
-      <div className="flex flex-1 max-w-7xl w-full mx-auto">
-        {/* Desktop Sidebar Navigation */}
-        <Sidebar
-          currentTab={currentTab}
-          onSelectTab={setCurrentTab}
-          profile={profile}
-        />
-
+      <div className="flex flex-1 w-full mx-auto max-w-[1600px]">
         {/* Dynamic Main Workspace Content */}
-        <main className="flex-1 p-3 sm:p-6 overflow-x-hidden min-w-0">
+        <main className="flex-1 p-3 sm:p-6 lg:px-8 overflow-x-hidden min-w-0">
           {currentTab === 'dashboard' && (
             <DashboardView
               profile={profile}
