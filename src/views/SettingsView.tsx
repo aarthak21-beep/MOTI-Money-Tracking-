@@ -117,9 +117,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
     setCloudBusy(true);
     try {
-      const records = StorageService.getWeeklyIncome(profile.id);
-      await CloudSyncService.saveWeekly(records);
-      setCloudStatus(`Weekly Capital synced (${records.length} records). Other modules were not uploaded.`);
+      const snapshot = JSON.parse(StorageService.exportCompleteBackup(profile.id)) as Record<string, unknown>;
+      await CloudSyncService.saveSnapshot(snapshot);
+      const tradeCount = Array.isArray(snapshot.stockTrades) ? snapshot.stockTrades.length : 0;
+      const weeklyCount = Array.isArray(snapshot.weeklyIncome) ? snapshot.weeklyIncome.length : 0;
+      setCloudStatus(`Complete MOTI backup sent: ${tradeCount} stock trades, ${weeklyCount} Weekly Capital records, and Zerodha history.`);
     } catch (error) {
       setCloudStatus(error instanceof Error ? error.message : 'Weekly cloud sync failed.');
     } finally {
@@ -134,13 +136,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
     setCloudBusy(true);
     try {
-      const result = await CloudSyncService.loadWeekly();
-      if (!result.found) {
-        setCloudStatus('No Weekly Capital cloud record found yet. Use Sync to Sheet on the device with your current entries.');
-      } else if (window.confirm('Replace only Weekly Capital records on this device with the shared Google Sheet records? Other modules will remain unchanged.')) {
-        StorageService.saveWeeklyIncome(result.records, profile.id);
+      const snapshot = await CloudSyncService.loadSnapshot();
+      if (!snapshot) {
+        setCloudStatus('No MOTI cloud backup found. First use Backup all MOTI data on the device that has your existing history.');
+      } else if (window.confirm('Restore the complete MOTI backup from Google Sheets? This replaces the records on this device, including stock trades and Zerodha history. Export a JSON backup first if this device has newer data.')) {
+        const success = StorageService.importCompleteBackup(JSON.stringify(snapshot), profile.id);
+        if (!success) throw new Error('The Google Sheet backup format is invalid; local data was not changed.');
         onRefreshData();
-        setCloudStatus(`Weekly Capital restored (${result.records.length} records). Other modules were not changed.`);
+        const count = Array.isArray(snapshot.stockTrades) ? snapshot.stockTrades.length : 0;
+        setCloudStatus(`Complete MOTI backup restored (${count} stock trade records, plus all saved modules and Zerodha history).`);
       } else {
         setCloudStatus('Restore cancelled. Local data was not changed.');
       }
@@ -360,7 +364,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <h2 className="text-base font-bold text-white">Google Sheets Cloud Sync</h2>
             </div>
             <p className="mt-3 text-xs text-slate-400 leading-relaxed">
-              Connect your Google Apps Script Web App. Only Weekly Capital Growth records sync between devices. Zerodha history is included in the JSON backup and can be restored on another device.
+              Connect your private Google Apps Script Web App. All MOTI records, stock trades, and saved Zerodha order/trade/holding/position history are backed up to Google Sheets.
             </p>
             <label className="mt-4 block text-xs font-semibold text-slate-300">Apps Script Web App URL</label>
             <input
@@ -378,7 +382,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Sync to Sheet
               </button>
               <button disabled={cloudBusy} onClick={handleCloudRestore} className="rounded-xl border border-[#1e2e4f] bg-[#070d18] py-2.5 text-xs font-bold text-slate-200 disabled:opacity-50">
-                Restore from Sheet
+                Restore full backup
               </button>
             </div>
             {cloudStatus && <p className="mt-3 text-[11px] text-emerald-300">{cloudStatus}</p>}
