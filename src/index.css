@@ -296,3 +296,70 @@ nav, aside {
     transition: none !important;
   }
 }
+
+
+/* ── Reports & Tools: focused trading intelligence workspace ─────────── */
+.reports-tools-page { isolation: isolate; }
+.reports-tools-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid rgba(110, 231, 183, 0.22);
+  border-radius: 1.5rem;
+  background:
+    radial-gradient(ellipse at 8% 0%, rgba(52, 211, 153, 0.18), transparent 48%),
+    radial-gradient(ellipse at 92% 100%, rgba(34, 211, 238, 0.14), transparent 44%),
+    linear-gradient(135deg, rgba(15, 34, 49, 0.98), rgba(7, 15, 28, 0.98) 70%);
+  box-shadow: 0 22px 55px -32px rgba(16, 185, 129, 0.45), inset 0 1px 0 rgba(255,255,255,.07);
+}
+.reports-tools-orb {
+  position: absolute;
+  z-index: 0;
+  width: 12rem;
+  height: 12rem;
+  border-radius: 999px;
+  filter: blur(1px);
+  pointer-events: none;
+}
+.reports-tools-orb-one {
+  top: -8rem;
+  right: 12%;
+  border: 1px solid rgba(110, 231, 183, .15);
+  background: radial-gradient(circle, rgba(52,211,153,.12), transparent 68%);
+  box-shadow: 0 0 70px rgba(52,211,153,.10);
+}
+.reports-tools-orb-two {
+  right: -5rem;
+  bottom: -9rem;
+  border: 1px solid rgba(103,232,249,.12);
+  background: radial-gradient(circle, rgba(34,211,238,.10), transparent 70%);
+}
+.reports-tools-content > section {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(125, 211, 252, .17) !important;
+  border-radius: 1.25rem !important;
+  background:
+    linear-gradient(145deg, rgba(16, 32, 49, .97), rgba(7, 16, 29, .98)) !important;
+  box-shadow: 0 18px 42px -28px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.055) !important;
+  padding: clamp(1rem, 2.4vw, 1.5rem) !important;
+}
+.reports-tools-content > section > div:first-child h2 {
+  letter-spacing: .055em;
+  text-shadow: 0 0 22px rgba(103,232,249,.12);
+}
+.reports-tools-content > section > div:first-child svg {
+  filter: drop-shadow(0 0 8px rgba(103,232,249,.22));
+}
+.reports-tools-content > section button:not(:disabled) {
+  border-color: rgba(125, 211, 252, .2);
+}
+.reports-tools-content > section button:not(:disabled):hover {
+  border-color: rgba(110, 231, 183, .48);
+}
+@media (max-width: 640px) {
+  .reports-tools-hero { border-radius: 1.1rem; }
+  .reports-tools-content { gap: 1rem; }
+  .reports-tools-content > section { border-radius: 1rem !important; }
+}
