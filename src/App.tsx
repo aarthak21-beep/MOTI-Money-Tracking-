@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { PinLockModal } from './components/PinLockModal';
@@ -46,6 +46,8 @@ export default function App() {
   const [budgets, setBudgets] = useState<BudgetLimit[]>(() => StorageService.getBudgets(userId));
   const [savings, setSavings] = useState<SavingsGoal[]>(() => StorageService.getSavingsGoals(userId));
   const [notifications, setNotifications] = useState<AppNotification[]>(() => StorageService.getNotifications(userId));
+
+  const cloudSyncReady = useRef(false);
 
   // Navigation State
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
@@ -114,27 +116,26 @@ export default function App() {
     setNotifications(StorageService.getNotifications(userId));
   }, [userId]);
 
-  // Weekly Capital is the only module synchronized automatically between devices.
-  // Never restore a full cloud snapshot over local financial records.
+  // Skip the initial render; after that, back up every saved MOTI module to Google Sheets.
+  // Restores remain user-confirmed from Settings so an empty/new device cannot overwrite cloud history.
   useEffect(() => {
+    if (!cloudSyncReady.current) {
+      cloudSyncReady.current = true;
+      return;
+    }
     if (!CloudSyncService.getUrl()) return;
-    let active = true;
-    CloudSyncService.loadWeekly().then((cloud) => {
-      if (!active) return;
-      if (cloud.found) {
-        StorageService.saveWeeklyIncome(cloud.records, userId);
-        setWeekly(cloud.records);
-      } else {
-        const localWeekly = StorageService.getWeeklyIncome(userId);
-        if (localWeekly.length) {
-          void CloudSyncService.saveWeekly(localWeekly).catch((error) =>
-            console.warn('MOTI weekly cloud seed:', error)
-          );
-        }
+    const timer = window.setTimeout(() => {
+      try {
+        const snapshot = JSON.parse(StorageService.exportCompleteBackup(userId)) as Record<string, unknown>;
+        void CloudSyncService.saveSnapshot(snapshot).catch((error) =>
+          console.warn('MOTI full cloud backup:', error)
+        );
+      } catch (error) {
+        console.warn('MOTI full cloud backup preparation:', error);
       }
-    }).catch((error) => console.warn('MOTI weekly cloud load:', error));
-    return () => { active = false; };
-  }, [userId]);
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [userId, accounts, trades, weekly, daily, invoices, expenses, budgets, savings, notifications, profile]);
 
   // Compute live financial summary
   const summary = useMemo(() => {
