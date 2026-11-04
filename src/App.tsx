@@ -46,6 +46,7 @@ export default function App() {
   const [budgets, setBudgets] = useState<BudgetLimit[]>(() => StorageService.getBudgets(userId));
   const [savings, setSavings] = useState<SavingsGoal[]>(() => StorageService.getSavingsGoals(userId));
   const [notifications, setNotifications] = useState<AppNotification[]>(() => StorageService.getNotifications(userId));
+  const [cloudRevision, setCloudRevision] = useState(0);
 
   const cloudSyncReady = useRef(false);
 
@@ -116,6 +117,12 @@ export default function App() {
     setNotifications(StorageService.getNotifications(userId));
   }, [userId]);
 
+  useEffect(() => {
+    const requestBackup = () => setCloudRevision((revision) => revision + 1);
+    window.addEventListener('moti-cloud-backup-request', requestBackup);
+    return () => window.removeEventListener('moti-cloud-backup-request', requestBackup);
+  }, []);
+
   // Skip the initial render; after that, back up every saved MOTI module to Google Sheets.
   // Restores remain user-confirmed from Settings so an empty/new device cannot overwrite cloud history.
   useEffect(() => {
@@ -135,7 +142,7 @@ export default function App() {
       }
     }, 1200);
     return () => window.clearTimeout(timer);
-  }, [userId, accounts, trades, weekly, daily, invoices, expenses, budgets, savings, notifications, profile]);
+  }, [userId, accounts, trades, weekly, daily, invoices, expenses, budgets, savings, notifications, profile, cloudRevision]);
 
   // Compute live financial summary
   const summary = useMemo(() => {
