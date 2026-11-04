@@ -1,6 +1,6 @@
 # MOTI read-only Zerodha Kite connector
 
-This Worker is a **read-only** bridge for the MOTI website. It calls Kite's read-only `GET /orders`, `GET /trades`, and `POST /charges/orders` endpoints. It has no order placement, modification, cancellation, holdings, positions, funds, quotes, or WebSocket routes. Order-wise brokerage, STT, exchange/SEBI fees, stamp duty and GST are fetched from Kite's virtual contract note endpoint and stored with the synced fills. DP charges are not part of that response and are not fabricated.
+This Worker is a **read-only** bridge for the MOTI website. It calls Kite's read-only `GET /orders`, `GET /trades`, `GET /portfolio/holdings`, and `GET /portfolio/positions` endpoints. It does not place, modify, or cancel orders. Live quotes, WebSockets, and live market data are not used. Orders and executions are the current trading day's records; holdings and positions are the current portfolio snapshot. Charges and DP fees are not fabricated.
 
 ## 1. Create a free Cloudflare Worker
 
@@ -64,20 +64,20 @@ The password is kept only in the current browser session. The Worker stores the 
 15 10 * * 1-5
 ```
 
-Cloudflare Cron uses UTC. This runs at **3:45 PM India time, Monday to Friday**, after the normal NSE cash-market session. It fetches the current day's orders, executions and available order-wise charges once and saves deduplicated history in the existing KV namespace.
+Cloudflare Cron uses UTC. This runs at **3:45 PM India time, Monday to Friday**, after the normal NSE cash-market session. It fetches the current day's orders and executions plus the current holdings and net positions once, then saves the data in the existing KV namespace.
 3. Deploy/save the Worker after adding the trigger.
 4. On each trading day, complete **Connect Zerodha** once after 6:00 AM IST. The scheduled Worker then syncs at 3:45 PM; you do not need to press **Sync orders**. If you did not log in that day, the scheduled job records that login is required and cannot fetch orders.
 5. When you open the MOTI Zerodha Orders panel, it loads the saved scheduled history from the Worker. Manual **Sync orders** remains available if you want an immediate update.
 
-The automatic sync runs on weekdays including exchange holidays; on a holiday it may simply save zero rows. It only fetches the order book and trade book, and never places or changes orders.
+The automatic sync runs on weekdays including exchange holidays; on a holiday the order/trade book may be empty. Holdings and positions are refreshed as current snapshots. It never places or changes orders.
 
 ## Data and limits
 
 - Kite's order book and trade book endpoints return the current day's records. The 3:45 PM IST scheduled sync captures them before the day rolls over, provided you authenticated that day after 6:00 AM.
-- The Worker keeps a deduplicated copy of scheduled/manual orders, executions and order-wise charge breakdowns in the bound KV namespace. MOTI also merges history by `order_id` and fills by `trade_id` when loading it into this browser's local storage.
+- The Worker keeps deduplicated scheduled/manual orders and executions, plus the latest holdings and positions snapshots, in the bound KV namespace. MOTI also merges history by `order_id` and fills by `trade_id` when loading it into this browser's local storage.
 - Local Kite history is device/browser-specific and is not currently included in MOTI's regular JSON backup or Google Sheets snapshot. Do not clear browser storage; use the order tables as a view of synced records and retain any required CSV exports separately.
 - MOTI imports eligible NSE/BSE equity execution fills into the Zerodha section of the Equity Journal. It de-duplicates by trade ID and builds FIFO open/closed rows from the fills it has saved. NSE and BSE fills for the same trading symbol are matched together because they represent the same equity holding. If a SELL has no earlier BUY in the saved execution history (for example, shares bought before the connector was first used), MOTI flags it as unmatched instead of inventing an entry price or P&L. Kite's current-day trade book cannot provide that missing historical buy cost.
-- The connector makes no order-changing API calls. It cannot place, modify, or cancel a trade.
+- The connector makes no order-changing API calls. It cannot place, modify, or cancel a trade. No live market data is requested.
 - The Kite access token is short-lived. The connector password protects Worker endpoints, while the API Key and API Secret remain Worker secrets.
 
 ## Troubleshooting
