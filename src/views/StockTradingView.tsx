@@ -199,7 +199,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       if (!day || !month || !year) return null;
       return new Date(year, month - 1, day);
     };
-    const closed = trades.filter((trade) => trade.status === 'CLOSED' && trade.exitDate && trade.chargesKnown !== false);
+    const closed = trades.filter((trade) => trade.source !== 'ZERODHA' && trade.status === 'CLOSED' && trade.exitDate && trade.chargesKnown !== false);
     const aggregate = (period: 'week' | 'month') => {
       const buckets = new Map<string, { label: string; brokerage: number; dp: number; statutory: number; total: number; dpKeys: Set<string> }>();
       closed.forEach((trade) => {
@@ -670,7 +670,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
               <th className="py-3 px-3 text-right">Exit</th>
               <th className="py-3 px-3 text-right">CMI</th>
               <th className="py-3 px-3 text-right">Target Earn</th>
-              <th className="py-3 px-3 text-right">P&amp;L</th>
+              <th className="py-3 px-3 text-right">Charges</th>
+              <th className="py-3 px-3 text-right">Net P&amp;L</th>
               <th className="py-3 px-3 text-right">Total P&amp;L</th>
               <th className="py-3 px-3 text-right">%</th>
               <th className="py-3 px-3 text-center">Actions</th>
@@ -678,16 +679,18 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           </thead>
           <tbody className="divide-y divide-[#1e2e4f]/50 text-xs">
             {filteredTrades.length === 0 ? (
-              <tr><td colSpan={14} className="py-8 text-center text-slate-500">No stock trades yet. Add your first trade.</td></tr>
+              <tr><td colSpan={15} className="py-8 text-center text-slate-500">No stock trades yet. Add your first trade.</td></tr>
             ) : (
               filteredTrades.map((t) => {
                 const closed = t.status === 'CLOSED' && Number(t.exitPrice) > 0;
                 const exit = closed ? Number(t.exitPrice) : 0;
                 const targetEarn = closed ? exit - t.entryPrice : 0;
-                const pnl = closed ? (exit - t.entryPrice) * t.quantity : 0;
-                const pct = t.entryPrice > 0 && closed ? (targetEarn / t.entryPrice) * 100 : 0;
+                const grossPnl = closed ? (exit - t.entryPrice) * t.quantity : 0;
+                const pnl = closed ? (t.netPnl !== undefined ? Number(t.netPnl) : grossPnl) : 0;
+                const pct = t.entryPrice > 0 && closed ? (pnl / (t.entryPrice * t.quantity)) * 100 : 0;
                 const totalPnl = trades.slice(0, trades.indexOf(t) + 1)
-                  .reduce((sum, trade) => sum + (trade.status === 'CLOSED' ? (Number(trade.actualPnl) || 0) : 0), 0);
+                  .reduce((sum, trade) => sum + (trade.status === 'CLOSED' ? (Number(trade.netPnl ?? trade.actualPnl) || 0) : 0), 0);
+                const chargeTotal = (Number(t.brokerage) || 0) + (Number(t.otherCharges) || 0);
                 return (
                   <tr key={t.id} className="hover:bg-[#131f38]/50 transition-colors">
                     <td className="py-3 px-3 font-mono text-slate-500 font-bold">{t.serialNumber}</td>
@@ -700,6 +703,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                     <td className="py-3 px-3 text-right font-bold text-white">{closed ? '₹' + formatINR(exit) : '-'}</td>
                     <td className="py-3 px-3 text-right text-slate-400">-</td>
                     <td className="py-3 px-3 text-right text-slate-200">{closed ? '₹' + formatINR(targetEarn) : '-'}</td>
+                    <td className="py-3 px-3 text-right text-slate-300">{t.chargesKnown === false ? 'Pending' : '₹' + formatINR(chargeTotal)}</td>
                     <td className={`py-3 px-3 text-right font-bold ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{closed ? (pnl >= 0 ? '+' : '-') + '₹' + formatINR(Math.abs(pnl)) : '-'}</td>
                     <td className="py-3 px-3 text-right font-black text-white">{closed ? '₹' + formatINR(totalPnl) : '-'}</td>
                     <td className={`py-3 px-3 text-right font-bold ${pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{closed ? pct.toFixed(2) + '%' : '-'}</td>
