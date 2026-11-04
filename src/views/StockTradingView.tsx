@@ -720,7 +720,9 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         </div>
       )}
 
-      {activeTab === 'zerodha' && <ZerodhaOrdersPanel onExecutionsChange={handleZerodhaExecutions} />}
+      <div className={activeTab === 'zerodha' ? '' : 'hidden'}>
+        <ZerodhaOrdersPanel onExecutionsChange={handleZerodhaExecutions} />
+      </div>
 
       {activeTab === 'tools' && (
         <div className="space-y-5">
