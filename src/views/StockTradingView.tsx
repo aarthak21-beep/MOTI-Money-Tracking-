@@ -187,6 +187,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       winRate,
       bestTrade,
       worstTrade,
+      hasUnknownCharges: trades.some((trade) => trade.status === 'CLOSED' && trade.chargesKnown === false),
     };
   }, [trades]);
 
