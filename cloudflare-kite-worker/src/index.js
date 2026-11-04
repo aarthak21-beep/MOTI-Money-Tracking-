@@ -43,7 +43,12 @@ async function kiteFetch(path, env, accessToken) {
   });
 }
 async function fetchOrderCharges(orders, trades, env, accessToken) {
-  const filled = (orders || []).filter((o) =>
+  // Re-check the full saved order history, not only today's order book.
+  // This backfills virtual contract-note charges for older trades imported before
+  // charge fetching was enabled or when the Kite charges endpoint was temporarily unavailable.
+  const previous = await env.MOTI_KITE_KV.get(AUTO_HISTORY_KEY, "json") || {};
+  const allOrders = mergeById(previous.orders, orders, "order_id");
+  const filled = allOrders.filter((o) =>
     o.status === "COMPLETE" && Number(o.filled_quantity) > 0 && Number(o.average_price) > 0
   );
   if (!filled.length) return {};
