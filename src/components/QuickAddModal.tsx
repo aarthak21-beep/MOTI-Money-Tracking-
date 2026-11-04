@@ -59,8 +59,6 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   const [stockName, setStockName] = useState('');
   const [entryPrice, setEntryPrice] = useState('');
   const [quantity, setQuantity] = useState('');
-  const [brokerage, setBrokerage] = useState('20');
-  const [otherCharges, setOtherCharges] = useState('10');
   const [targetEarnings, setTargetEarnings] = useState('');
 
   // Daily Shift state
@@ -107,8 +105,6 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       entryPrice: ep,
       quantity: qty,
       totalInvestment: totalInv,
-      brokerage: Number(brokerage) || 0,
-      otherCharges: Number(otherCharges) || 0,
       targetEarnings: targetEarnings ? Number(targetEarnings) : undefined,
       status: 'OPEN',
       currentMarketPrice: ep,
@@ -347,16 +343,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                 Total Required Investment: ₹{(Number(entryPrice) * Number(quantity)).toLocaleString('en-IN')}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-300">Brokerage (₹)</label>
-                <input
-                  type="number"
-                  value={brokerage}
-                  onChange={(e) => setBrokerage(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-1.5 text-xs text-white outline-none"
-                />
-              </div>
+            <div>
               <div>
                 <label className="block text-xs font-medium text-slate-300">Target Profit (₹)</label>
                 <input
