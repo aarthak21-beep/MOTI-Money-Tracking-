@@ -198,7 +198,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
     };
   }, [trades]);
 
-  // Open tab shows one weighted-average position per Zerodha exchange + symbol.
+  // Open tab shows one weighted-average position per equity symbol, regardless of exchange.
   // Overview and Closed Trades retain the original individual execution-lot records.
   const filteredTrades = useMemo(() => {
     const matchesSearch = (t: StockTrade) =>
@@ -211,7 +211,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       const manualRows = openRows.filter((t) => t.source !== 'ZERODHA');
       const zerodhaGroups = new Map<string, StockTrade[]>();
       openRows.filter((t) => t.source === 'ZERODHA').forEach((trade) => {
-        const key = (trade.exchange || '') + ':' + trade.stockName.trim().toUpperCase();
+        const key = trade.stockName.trim().toUpperCase();
         zerodhaGroups.set(key, [...(zerodhaGroups.get(key) || []), trade]);
       });
       const aggregatedZerodha = Array.from(zerodhaGroups.entries()).map(([key, rows]) => {
