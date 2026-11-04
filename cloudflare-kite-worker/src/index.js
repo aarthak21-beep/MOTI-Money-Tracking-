@@ -52,7 +52,10 @@ function mergeById(oldRows, newRows, idField) {
 }
 async function saveAutoSnapshot(env, snapshot) {
   const previous = await env.MOTI_KITE_KV.get(AUTO_HISTORY_KEY, "json") || {};
-  const mergedTrades = mergeById(previous.trades, snapshot.trades, "trade_id");
+  const mergedTrades = mergeById(previous.trades, snapshot.trades, "trade_id").map((trade) => {
+    const { charges: _charges, ...cleanTrade } = trade;
+    return cleanTrade;
+  });
   const next = {
     orders: mergeById(previous.orders, snapshot.orders, "order_id"),
     trades: mergedTrades,
@@ -178,7 +181,7 @@ export default {
 
     if (url.pathname === "/kite/auto-history" && request.method === "GET") {
       const history = await env.MOTI_KITE_KV.get(AUTO_HISTORY_KEY, "json") || { orders: [], trades: [] };
-      return json({ ok: true, ...history }, 200, origin);
+      return json({ ok: true, orders: history.orders || [], trades: history.trades || [], lastAutoSync: history.lastAutoSync || null }, 200, origin);
     }
 
     if (url.pathname === "/kite/orders" && request.method === "GET") {
