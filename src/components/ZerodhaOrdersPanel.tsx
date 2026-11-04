@@ -123,6 +123,7 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
       localStorage.setItem(TRADES_KEY, JSON.stringify(nextTrades));
       localStorage.setItem(HOLDINGS_KEY, JSON.stringify(nextHoldings));
       localStorage.setItem(POSITIONS_KEY, JSON.stringify(nextPositions));
+      window.dispatchEvent(new Event('moti-cloud-backup-request'));
       if (history.lastAutoSyncStatus === 'success') {
         setMessage(history.lastAutoSyncMessage || 'Latest scheduled Zerodha sync loaded.');
       } else if (history.lastAutoSyncStatus === 'needs_login') {
