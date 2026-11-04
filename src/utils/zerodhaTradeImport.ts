@@ -97,7 +97,7 @@ export const buildZerodhaJournal = (
   for (const fill of eligible) {
     const symbol = String(fill.exchange).toUpperCase() + ':' + String(fill.tradingsymbol).trim().toUpperCase();
     const side = String(fill.transaction_type).toUpperCase();
-    const quantity = Math.floor(Number(fill.quantity));
+    const quantity = Number(fill.quantity);
     if (side === 'BUY') {
       const lot = { fill, remaining: quantity };
       const lots = lotsBySymbol.get(symbol) || [];
