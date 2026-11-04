@@ -34,51 +34,7 @@ export function calculateAverageBuyPrice(lots: BuyLot[]) {
   return { totalQty, totalCost, averagePrice };
 }
 
-// 3. Brokerage Calculator
-export interface BrokerageInput {
-  buyPrice: number;
-  sellPrice: number;
-  quantity: number;
-  tradeType: 'delivery' | 'intraday';
-}
-export function calculateBrokerageCharges(input: BrokerageInput) {
-  const buyTurnover = (input.buyPrice || 0) * (input.quantity || 0);
-  const sellTurnover = (input.sellPrice || 0) * (input.quantity || 0);
-  const totalTurnover = buyTurnover + sellTurnover;
-
-  let brokerage = 0;
-  let stt = 0;
-  if (input.tradeType === 'delivery') {
-    brokerage = Math.min(20, totalTurnover * 0.001); // max 20 or 0.1%
-    stt = totalTurnover * 0.001; // 0.1% on buy & sell
-  } else {
-    brokerage = Math.min(40, totalTurnover * 0.0003); // max 20 per leg
-    stt = sellTurnover * 0.00025; // 0.025% on sell side only
-  }
-
-  const exchangeCharges = totalTurnover * 0.0000345;
-  const sebiCharges = totalTurnover * 0.000001;
-  const stampDuty = buyTurnover * (input.tradeType === 'delivery' ? 0.00015 : 0.00003);
-  const gst = (brokerage + exchangeCharges) * 0.18;
-  const totalCharges = brokerage + stt + exchangeCharges + sebiCharges + stampDuty + gst;
-  const netTurnoverBreakeven = input.quantity > 0 ? (buyTurnover + totalCharges) / input.quantity : 0;
-
-  return {
-    buyTurnover,
-    sellTurnover,
-    totalTurnover,
-    brokerage,
-    stt,
-    exchangeCharges,
-    sebiCharges,
-    stampDuty,
-    gst,
-    totalCharges,
-    breakevenPrice: netTurnoverBreakeven
-  };
-}
-
-// 4. Investment / SIP Calculator
+// 3. Investment / SIP Calculator
 export interface SipInput {
   monthlyInvestment: number;
   annualReturnRate: number; // in percent, e.g. 12
@@ -120,7 +76,7 @@ export function calculateCompoundInterest(input: CompoundInput) {
   return { finalAmount: amount, interestEarned, principal: P };
 }
 
-// 6. Weekly Income Calculator
+// 5. Weekly Income Calculator
 export interface WeeklyCalcInput {
   dailyRates: number[]; // 7 days
   bonuses: number;
@@ -134,7 +90,7 @@ export function calculateWeeklyIncomeSummary(input: WeeklyCalcInput) {
   return { grossDaily, totalGross, totalNet, dailyAverage };
 }
 
-// 7. Monthly Salary Calculator
+// 6. Monthly Salary Calculator
 export interface SalaryInput {
   basic: number;
   hra: number;
@@ -161,7 +117,7 @@ export function calculateMonthlySalary(input: SalaryInput) {
   return { grossSalary, totalDeductions, netInHand, yearlyGross, yearlyInHand };
 }
 
-// 8. Daily Income Calculator
+// 7. Daily Income Calculator
 export interface DailyCalcInput {
   shifts: number[];
   incentive: number;
@@ -180,7 +136,7 @@ export function calculateDailyIncome(input: DailyCalcInput) {
   return { grossIncome, totalExpenses, netDaily, effectiveHourlyRate };
 }
 
-// 9. Savings Calculator
+// 8. Savings Calculator
 export interface SavingsCalcInput {
   targetAmount: number;
   currentSaved: number;
@@ -196,7 +152,7 @@ export function calculateSavingsTarget(input: SavingsCalcInput) {
   return { remaining, requiredMonthly, requiredDaily, progressPercent };
 }
 
-// 10. Business Profit Calculator
+// 9. Business Profit Calculator
 export interface BusinessProfitInput {
   grossRevenue: number;
   costOfGoodsSold: number;
@@ -215,7 +171,7 @@ export function calculateBusinessProfit(input: BusinessProfitInput) {
   return { grossProfit, operatingProfit, tax, netProfit, grossMargin, netMargin };
 }
 
-// 11. GST Calculator (Forward & Reverse)
+// 10. GST Calculator (Forward & Reverse)
 export interface GstInput {
   amount: number;
   ratePercent: number; // 5, 12, 18, 28
@@ -241,7 +197,7 @@ export function calculateGST(input: GstInput) {
   }
 }
 
-// 12. Target Profit Calculator
+// 11. Target Profit Calculator
 export interface TargetProfitInput {
   capital: number;
   targetProfitPercent: number;
