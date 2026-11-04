@@ -101,8 +101,26 @@ export const buildZerodhaJournal = (
       remainingToSell -= matched;
     }
     if (remainingToSell > 0) {
+      // Keep the real SELL execution visible in the journal even when its
+      // opening BUY is outside the available Kite trade history. Do not invent
+      // an entry price or realized P&L; those remain unknown until basis exists.
       unmatchedSellFills++;
       unmatchedSellQuantity += remainingToSell;
+      generated.push({
+        id: 'kite:unmatched-sell:' + fill.trade_id,
+        serialNumber: 0,
+        entryDate: toJournalDate(fill.fill_timestamp),
+        stockName: symbol,
+        entryPrice: 0,
+        quantity: remainingToSell,
+        totalInvestment: 0,
+        exitDate: toJournalDate(fill.fill_timestamp),
+        exitPrice: Number(fill.price),
+        source: 'ZERODHA',
+        brokerTradeIds: [String(fill.trade_id)],
+        status: 'CLOSED',
+        notes: 'Zerodha SELL execution imported. Earlier BUY is not present in available history; entry cost and realized P&L are unknown.',
+      });
     }
   }
 
