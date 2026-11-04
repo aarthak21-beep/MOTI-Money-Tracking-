@@ -66,13 +66,17 @@ const consolidateOpenPositions = (items: StockTrade[]): StockTrade[] => {
     };
   }
 
-  return result.map((trade, index) => ({
-    ...trade,
-    serialNumber: index + 1,
-    ...(trade.status === 'CLOSED' && typeof trade.actualPnl === 'number'
-      ? { netPnl: trade.actualPnl, pnlPercentage: trade.totalInvestment > 0 ? trade.actualPnl / trade.totalInvestment * 100 : 0 }
-      : {}),
-  }));
+  return result.map((trade, index) => {
+    const legacy = trade as StockTrade & { brokerage?: number; otherCharges?: number; chargesKnown?: boolean };
+    const { brokerage: _brokerage, otherCharges: _otherCharges, chargesKnown: _chargesKnown, ...cleanTrade } = legacy;
+    return {
+      ...cleanTrade,
+      serialNumber: index + 1,
+      ...(trade.status === 'CLOSED' && typeof trade.actualPnl === 'number'
+        ? { netPnl: trade.actualPnl, pnlPercentage: trade.totalInvestment > 0 ? trade.actualPnl / trade.totalInvestment * 100 : 0 }
+        : {}),
+    };
+  });
 };
 
 export const StockTradingView: React.FC<StockTradingViewProps> = ({
@@ -113,7 +117,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         trade.quantity !== trades[index]?.quantity ||
         trade.entryPrice !== trades[index]?.entryPrice ||
         trade.totalInvestment !== trades[index]?.totalInvestment ||
-        (trade.status === 'CLOSED' && trade.actualPnl !== undefined && trade.netPnl !== trade.actualPnl)
+        (trade.status === 'CLOSED' && trade.actualPnl !== undefined && trade.netPnl !== trade.actualPnl) ||
+        ['brokerage', 'otherCharges', 'chargesKnown'].some((field) => Object.prototype.hasOwnProperty.call(trade, field))
       );
     if (changed) onSaveTrades(consolidated);
   }, [trades, onSaveTrades]);
