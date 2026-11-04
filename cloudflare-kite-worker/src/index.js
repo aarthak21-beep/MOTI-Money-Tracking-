@@ -64,8 +64,8 @@ async function saveAutoSnapshot(env, snapshot) {
   const next = {
     orders: mergeById(previous.orders, snapshot.orders, "order_id"),
     trades: mergedTrades,
-    holdings: mergeByKey(previous.holdings, snapshot.holdings, (row) => String(row.exchange || '') + ':' + String(row.tradingsymbol || '')),
-    positions: mergeByKey(previous.positions, snapshot.positions, (row) => String(row.exchange || '') + ':' + String(row.tradingsymbol || '') + ':' + String(row.product || '')),
+    holdings: snapshot.holdings !== undefined ? snapshot.holdings : (previous.holdings || []),
+    positions: snapshot.positions !== undefined ? snapshot.positions : (previous.positions || []),
     lastAutoSync: snapshot.fetchedAt,
     lastAutoSyncDate: snapshot.date,
     lastAutoSyncStatus: snapshot.status,
