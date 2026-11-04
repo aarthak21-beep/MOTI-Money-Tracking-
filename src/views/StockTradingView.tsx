@@ -498,7 +498,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
-            Equity Delivery only · Zerodha-style charges estimate · No intraday or F&O.
+            NSE/BSE equity cash executions · F&O excluded · imported fills show P&L before charges when actual charges are unavailable.
           </p>
         </div>
 
@@ -583,7 +583,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       {activeTab === 'overview' && (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
         <div className="rounded-2xl border border-emerald-500/30 bg-[#0d1527] p-3.5">
-          <span className="text-[11px] font-semibold text-slate-400">Realized Net P&L</span>
+          <span className="text-[11px] font-semibold text-slate-400">{metrics.hasUnknownCharges ? 'Realized P&L (net / pre-charges)' : 'Realized Net P&L'}</span>
           <div
             className={`mt-1 text-lg font-black ${
               metrics.realizedNetPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'
@@ -591,7 +591,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           >
             {metrics.realizedNetPnl >= 0 ? '+' : ''}₹{formatINR(metrics.realizedNetPnl)}
           </div>
-          <p className="text-[10px] text-slate-500">Gross: ₹{formatINR(metrics.realizedGrossPnl)}</p>
+          <p className="text-[10px] text-slate-500">{metrics.hasUnknownCharges ? 'Zerodha fills are before unavailable charges' : `Gross: ₹${formatINR(metrics.realizedGrossPnl)}`}</p>
         </div>
 
         <div className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-3.5">
