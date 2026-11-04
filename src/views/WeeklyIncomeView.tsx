@@ -83,7 +83,7 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
       const today = new Date();
       setDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
     }
-    setAddition('0.00');
+    setAddition('2000.00');
     setRate('3');
     setIsOpen(true);
   };
