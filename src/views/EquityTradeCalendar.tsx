@@ -87,7 +87,7 @@ export const EquityTradeCalendar: React.FC<EquityTradeCalendarProps> = ({ trades
   };
 
   return (
-    <section className="space-y-4 rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
+    <section className="space-y-3 rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-3 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <CalendarDays className="h-5 w-5 text-amber-400" />
@@ -103,14 +103,14 @@ export const EquityTradeCalendar: React.FC<EquityTradeCalendarProps> = ({ trades
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <div className="rounded-xl border border-[#1e2e4f] bg-[#070d18] p-3"><p className="text-[10px] text-slate-400">Monthly net P&L</p><p className={`mt-1 text-base font-black ${calendar.totalPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{money(calendar.totalPnl)}</p></div>
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        <div className="rounded-lg border border-[#1e2e4f] bg-[#070d18] p-2"><p className="text-[10px] text-slate-400">Monthly net P&L</p><p className={`mt-1 text-base font-black ${calendar.totalPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{money(calendar.totalPnl)}</p></div>
         <div className="rounded-xl border border-[#1e2e4f] bg-[#070d18] p-3"><p className="text-[10px] text-slate-400">Closed trades</p><p className="mt-1 text-base font-black text-white">{calendar.tradeCount}</p></div>
         <div className="rounded-xl border border-[#1e2e4f] bg-[#070d18] p-3"><p className="text-[10px] text-slate-400">Winning trades</p><p className="mt-1 text-base font-black text-emerald-400">{calendar.winCount}</p></div>
         <div className="rounded-xl border border-[#1e2e4f] bg-[#070d18] p-3"><p className="text-[10px] text-slate-400">Losing trades</p><p className="mt-1 text-base font-black text-rose-400">{calendar.lossCount}</p></div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-[#1e2e4f] bg-[#070d18]">
+      <div className="overflow-hidden rounded-lg border border-[#1e2e4f] bg-[#070d18]">
         <div className="grid grid-cols-7 border-b border-[#1e2e4f]">
           {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <div key={day} className="py-2 text-center text-[10px] font-bold text-slate-500">{day}</div>)}
         </div>
@@ -118,8 +118,8 @@ export const EquityTradeCalendar: React.FC<EquityTradeCalendarProps> = ({ trades
           {calendar.cells.map((cell, index) => {
             const bucket = cell.key ? calendar.byDay.get(cell.key) : undefined;
             const active = cell.key === selectedDay;
-            return <button key={cell.key || `blank-${index}`} type="button" disabled={!cell.day} onClick={() => setSelectedDay(cell.key)} className={`min-h-16 border-b border-r border-[#1e2e4f] p-1 text-left transition-colors sm:min-h-20 ${!cell.day ? 'bg-[#090f1d]' : active ? 'bg-amber-500/15 ring-1 ring-inset ring-amber-400' : 'hover:bg-slate-800/60'}`}>
-              {cell.day && <><span className="text-[10px] font-semibold text-slate-300">{cell.day}</span>{bucket && <div className="mt-1"><p className={`truncate text-[9px] font-black sm:text-[10px] ${bucket.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{bucket.pnl >= 0 ? '+' : ''}{money(bucket.pnl)}</p><p className="text-[8px] text-slate-500">{bucket.count} trade{bucket.count === 1 ? '' : 's'}</p></div>}</>}
+            return <button key={cell.key || `blank-${index}`} type="button" disabled={!cell.day} onClick={() => setSelectedDay(cell.key)} className={`min-h-12 border-b border-r border-[#1e2e4f] p-1 text-left transition-colors sm:min-h-14 ${!cell.day ? 'bg-[#090f1d]' : active ? 'bg-amber-500/15 ring-1 ring-inset ring-amber-400' : 'hover:bg-slate-800/60'}`}>
+              {cell.day && <><span className="text-[10px] font-semibold text-slate-300">{cell.day}</span>{bucket && <div className="mt-1"><p className={`whitespace-nowrap text-[8px] font-black leading-tight tracking-tight sm:text-[9px] ${bucket.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{bucket.pnl >= 0 ? '+' : ''}{money(bucket.pnl)}</p><p className="whitespace-nowrap text-[7px] leading-tight text-slate-500">{bucket.count}<span className="sm:hidden"> tr</span><span className="hidden sm:inline"> trade{bucket.count === 1 ? '' : 's'}</span></p></div>}</>}
             </button>;
           })}
         </div>
