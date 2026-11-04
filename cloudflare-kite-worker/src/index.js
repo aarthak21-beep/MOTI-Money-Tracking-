@@ -50,6 +50,11 @@ function mergeById(oldRows, newRows, idField) {
   });
   return Array.from(rows.values()).slice(-10000);
 }
+function mergeByKey(oldRows, newRows, keyFn) {
+  const rows = new Map();
+  [...(oldRows || []), ...(newRows || [])].forEach((row) => { const key = keyFn(row); if (key) rows.set(key, row); });
+  return Array.from(rows.values()).slice(-10000);
+}
 async function saveAutoSnapshot(env, snapshot) {
   const previous = await env.MOTI_KITE_KV.get(AUTO_HISTORY_KEY, "json") || {};
   const mergedTrades = mergeById(previous.trades, snapshot.trades, "trade_id").map((trade) => {
@@ -59,6 +64,8 @@ async function saveAutoSnapshot(env, snapshot) {
   const next = {
     orders: mergeById(previous.orders, snapshot.orders, "order_id"),
     trades: mergedTrades,
+    holdings: mergeByKey(previous.holdings, snapshot.holdings, (row) => String(row.exchange || '') + ':' + String(row.tradingsymbol || '')),
+    positions: mergeByKey(previous.positions, snapshot.positions, (row) => String(row.exchange || '') + ':' + String(row.tradingsymbol || '') + ':' + String(row.product || '')),
     lastAutoSync: snapshot.fetchedAt,
     lastAutoSyncDate: snapshot.date,
     lastAutoSyncStatus: snapshot.status,
@@ -76,13 +83,11 @@ async function fetchAndSaveDaily(env, scheduledTime) {
     return;
   }
   try {
-    const [ordersResponse, tradesResponse] = await Promise.all([
-      kiteFetch("/orders", env, token),
-      kiteFetch("/trades", env, token),
-    ]);
-    const [ordersPayload, tradesPayload] = await Promise.all([ordersResponse.json(), tradesResponse.json()]);
-    if (!ordersResponse.ok || !tradesResponse.ok) {
-      const expired = ordersResponse.status === 403 || tradesResponse.status === 403;
+    const endpoints = ["/orders", "/trades", "/portfolio/holdings", "/portfolio/positions"];
+    const responses = await Promise.all(endpoints.map((path) => kiteFetch(path, env, token)));
+    const payloads = await Promise.all(responses.map((response) => response.json()));
+    if (responses.some((response) => !response.ok)) {
+      const expired = responses.some((response) => response.status === 403);
       if (expired) {
         await env.MOTI_KITE_KV.delete("kite-access-token");
         await env.MOTI_KITE_KV.delete("kite-user");
@@ -90,16 +95,19 @@ async function fetchAndSaveDaily(env, scheduledTime) {
       await saveAutoSnapshot(env, {
         orders: [], trades: [], fetchedAt, date,
         status: expired ? "needs_login" : "error",
-        message: ordersPayload.message || tradesPayload.message || "Kite API request failed.",
+        message: payloads.find((payload) => payload.message)?.message || "Kite API request failed.",
       });
       return;
     }
+    const [ordersPayload, tradesPayload, holdingsPayload, positionsPayload] = payloads;
     const orders = ordersPayload.data || [];
     const trades = tradesPayload.data || [];
+    const holdings = holdingsPayload.data || [];
+    const positions = positionsPayload.data || {};
     await saveAutoSnapshot(env, {
-      orders, trades,
+      orders, trades, holdings, positions: positions.net || [],
       fetchedAt, date, status: "success",
-      message: `Automatically synced ${(ordersPayload.data || []).length} orders and ${(tradesPayload.data || []).length} executions.`,
+      message: "Auto synced " + orders.length + " orders, " + trades.length + " executions, " + holdings.length + " holdings and " + (positions.net || []).length + " net positions.",
     });
   } catch {
     await saveAutoSnapshot(env, { orders: [], trades: [], fetchedAt, date, status: "error", message: "Automatic Kite sync failed. Please check the Worker logs." });
@@ -180,30 +188,31 @@ export default {
     }
 
     if (url.pathname === "/kite/auto-history" && request.method === "GET") {
-      const history = await env.MOTI_KITE_KV.get(AUTO_HISTORY_KEY, "json") || { orders: [], trades: [] };
-      return json({ ok: true, orders: history.orders || [], trades: history.trades || [], lastAutoSync: history.lastAutoSync || null }, 200, origin);
+      const history = await env.MOTI_KITE_KV.get(AUTO_HISTORY_KEY, "json") || { orders: [], trades: [], holdings: [], positions: [] };
+      return json({ ok: true, orders: history.orders || [], trades: history.trades || [], holdings: history.holdings || [], positions: history.positions || [], lastAutoSync: history.lastAutoSync || null, lastAutoSyncStatus: history.lastAutoSyncStatus || null, lastAutoSyncMessage: history.lastAutoSyncMessage || "" }, 200, origin);
     }
 
     if (url.pathname === "/kite/orders" && request.method === "GET") {
       const token = await env.MOTI_KITE_KV.get("kite-access-token");
       if (!token) return json({ ok: false, error: "Zerodha session expired. Connect Kite again." }, 401, origin);
-      const [ordersResponse, tradesResponse] = await Promise.all([
-        kiteFetch("/orders", env, token),
-        kiteFetch("/trades", env, token),
-      ]);
-      const [ordersPayload, tradesPayload] = await Promise.all([ordersResponse.json(), tradesResponse.json()]);
-      if (!ordersResponse.ok || !tradesResponse.ok) {
-        const message = ordersPayload.message || tradesPayload.message || "Kite API request failed.";
-        if (ordersResponse.status === 403 || tradesResponse.status === 403) {
+      const endpoints = ["/orders", "/trades", "/portfolio/holdings", "/portfolio/positions"];
+      const responses = await Promise.all(endpoints.map((path) => kiteFetch(path, env, token)));
+      const payloads = await Promise.all(responses.map((response) => response.json()));
+      if (responses.some((response) => !response.ok)) {
+        const message = payloads.find((payload) => payload.message)?.message || "Kite API request failed.";
+        if (responses.some((response) => response.status === 403)) {
           await env.MOTI_KITE_KV.delete("kite-access-token");
           await env.MOTI_KITE_KV.delete("kite-user");
         }
-        return json({ ok: false, error: message, reconnect: ordersResponse.status === 403 || tradesResponse.status === 403 }, 502, origin);
+        return json({ ok: false, error: message, reconnect: responses.some((response) => response.status === 403) }, 502, origin);
       }
+      const [ordersPayload, tradesPayload, holdingsPayload, positionsPayload] = payloads;
       const currentOrders = ordersPayload.data || [];
       const currentTrades = tradesPayload.data || [];
+      const currentHoldings = holdingsPayload.data || [];
+      const currentPositions = positionsPayload.data || {};
       const snapshot = {
-        orders: currentOrders, trades: currentTrades,
+        orders: currentOrders, trades: currentTrades, holdings: currentHoldings, positions: currentPositions.net || [],
         fetchedAt: new Date().toISOString(),
         date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
         status: "success",
@@ -212,8 +221,8 @@ export default {
       const history = await saveAutoSnapshot(env, snapshot);
       return json({
         ok: true, fetchedAt: snapshot.fetchedAt,
-        orders: snapshot.orders, trades: snapshot.trades,
-        historyOrders: history.orders, historyTrades: history.trades,
+        orders: snapshot.orders, trades: snapshot.trades, holdings: snapshot.holdings, positions: snapshot.positions,
+        historyOrders: history.orders, historyTrades: history.trades, historyHoldings: history.holdings, historyPositions: history.positions,
       }, 200, origin);
     }
 
