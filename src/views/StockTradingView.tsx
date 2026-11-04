@@ -20,8 +20,6 @@ import { StockTrade, UserProfile } from '../types';
 import { formatINR, downloadCSV, printFinancialReport } from '../utils/exportUtils';
 import { TradingAnalyticsView } from './TradingAnalyticsView';
 import { EquityRiskCalculator } from './EquityRiskCalculator';
-import { TradeNotesJournal } from './TradeNotesJournal';
-import { TradingDisciplineTracker } from './TradingDisciplineTracker';
 import { EquityTradeCalendar } from './EquityTradeCalendar';
 import { MonthlyTradingReview } from './MonthlyTradingReview';
 import { OpenPortfolioAllocation } from './OpenPortfolioAllocation';
@@ -748,8 +746,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       <MonthlyTradingReview trades={trades} />
       <OpenPortfolioAllocation trades={trades} />
       <EquityRiskCalculator />
-      <TradeNotesJournal trades={trades} onSaveTrades={onSaveTrades} />
-      <TradingDisciplineTracker trades={trades} onSaveTrades={onSaveTrades} />
         </div>
       )}
 
