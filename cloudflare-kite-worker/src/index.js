@@ -58,19 +58,24 @@ async function fetchOrderCharges(orders, trades, env, accessToken) {
     quantity: Number(o.filled_quantity),
     average_price: Number(o.average_price),
   }));
-  const response = await fetch("https://api.kite.trade/charges/orders", {
-    method: "POST",
-    headers: {
-      "X-Kite-Version": "3",
-      "Authorization": "token " + env.KITE_API_KEY + ":" + accessToken,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestRows),
-  });
-  const payload = await response.json();
-  if (!response.ok || payload.status !== "success" || !Array.isArray(payload.data)) {
-    throw new Error(payload.message || "Kite order charges request failed.");
+  let response;
+  let payload;
+  try {
+    response = await fetch("https://api.kite.trade/charges/orders", {
+      method: "POST",
+      headers: {
+        "X-Kite-Version": "3",
+        "Authorization": "token " + env.KITE_API_KEY + ":" + accessToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestRows),
+    });
+    payload = await response.json();
+  } catch {
+    return {};
   }
+  // A charges API outage must not prevent the actual order/trade book from syncing.
+  if (!response.ok || payload.status !== "success" || !Array.isArray(payload.data)) return {};
   const result = {};
   payload.data.forEach((row, index) => {
     const order = filled[index];
