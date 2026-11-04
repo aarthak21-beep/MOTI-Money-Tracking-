@@ -94,6 +94,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState<StockTrade | null>(null);
+  const [chargePeriod, setChargePeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly' | 'all' | 'date'>('daily');
+  const [chargeDate, setChargeDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
 
   // Form State
   const [entryDate, setEntryDate] = useState('');
@@ -188,7 +190,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
     };
   }, [trades]);
 
-  // Weekly and monthly charge summaries for closed equity delivery trades.
+  // Charge summaries grouped by the selected reporting period.
   const chargeReports = useMemo(() => {
     const parseDate = (value?: string) => {
       if (!value) return null;
@@ -196,43 +198,55 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       if (!day || !month || !year) return null;
       return new Date(year, month - 1, day);
     };
-    const reportable = trades.filter((trade) => (trade.source === 'ZERODHA' ? trade.status === 'CLOSED' && !!trade.exitDate : true) && trade.chargesKnown !== false);
-    const pendingCount = trades.filter((trade) => trade.chargesKnown === false && (trade.source !== 'ZERODHA' || (trade.status === 'CLOSED' && !!trade.exitDate))).length;
-    const aggregate = (period: 'week' | 'month') => {
-      const buckets = new Map<string, { label: string; brokerage: number; dp: number; statutory: number; total: number; dpKeys: Set<string> }>();
-      reportable.forEach((trade) => {
-        const date = parseDate(trade.status === 'CLOSED' && trade.exitDate ? trade.exitDate : trade.entryDate);
-        if (!date) return;
-        const key = period === 'month'
-          ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-          : (() => {
-              const start = new Date(date);
-              const day = (start.getDay() + 6) % 7;
-              start.setDate(start.getDate() - day);
-              return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
-            })();
-        const label = period === 'month'
-          ? date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
-          : (() => { const start = new Date(date); start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); const end = new Date(start); end.setDate(end.getDate() + 6); return `${start.toLocaleDateString('en-IN')} – ${end.toLocaleDateString('en-IN')}`; })();
-        if (!buckets.has(key)) buckets.set(key, { label, brokerage: 0, dp: 0, statutory: 0, total: 0, dpKeys: new Set() });
-        const bucket = buckets.get(key)!;
-        const dpKey = `${trade.exitDate}|${trade.stockName.trim().toUpperCase()}`;
-        // Zerodha's imported otherCharges already contains non-brokerage statutory charges;
-        // DP charges are not supplied by the read-only Kite charges endpoint.
-        const hasDp = trade.source !== 'ZERODHA' && (Number(trade.otherCharges) || 0) >= 15.34;
-        const dpForTrade = hasDp ? 15.34 : 0;
-        bucket.brokerage += Number(trade.brokerage) || 0;
-        if (hasDp) bucket.dpKeys.add(dpKey);
-        bucket.statutory += Math.max(0, (Number(trade.otherCharges) || 0) - dpForTrade);
-      });
-      return Array.from(buckets.entries()).map(([key, bucket]) => {
-        bucket.dp = bucket.dpKeys.size * 15.34;
-        bucket.total = bucket.brokerage + bucket.dp + bucket.statutory;
-        return { key, ...bucket };
-      }).sort((a, b) => b.key.localeCompare(a.key));
-    };
-    return { weekly: aggregate('week'), monthly: aggregate('month'), pendingCount };
-  }, [trades]);
+    const reportable = trades.filter((trade) =>
+      (trade.source === 'ZERODHA' ? trade.status === 'CLOSED' && !!trade.exitDate : true) &&
+      trade.chargesKnown !== false
+    );
+    const pendingCount = trades.filter((trade) =>
+      trade.chargesKnown === false &&
+      (trade.source !== 'ZERODHA' || (trade.status === 'CLOSED' && !!trade.exitDate))
+    ).length;
+    const buckets = new Map<string, { label: string; brokerage: number; dp: number; statutory: number; total: number; dpKeys: Set<string> }>();
+    reportable.forEach((trade) => {
+      const date = parseDate(trade.status === 'CLOSED' && trade.exitDate ? trade.exitDate : trade.entryDate);
+      if (!date) return;
+      const isoDate = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+      if (chargePeriod === 'date' && isoDate !== chargeDate) return;
+      let key = isoDate;
+      let label = date.toLocaleDateString('en-IN');
+      if (chargePeriod === 'weekly') {
+        const start = new Date(date);
+        start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+        const end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        key = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`;
+        label = `${start.toLocaleDateString('en-IN')} – ${end.toLocaleDateString('en-IN')}`;
+      } else if (chargePeriod === 'monthly') {
+        key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
+        label = date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+      } else if (chargePeriod === 'yearly') {
+        key = String(date.getFullYear());
+        label = key;
+      } else if (chargePeriod === 'all') {
+        key = 'all';
+        label = 'All Time';
+      }
+      if (!buckets.has(key)) buckets.set(key, { label, brokerage: 0, dp: 0, statutory: 0, total: 0, dpKeys: new Set() });
+      const bucket = buckets.get(key)!;
+      const dpKey = `${trade.exitDate}|${trade.stockName.trim().toUpperCase()}`;
+      // Kite does not provide DP charges; retain the existing manual-trade DP estimate only.
+      const hasDp = trade.source !== 'ZERODHA' && (Number(trade.otherCharges) || 0) >= 15.34;
+      bucket.brokerage += Number(trade.brokerage) || 0;
+      if (hasDp) bucket.dpKeys.add(dpKey);
+      bucket.statutory += Math.max(0, (Number(trade.otherCharges) || 0) - (hasDp ? 15.34 : 0));
+    });
+    const rows = Array.from(buckets.entries()).map(([key, bucket]) => {
+      bucket.dp = bucket.dpKeys.size * 15.34;
+      bucket.total = bucket.brokerage + bucket.dp + bucket.statutory;
+      return { key, ...bucket };
+    }).sort((x, y) => y.key.localeCompare(x.key));
+    return { rows, pendingCount };
+  }, [trades, chargePeriod, chargeDate]);
 
   // Filtered trades
   const filteredTrades = useMemo(() => {
@@ -730,14 +744,30 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           </div>
       {/* Brokerage and DP charge reports */}
       <section className="space-y-3 rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4">
-        <div><h2 className="text-sm font-black text-white">BROKERAGE &amp; DP CHARGES REPORT</h2><p className="text-[10px] text-slate-400">Manual trades (open + closed) and Zerodha closed trades · Zerodha totals use Kite charges; DP excluded</p></div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {([{ title: 'Weekly Charges', rows: chargeReports.weekly }, { title: 'Monthly Charges', rows: chargeReports.monthly }] as const).map((report) => <div key={report.title} className="overflow-x-auto rounded-xl border border-[#1e2e4f]">
-            <h3 className="px-3 py-2 text-xs font-bold text-cyan-300">{report.title}</h3>
-            <table className="w-full min-w-[440px] text-xs"><thead><tr className="bg-[#0a101f] text-[10px] uppercase text-slate-400"><th className="px-2 py-2 text-left">Period</th><th className="px-2 py-2 text-right">Brokerage</th><th className="px-2 py-2 text-right">DP</th><th className="px-2 py-2 text-right">Other Taxes</th><th className="px-2 py-2 text-right">Total</th></tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{report.rows.length ? report.rows.map((row) => <tr key={row.key}><td className="px-2 py-2 text-slate-300">{row.label}</td><td className="px-2 py-2 text-right">{formatINR(row.brokerage)}</td><td className="px-2 py-2 text-right">{formatINR(row.dp)}</td><td className="px-2 py-2 text-right">{formatINR(row.statutory)}</td><td className="px-2 py-2 text-right font-bold text-cyan-300">{formatINR(row.total)}</td></tr>) : <tr><td colSpan={5} className="px-2 py-4 text-center text-slate-500">No trades with available charge data</td></tr>}</tbody></table>
-          </div>)}
+        <div>
+          <h2 className="text-sm font-black text-white">BROKERAGE &amp; DP CHARGES REPORT</h2>
+          <p className="text-[10px] text-slate-400">Manual trades (open + closed) and Zerodha closed trades · Kite charges used when available; DP excluded for Zerodha</p>
         </div>
-        <p className="text-[10px] leading-relaxed text-slate-500">Includes manual trades (using entry date for open positions and exit date for closed positions) with saved charge estimates, plus Zerodha closed trades when Kite returns charge data. Zerodha Brokerage and statutory taxes are included; DP charges are not provided by Kite and are excluded. {chargeReports.pendingCount > 0 ? `${chargeReports.pendingCount} closed trade(s) have charges pending and are not included in totals yet.` : 'No closed trades are waiting for charge data.'}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={chargePeriod} onChange={(e) => setChargePeriod(e.target.value as typeof chargePeriod)} className="rounded-lg border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-semibold text-white">
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+            <option value="all">All Time</option>
+            <option value="date">Particular Date</option>
+          </select>
+          {chargePeriod === 'date' && <input type="date" value={chargeDate} onChange={(e) => setChargeDate(e.target.value)} className="rounded-lg border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white [color-scheme:dark]" />}
+        </div>
+        <div className="overflow-x-auto rounded-xl border border-[#1e2e4f]">
+          <table className="w-full min-w-[520px] text-xs">
+            <thead><tr className="bg-[#0a101f] text-[10px] uppercase text-slate-400"><th className="px-2 py-2 text-left">Period</th><th className="px-2 py-2 text-right">Brokerage</th><th className="px-2 py-2 text-right">DP</th><th className="px-2 py-2 text-right">Other Taxes</th><th className="px-2 py-2 text-right">Total</th></tr></thead>
+            <tbody className="divide-y divide-[#1e2e4f]/60">
+              {chargeReports.rows.length ? chargeReports.rows.map((row) => <tr key={row.key}><td className="px-2 py-2 text-slate-300">{row.label}</td><td className="px-2 py-2 text-right">{formatINR(row.brokerage)}</td><td className="px-2 py-2 text-right">{formatINR(row.dp)}</td><td className="px-2 py-2 text-right">{formatINR(row.statutory)}</td><td className="px-2 py-2 text-right font-bold text-cyan-300">{formatINR(row.total)}</td></tr>) : <tr><td colSpan={5} className="px-2 py-4 text-center text-slate-500">No trades with available charge data for this period</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[10px] leading-relaxed text-slate-500">Manual trades use entry date for open positions and exit date for closed positions. Zerodha closed trades are included only after Kite charge data is saved; Kite does not provide DP charges. {chargeReports.pendingCount > 0 ? `${chargeReports.pendingCount} closed trade(s) still have charges pending and are excluded from totals.` : 'No closed trades are waiting for charge data.'}</p>
       </section>
 
       {/* Detailed trading performance analytics; read-only and never mutates saved trades */}
