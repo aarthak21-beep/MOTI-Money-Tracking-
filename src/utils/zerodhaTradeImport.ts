@@ -34,7 +34,9 @@ const timestamp = (value?: string): number => {
 
 /**
  * Rebuild broker-origin journal rows from the complete, de-duplicated fill history.
- * FIFO matching is done per exchange + symbol; unmatched sells are surfaced for reconciliation.
+ * NSE and BSE executions for the same equity symbol share the same delivery holding,
+ * so FIFO matching is by symbol (not exchange). Unmatched sells are surfaced for
+ * reconciliation and are never assigned a fabricated entry price or P&L.
  */
 export const buildZerodhaJournal = (
   existingTrades: StockTrade[],
@@ -95,7 +97,7 @@ export const buildZerodhaJournal = (
   };
 
   for (const fill of eligible) {
-    const symbol = String(fill.exchange).toUpperCase() + ':' + String(fill.tradingsymbol).trim().toUpperCase();
+    const symbol = String(fill.tradingsymbol).trim().toUpperCase();
     const side = String(fill.transaction_type).toUpperCase();
     const quantity = Number(fill.quantity);
     if (side === 'BUY') {
