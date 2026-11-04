@@ -42,62 +42,6 @@ async function kiteFetch(path, env, accessToken) {
     },
   });
 }
-async function fetchOrderCharges(orders, trades, env, accessToken) {
-  // Re-check the full saved order history, not only today's order book.
-  // This backfills virtual contract-note charges for older trades imported before
-  // charge fetching was enabled or when the Kite charges endpoint was temporarily unavailable.
-  const previous = await env.MOTI_KITE_KV.get(AUTO_HISTORY_KEY, "json") || {};
-  const allOrders = mergeById(previous.orders, orders, "order_id");
-  const filled = allOrders.filter((o) =>
-    o.status === "COMPLETE" && Number(o.filled_quantity) > 0 && Number(o.average_price) > 0
-  );
-  if (!filled.length) return {};
-  const requestRows = filled.map((o) => ({
-    order_id: String(o.order_id),
-    exchange: o.exchange,
-    tradingsymbol: o.tradingsymbol,
-    transaction_type: o.transaction_type,
-    variety: o.variety || "regular",
-    product: o.product || "CNC",
-    order_type: o.order_type || "MARKET",
-    quantity: Number(o.filled_quantity),
-    average_price: Number(o.average_price),
-  }));
-  let response;
-  let payload;
-  try {
-    response = await fetch("https://api.kite.trade/charges/orders", {
-      method: "POST",
-      headers: {
-        "X-Kite-Version": "3",
-        "Authorization": "token " + env.KITE_API_KEY + ":" + accessToken,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestRows),
-    });
-    payload = await response.json();
-  } catch {
-    return {};
-  }
-  // A charges API outage must not prevent the actual order/trade book from syncing.
-  if (!response.ok || payload.status !== "success" || !Array.isArray(payload.data)) return {};
-  const result = {};
-  payload.data.forEach((row, index) => {
-    const order = filled[index];
-    const c = row?.charges;
-    if (!order?.order_id || !c || !Number.isFinite(Number(c.total))) return;
-    result[String(order.order_id)] = {
-      brokerage: Number(c.brokerage) || 0,
-      transaction_tax: Number(c.transaction_tax) || 0,
-      exchange_turnover_charge: Number(c.exchange_turnover_charge) || 0,
-      sebi_turnover_charge: Number(c.sebi_turnover_charge) || 0,
-      stamp_duty: Number(c.stamp_duty) || 0,
-      gst: Number(c.gst?.total) || 0,
-      total: Number(c.total) || 0,
-    };
-  });
-  return result;
-}
 function mergeById(oldRows, newRows, idField) {
   const rows = new Map();
   [...(oldRows || []), ...(newRows || [])].forEach((row) => {
@@ -108,26 +52,10 @@ function mergeById(oldRows, newRows, idField) {
 }
 async function saveAutoSnapshot(env, snapshot) {
   const previous = await env.MOTI_KITE_KV.get(AUTO_HISTORY_KEY, "json") || {};
-  const orderCharges = { ...(previous.orderCharges || {}), ...(snapshot.orderCharges || {}) };
   const mergedTrades = mergeById(previous.trades, snapshot.trades, "trade_id");
-  const quantitiesByOrder = new Map();
-  mergedTrades.forEach((trade) => {
-    const id = String(trade.order_id || "");
-    if (id) quantitiesByOrder.set(id, (quantitiesByOrder.get(id) || 0) + (Number(trade.quantity) || 0));
-  });
-  const tradesWithCharges = mergedTrades.map((trade) => {
-    const id = String(trade.order_id || "");
-    const orderCharge = orderCharges[id];
-    const totalQty = quantitiesByOrder.get(id) || 0;
-    const ratio = totalQty > 0 ? (Number(trade.quantity) || 0) / totalQty : 0;
-    return orderCharge ? { ...trade, charges: Object.fromEntries(
-      Object.entries(orderCharge).map(([key, value]) => [key, Number(value) * ratio])
-    ) } : trade;
-  });
   const next = {
     orders: mergeById(previous.orders, snapshot.orders, "order_id"),
-    trades: tradesWithCharges,
-    orderCharges,
+    trades: mergedTrades,
     lastAutoSync: snapshot.fetchedAt,
     lastAutoSyncDate: snapshot.date,
     lastAutoSyncStatus: snapshot.status,
@@ -165,9 +93,8 @@ async function fetchAndSaveDaily(env, scheduledTime) {
     }
     const orders = ordersPayload.data || [];
     const trades = tradesPayload.data || [];
-    const orderCharges = await fetchOrderCharges(orders, trades, env, token);
     await saveAutoSnapshot(env, {
-      orders, trades, orderCharges,
+      orders, trades,
       fetchedAt, date, status: "success",
       message: `Automatically synced ${(ordersPayload.data || []).length} orders and ${(tradesPayload.data || []).length} executions.`,
     });
@@ -272,9 +199,8 @@ export default {
       }
       const currentOrders = ordersPayload.data || [];
       const currentTrades = tradesPayload.data || [];
-      const orderCharges = await fetchOrderCharges(currentOrders, currentTrades, env, token);
       const snapshot = {
-        orders: currentOrders, trades: currentTrades, orderCharges,
+        orders: currentOrders, trades: currentTrades,
         fetchedAt: new Date().toISOString(),
         date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
         status: "success",
@@ -284,7 +210,7 @@ export default {
       return json({
         ok: true, fetchedAt: snapshot.fetchedAt,
         orders: snapshot.orders, trades: snapshot.trades,
-        historyOrders: history.orders, historyTrades: history.trades, orderCharges: history.orderCharges || {},
+        historyOrders: history.orders, historyTrades: history.trades,
       }, 200, origin);
     }
 
