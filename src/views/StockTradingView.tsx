@@ -66,7 +66,13 @@ const consolidateOpenPositions = (items: StockTrade[]): StockTrade[] => {
     };
   }
 
-  return result.map((trade, index) => ({ ...trade, serialNumber: index + 1 }));
+  return result.map((trade, index) => ({
+    ...trade,
+    serialNumber: index + 1,
+    ...(trade.status === 'CLOSED' && typeof trade.actualPnl === 'number'
+      ? { netPnl: trade.actualPnl, pnlPercentage: trade.totalInvestment > 0 ? trade.actualPnl / trade.totalInvestment * 100 : 0 }
+      : {}),
+  }));
 };
 
 export const StockTradingView: React.FC<StockTradingViewProps> = ({
@@ -106,7 +112,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         trade.id !== trades[index]?.id ||
         trade.quantity !== trades[index]?.quantity ||
         trade.entryPrice !== trades[index]?.entryPrice ||
-        trade.totalInvestment !== trades[index]?.totalInvestment
+        trade.totalInvestment !== trades[index]?.totalInvestment ||
+        (trade.status === 'CLOSED' && trade.actualPnl !== undefined && trade.netPnl !== trade.actualPnl)
       );
     if (changed) onSaveTrades(consolidated);
   }, [trades, onSaveTrades]);
@@ -134,18 +141,18 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         }
       } else {
         closedInvestment += t.totalInvestment;
-        const net = t.netPnl || 0;
+        const net = Number(t.actualPnl ?? t.netPnl) || 0;
         const gross = t.actualPnl || 0;
         realizedGrossPnl += gross;
         realizedNetPnl += net;
         if (net > 0) winCount++;
         else if (net < 0) lossCount++;
 
-        if (!bestTrade || net > (bestTrade.netPnl || 0)) {
+        if (!bestTrade || net > (Number(bestTrade.actualPnl ?? bestTrade.netPnl) || 0)) {
           bestTrade = t;
         }
         // Worst Trade should only represent an actual losing trade.
-        if (net < 0 && (!worstTrade || net < (worstTrade.netPnl || 0))) {
+        if (net < 0 && (!worstTrade || net < (Number(worstTrade.actualPnl ?? worstTrade.netPnl) || 0))) {
           worstTrade = t;
         }
       }
@@ -596,10 +603,10 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                 const exit = closed ? Number(t.exitPrice) : 0;
                 const targetEarn = closed ? exit - t.entryPrice : 0;
                 const grossPnl = closed ? (exit - t.entryPrice) * t.quantity : 0;
-                const pnl = closed ? (t.netPnl !== undefined ? Number(t.netPnl) : grossPnl) : 0;
+                const pnl = closed ? grossPnl : 0;
                 const pct = t.entryPrice > 0 && closed ? (pnl / (t.entryPrice * t.quantity)) * 100 : 0;
                 const totalPnl = trades.slice(0, trades.indexOf(t) + 1)
-                  .reduce((sum, trade) => sum + (trade.status === 'CLOSED' ? (Number(trade.netPnl ?? trade.actualPnl) || 0) : 0), 0);
+                  .reduce((sum, trade) => sum + (trade.status === 'CLOSED' ? (Number(trade.actualPnl ?? trade.netPnl) || 0) : 0), 0);
                 return (
                   <tr key={t.id} className="hover:bg-[#131f38]/50 transition-colors">
                     <td className="py-3 px-3 font-mono text-slate-500 font-bold">{t.serialNumber}</td>
