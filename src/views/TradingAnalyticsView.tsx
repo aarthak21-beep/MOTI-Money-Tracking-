@@ -17,11 +17,7 @@ const parseTradeDate = (value?: string): Date | null => {
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
 };
 
-const netResult = (trade: StockTrade) => (
-  typeof trade.netPnl === 'number'
-    ? trade.netPnl
-    : (Number(trade.actualPnl) || 0) - (Number(trade.brokerage) || 0) - (Number(trade.otherCharges) || 0)
-);
+const netResult = (trade: StockTrade) => Number(trade.actualPnl ?? trade.netPnl) || 0;
 
 const money = (value: number) => `${value < 0 ? '-₹' : '₹'}${formatINR(Math.abs(value))}`;
 
@@ -102,10 +98,10 @@ export const TradingAnalyticsView: React.FC<TradingAnalyticsViewProps> = ({ trad
   };
 
   const kpis = [
-    { label: 'Net Realized P&L', value: money(analytics.totalNet), note: `${analytics.returnPct.toFixed(2)}% return on closed investment`, positive: analytics.totalNet >= 0, icon: TrendingUp },
+    { label: 'Realized P&L', value: money(analytics.totalNet), note: `${analytics.returnPct.toFixed(2)}% return on closed investment`, positive: analytics.totalNet >= 0, icon: TrendingUp },
     { label: 'Win Rate', value: `${analytics.winRate.toFixed(1)}%`, note: `${analytics.wins} wins · ${analytics.losses} losses`, positive: analytics.winRate >= 50, icon: Target },
-    { label: 'Average Win', value: money(analytics.averageWin), note: 'Net profit per winning trade', positive: true, icon: Award },
-    { label: 'Average Loss', value: money(analytics.averageLoss), note: 'Net loss per losing trade', positive: false, icon: TrendingDown },
+    { label: 'Average Win', value: money(analytics.averageWin), note: 'Profit per winning trade', positive: true, icon: Award },
+    { label: 'Average Loss', value: money(analytics.averageLoss), note: 'Loss per losing trade', positive: false, icon: TrendingDown },
     { label: 'Profit Factor', value: analytics.profitFactor === null ? '—' : analytics.profitFactor.toFixed(2), note: 'Gross wins ÷ gross losses', positive: analytics.profitFactor !== null && analytics.profitFactor >= 1, icon: BarChart3 },
     { label: 'Closed Trades', value: String(analytics.closedCount), note: `${analytics.breakeven} breakeven trades excluded from win rate`, positive: true, icon: BarChart3 },
   ];
@@ -115,7 +111,7 @@ export const TradingAnalyticsView: React.FC<TradingAnalyticsViewProps> = ({ trad
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <div className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-amber-400" /><h2 className="text-sm font-black text-white">TRADING PERFORMANCE ANALYTICS</h2></div>
-          <p className="mt-1 text-[10px] text-slate-400">Closed Equity Delivery trades · net P&L after saved charges</p>
+          <p className="mt-1 text-[10px] text-slate-400">Closed Equity Delivery trades · realized P&L</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select value={period} onChange={(e) => setPeriod(e.target.value as 'all' | '1d' | '7d' | 'lastMonth' | '12m' | 'year')} className="rounded-lg border border-[#263858] bg-[#070d18] px-3 py-2 text-xs text-slate-200 outline-none">
@@ -159,7 +155,7 @@ export const TradingAnalyticsView: React.FC<TradingAnalyticsViewProps> = ({ trad
           </div>
         </div>
       </div>
-      <p className="text-[10px] leading-relaxed text-slate-500">Only closed trades are included. Win rate excludes break-even trades. Net P&L uses each saved trade's netPnl; when unavailable, it is calculated as gross P&L less saved brokerage and other charges. This is a journal report, not a live broker statement.</p>
+      <p className="text-[10px] leading-relaxed text-slate-500">Only closed trades are included. Win rate excludes break-even trades. P&L is calculated from entry and exit prices. This is a journal report, not a live broker statement.</p>
     </section>
   );
 };
