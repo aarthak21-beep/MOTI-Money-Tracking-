@@ -86,6 +86,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'OPEN' | 'CLOSED' | 'tools' | 'zerodha'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 25;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState<StockTrade | null>(null);
 
@@ -224,6 +226,13 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       return matchesTab && matchesSearch(t);
     });
   }, [trades, activeTab, searchTerm]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTrades.length / pageSize));
+  const pageTrades = filteredTrades.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, searchTerm]);
 
   // Open Add/Edit Modal
   const handleOpenModal = (trade?: StockTrade) => {
@@ -673,6 +682,26 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           </tbody>
         </table>
       </div>
+          {filteredTrades.length > pageSize && (
+            <div className="flex flex-col gap-2 rounded-xl border border-[#1e2e4f] bg-[#0d1527] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs text-slate-400">
+                Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredTrades.length)} of {filteredTrades.length} trades
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-lg border border-[#1e2e4f] px-3 py-1.5 text-xs font-semibold text-slate-300 disabled:opacity-40"
+                >Previous</button>
+                <span className="text-xs text-slate-400">Page {currentPage} of {totalPages}</span>
+                <button
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={currentPage === totalPages}
+                  className="rounded-lg border border-[#1e2e4f] px-3 py-1.5 text-xs font-semibold text-slate-300 disabled:opacity-40"
+                >Next</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
