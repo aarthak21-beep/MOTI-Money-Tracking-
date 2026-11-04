@@ -85,6 +85,7 @@ export const buildZerodhaJournal = (
 
   for (const fill of eligible) {
     const symbol = String(fill.tradingsymbol).trim().toUpperCase();
+    const exchange = String(fill.exchange || '').trim().toUpperCase();
     const side = String(fill.transaction_type).toUpperCase();
     const quantity = Number(fill.quantity);
     if (side === 'BUY') {
