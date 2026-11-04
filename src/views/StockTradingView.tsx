@@ -110,6 +110,21 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
     return result.summary;
   };
 
+  useEffect(() => {
+    const clearZerodhaJournal = () => {
+      const manualTrades = trades.filter((trade) => {
+        const notes = String(trade.notes || '').toLowerCase();
+        return !(trade.source === 'ZERODHA' || trade.id.startsWith('kite:') ||
+          Boolean(trade.brokerTradeIds?.length) ||
+          notes.includes('imported from zerodha') ||
+          notes.includes('zerodha sell execution'));
+      });
+      onSaveTrades(manualTrades.map((trade, index) => ({ ...trade, serialNumber: index + 1 })));
+    };
+    window.addEventListener('moti-clear-zerodha-journal', clearZerodhaJournal);
+    return () => window.removeEventListener('moti-clear-zerodha-journal', clearZerodhaJournal);
+  }, [trades, onSaveTrades]);
+
   // One-time cleanup on load: legacy duplicate OPEN entries become one weighted-average position.
   useEffect(() => {
     const consolidated = consolidateOpenPositions(trades);
