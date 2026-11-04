@@ -82,7 +82,7 @@ export const OpenPortfolioAllocation: React.FC<OpenPortfolioAllocationProps> = (
           ))}
         </div>
       </> : <div className="rounded-xl border border-dashed border-[#263858] bg-[#070d18] p-6 text-center"><Wallet className="mx-auto h-6 w-6 text-slate-500" /><p className="mt-2 text-xs font-semibold text-slate-300">No open positions</p><p className="mt-1 text-[10px] text-slate-500">Add an open Equity Delivery trade to see your portfolio allocation.</p></div>}
-      <p className="text-[10px] leading-relaxed text-slate-500">Read-only report. Market value uses the saved current market price (CMP); when CMP is missing, entry price is used and marked. Unrealized P&amp;L is gross and excludes estimated exit charges, taxes and slippage. This is not a live market feed or broker valuation.</p>
+      <p className="text-[10px] leading-relaxed text-slate-500">Read-only report. Market value uses the saved current market price (CMP); when CMP is missing, entry price is used and marked. Unrealized P&amp;L is based on saved CMP or entry price. This is not a live market feed or broker valuation.</p>
     </section>
   );
 };
