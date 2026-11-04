@@ -232,8 +232,6 @@ export class StorageService {
         totalInvestment: 142500,
         exitDate: pastDate(18),
         exitPrice: 3020,
-        brokerage: 40,
-        otherCharges: 110,
         targetEarnings: 10000,
         actualPnl: 8500,
         netPnl: 8350,
@@ -251,8 +249,6 @@ export class StorageService {
         totalInvestment: 118500,
         exitDate: pastDate(9),
         exitPrice: 3880,
-        brokerage: 40,
-        otherCharges: 95,
         targetEarnings: 6000,
         actualPnl: -2100,
         netPnl: -2235,
@@ -268,8 +264,6 @@ export class StorageService {
         entryPrice: 1620,
         quantity: 100,
         totalInvestment: 162000,
-        brokerage: 40,
-        otherCharges: 120,
         targetEarnings: 12000,
         status: 'OPEN',
         currentMarketPrice: 1685,
@@ -283,8 +277,6 @@ export class StorageService {
         entryPrice: 1780,
         quantity: 40,
         totalInvestment: 71200,
-        brokerage: 30,
-        otherCharges: 60,
         targetEarnings: 5000,
         status: 'OPEN',
         currentMarketPrice: 1815,
@@ -669,12 +661,11 @@ export class StorageService {
         totalStockInvestment += (Number(trade.totalInvestment) || 0);
         if (trade.currentMarketPrice && trade.currentMarketPrice > 0) {
           const unrealizedGross = (trade.currentMarketPrice - trade.entryPrice) * trade.quantity;
-          const unrealizedNet = unrealizedGross - (trade.brokerage || 0) - (trade.otherCharges || 0);
-          stockUnrealizedPnl += unrealizedNet;
+          stockUnrealizedPnl += unrealizedGross;
         }
       } else if (trade.status === 'CLOSED') {
         closedTradeCount++;
-        const net = Number(trade.netPnl) || 0;
+        const net = Number(trade.actualPnl ?? trade.netPnl) || 0;
         stockRealizedPnl += net;
         if (net > 0) {
           totalStockProfit += net;
