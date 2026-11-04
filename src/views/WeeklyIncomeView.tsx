@@ -28,7 +28,6 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<WeeklyIncomeRecord | null>(null);
   const [date, setDate] = useState('');
-  const [firstBase, setFirstBase] = useState('0.00');
   const [addition, setAddition] = useState('0.00');
   const [rate, setRate] = useState('3');
 
@@ -51,8 +50,8 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
     let runningTarget = 0;
     let runningActual = 0;
     return ordered.map((record, index) => {
-      const base = index === 0 ? (Number(record.openingBalance) || 0) : runningTarget;
-      const actualBase = index === 0 ? (Number(record.openingBalance) || 0) : runningActual;
+      const base = index === 0 ? 0 : runningTarget;
+      const actualBase = index === 0 ? 0 : runningActual;
       const extra = Number(record.weeklyIncome) || 0;
       const targetRate = Math.max(0, Number(record.customFields?.targetRate ?? 3) || 0);
       const targetProfit = (base + extra) * targetRate / 100;
@@ -62,7 +61,7 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
       const closedTradePnl = trades.reduce((sum, trade) => {
         if (trade.status !== 'CLOSED' || !trade.exitDate) return sum;
         const exitKey = dateKey(trade.exitDate);
-        return exitKey >= weekStart && exitKey < nextWeekStart ? sum + (Number(trade.netPnl) || 0) : sum;
+        return exitKey >= weekStart && exitKey < nextWeekStart ? sum + (Number(trade.actualPnl ?? trade.netPnl) || 0) : sum;
       }, 0);
       const actualCapital = actualBase + extra + closedTradePnl;
       const aheadShort = actualCapital - finalAmount;
@@ -84,7 +83,6 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
       const today = new Date();
       setDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
     }
-    setFirstBase(amountInput(latestTarget || 0));
     setAddition('0.00');
     setRate('3');
     setIsOpen(true);
@@ -92,7 +90,6 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
   const openEdit = (record: WeeklyIncomeRecord) => {
     setEditing(record);
     setDate(toISODate(record.weekStartDate));
-    setFirstBase(amountInput(Number(record.openingBalance) || 0));
     setAddition(amountInput(Number(record.weeklyIncome) || 0));
     setRate(String(record.customFields?.targetRate ?? 3));
     setIsOpen(true);
@@ -105,7 +102,7 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
     const next = editing
       ? records.map((record) => record.id === editing.id ? {
           ...record, weekStartDate: dateText, weekEndDate: dateText,
-          openingBalance: Number(firstBase) || 0, weeklyIncome: Number(addition) || 0,
+          openingBalance: 0, weeklyIncome: Number(addition) || 0,
           totalIncome: Number(addition) || 0, customFields: {
             ...(record.customFields || {}), targetRate: Math.max(0, Number(rate) || 0),
           },
@@ -113,15 +110,19 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
       : [...records, {
           id: `capital_${Date.now()}`, serialNumber: records.length + 1,
           weekStartDate: dateText, weekEndDate: dateText,
-          openingBalance: Number(firstBase) || 0, weeklyIncome: Number(addition) || 0,
+          openingBalance: 0, weeklyIncome: Number(addition) || 0,
           salary: 0, businessIncome: 0, freelanceIncome: 0, commission: 0, bonus: 0,
           otherIncome: 0, totalIncome: Number(addition) || 0, weeklyExpenses: 0,
           finalAmount: 0, paymentStatus: 'Paid' as const,
           customFields: { targetRate: Math.max(0, Number(rate) || 0) },
         }];
+    const dateKey = (value: string) => {
+      const [day, month, year] = (value || '').split('-');
+      return Number(`${year || '0'}${(month || '0').padStart(2, '0')}${(day || '0').padStart(2, '0')}`);
+    };
     let runningBase = 0;
-    const recalculated = next.map((record, index) => {
-      const base = index === 0 ? (Number(record.openingBalance) || 0) : runningBase;
+    const recalculated = [...next].sort((a, b) => dateKey(a.weekStartDate) - dateKey(b.weekStartDate)).map((record, index) => {
+      const base = index === 0 ? 0 : runningBase;
       const extra = Number(record.weeklyIncome) || 0;
       const targetRate = Math.max(0, Number(record.customFields?.targetRate ?? 3) || 0);
       const targetProfit = (base + extra) * targetRate / 100;
@@ -136,9 +137,13 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
   const remove = (id: string, serial: number) => {
     if (window.confirm(`Week ${serial} delete karaycha?`)) {
       const remaining = records.filter((record) => record.id !== id);
+      const dateKey = (value: string) => {
+        const [day, month, year] = (value || '').split('-');
+        return Number(`${year || '0'}${(month || '0').padStart(2, '0')}${(day || '0').padStart(2, '0')}`);
+      };
       let runningBase = 0;
-      const recalculated = remaining.map((record, index) => {
-        const base = index === 0 ? (Number(record.openingBalance) || 0) : runningBase;
+      const recalculated = [...remaining].sort((a, b) => dateKey(a.weekStartDate) - dateKey(b.weekStartDate)).map((record, index) => {
+        const base = index === 0 ? 0 : runningBase;
         const extra = Number(record.weeklyIncome) || 0;
         const targetRate = Number(record.customFields?.targetRate ?? 3);
         const finalAmount = base + extra + (base + extra) * targetRate / 100;
@@ -204,7 +209,6 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
       <form onSubmit={save} className="w-full max-w-lg space-y-4 rounded-2xl border border-[#263858] bg-gradient-to-br from-[#111d2d] to-[#0b1421] p-5 shadow-2xl">
         <div className="flex items-center justify-between"><div><h2 className="text-lg font-black text-white">{editing ? 'Edit Week' : 'Add Weekly Capital'}</h2><p className="text-xs text-slate-400">Change values anytime; later weeks recalculate automatically.</p></div><button type="button" onClick={()=>setIsOpen(false)} className="rounded-lg p-2 text-slate-400"><X className="h-4 w-4"/></button></div>
         <label className="block text-xs text-slate-300">Week Date<input type="date" value={date} onChange={e=>setDate(e.target.value)} required className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
-        <label className="block text-xs text-slate-300">Previous Capital (first week / starting capital)<input type="number" min="0" step="0.01" value={firstBase} onChange={e=>setFirstBase(e.target.value)} onBlur={()=>setFirstBase(value=>value.trim() === '' ? '0.00' : amountInput(Number(value)))} disabled={Boolean(editing && records.findIndex(r=>r.id===editing.id)>0)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white disabled:opacity-50"/></label>
         <label className="block text-xs text-slate-300">Extra Addition (outside earnings)<input type="number" min="0" step="0.01" value={addition} onChange={e=>setAddition(e.target.value)} onBlur={()=>setAddition(value=>value.trim() === '' ? '0.00' : amountInput(Number(value)))} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
         <label className="block text-xs text-slate-300">Weekly Hypothetical Target Rate (%)<input type="number" min="0" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#070d18] p-2.5 text-white"/></label>
         <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-slate-300">Actual Capital is calculated automatically from Extra Addition and closed equity trades net P&amp;L for this week. No manual entry needed.</p>
