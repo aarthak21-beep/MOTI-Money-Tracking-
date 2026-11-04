@@ -17,7 +17,6 @@ import {
 import {
   calculateStockPnl,
   calculateAverageBuyPrice,
-  calculateBrokerageCharges,
   calculateSIP,
   calculateCompoundInterest,
   calculateWeeklyIncomeSummary,
@@ -43,8 +42,6 @@ export const CalculatorsView: React.FC<CalculatorsViewProps> = ({ profile }) => 
   const [spEntry, setSpEntry] = useState('2850');
   const [spExit, setSpExit] = useState('3020');
   const [spQty, setSpQty] = useState('50');
-  const [spBrok, setSpBrok] = useState('40');
-  const [spOth, setSpOth] = useState('60');
 
   // 2. Average Buy Price State
   const [lots, setLots] = useState<BuyLot[]>([
@@ -52,12 +49,6 @@ export const CalculatorsView: React.FC<CalculatorsViewProps> = ({ profile }) => 
     { price: 1520, quantity: 30 },
     { price: 1480, quantity: 20 },
   ]);
-
-  // 3. Brokerage Calculator State
-  const [brBuy, setBrBuy] = useState('1500');
-  const [brSell, setBrSell] = useState('1550');
-  const [brQty, setBrQty] = useState('100');
-  const [brType, setBrType] = useState<'delivery' | 'intraday'>('intraday');
 
   // 4. SIP State
   const [sipMonthly, setSipMonthly] = useState('15000');
@@ -116,7 +107,6 @@ export const CalculatorsView: React.FC<CalculatorsViewProps> = ({ profile }) => 
   const calculatorList = [
     { id: 1, name: 'Stock Profit/Loss', desc: 'Realized gross, net & ROI %' },
     { id: 2, name: 'Average Buy Price', desc: 'Multi-lot weighted average' },
-    { id: 3, name: 'Brokerage & Taxes', desc: 'STT, SEBI, GST breakdown' },
     { id: 4, name: 'Investment / SIP', desc: 'Compound wealth accumulation' },
     { id: 5, name: 'Compound Interest', desc: 'Maturity & compound growth' },
     { id: 6, name: 'Weekly Income', desc: '7-day run rate & deductions' },
@@ -133,7 +123,7 @@ export const CalculatorsView: React.FC<CalculatorsViewProps> = ({ profile }) => 
       {/* Header */}
       <div className="border-b border-[#1e2e4f] pb-4">
         <div className="flex items-center space-x-2">
-          <h1 className="text-2xl font-black text-white sm:text-3xl">12 ADVANCED CALCULATORS</h1>
+          <h1 className="text-2xl font-black text-white sm:text-3xl">11 ADVANCED CALCULATORS</h1>
           <span className="rounded bg-amber-500/10 px-2 py-0.5 text-xs font-bold text-amber-400 border border-amber-500/30">
             FINANCIAL SUITE
           </span>
@@ -173,14 +163,12 @@ export const CalculatorsView: React.FC<CalculatorsViewProps> = ({ profile }) => 
             entryPrice: Number(spEntry),
             exitPrice: Number(spExit),
             quantity: Number(spQty),
-            brokerage: Number(spBrok),
-            otherCharges: Number(spOth),
           });
           return (
             <div className="space-y-6">
               <div className="border-b border-[#1e2e4f] pb-3">
                 <h2 className="text-lg font-bold text-white">Stock Profit & Loss Calculator</h2>
-                <p className="text-xs text-slate-400">Computes capital required, turnover, gross P&L, brokerage deductions and net ROI %.</p>
+                <p className="text-xs text-slate-400">Computes capital required, gross P&L and return percentage.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -214,36 +202,16 @@ export const CalculatorsView: React.FC<CalculatorsViewProps> = ({ profile }) => 
                       className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white outline-none"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-semibold text-slate-300">Brokerage (₹)</label>
-                      <input
-                        type="number"
-                        value={spBrok}
-                        onChange={(e) => setSpBrok(e.target.value)}
-                        className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-1.5 text-xs text-white outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-300">STT / Other Charges (₹)</label>
-                      <input
-                        type="number"
-                        value={spOth}
-                        onChange={(e) => setSpOth(e.target.value)}
-                        className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-1.5 text-xs text-white outline-none"
-                      />
-                    </div>
-                  </div>
                 </div>
 
                 <div className="rounded-2xl border border-amber-500/30 bg-[#070d18] p-5 flex flex-col justify-between">
                   <div>
-                    <span className="text-xs font-bold uppercase text-amber-400">Net Trade Outcome</span>
+                    <span className="text-xs font-bold uppercase text-amber-400">Trade Outcome</span>
                     <div className={`mt-2 text-3xl font-black ${res.netPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {res.netPnl >= 0 ? '+' : ''}₹{formatINR(res.netPnl)}
                     </div>
                     <p className={`text-sm font-bold mt-1 ${res.pnlPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {res.pnlPercent >= 0 ? '+' : ''}{res.pnlPercent.toFixed(2)}% Net Return
+                      {res.pnlPercent >= 0 ? '+' : ''}{res.pnlPercent.toFixed(2)}% Return
                     </p>
                   </div>
 
@@ -255,10 +223,6 @@ export const CalculatorsView: React.FC<CalculatorsViewProps> = ({ profile }) => 
                     <div className="flex justify-between text-slate-400">
                       <span>Gross Profit/Loss:</span>
                       <span className="font-bold text-white">₹{formatINR(res.grossPnl)}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-400">
-                      <span>Total Charges Deducted:</span>
-                      <span className="font-bold text-rose-400">-₹{formatINR(res.totalCharges)}</span>
                     </div>
                   </div>
                 </div>
@@ -346,103 +310,6 @@ export const CalculatorsView: React.FC<CalculatorsViewProps> = ({ profile }) => 
                       <span>Total Capital Committed:</span>
                       <span className="font-bold text-white">₹{formatINR(res.totalCost)}</span>
                     </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* 3. Brokerage Calculator */}
-        {activeCalc === 3 && (() => {
-          const res = calculateBrokerageCharges({
-            buyPrice: Number(brBuy),
-            sellPrice: Number(brSell),
-            quantity: Number(brQty),
-            tradeType: brType,
-          });
-          return (
-            <div className="space-y-6">
-              <div className="border-b border-[#1e2e4f] pb-3">
-                <h2 className="text-lg font-bold text-white">Brokerage & Statutory Charges Calculator</h2>
-                <p className="text-xs text-slate-400">Accurate Indian regulatory charges: STT, Exchange transaction fee, SEBI charges, Stamp duty, and 18% GST.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setBrType('intraday')}
-                      className={`rounded-xl py-2 text-xs font-bold border cursor-pointer ${
-                        brType === 'intraday'
-                          ? 'border-amber-400 bg-amber-500/20 text-amber-300'
-                          : 'border-[#1e2e4f] bg-[#070d18] text-slate-400'
-                      }`}
-                    >
-                      Intraday (MIS)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBrType('delivery')}
-                      className={`rounded-xl py-2 text-xs font-bold border cursor-pointer ${
-                        brType === 'delivery'
-                          ? 'border-emerald-400 bg-emerald-500/20 text-emerald-300'
-                          : 'border-[#1e2e4f] bg-[#070d18] text-slate-400'
-                      }`}
-                    >
-                      Delivery (CNC)
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-semibold text-slate-300">Buy Price (₹)</label>
-                      <input
-                        type="number"
-                        value={brBuy}
-                        onChange={(e) => setBrBuy(e.target.value)}
-                        className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-300">Sell Price (₹)</label>
-                      <input
-                        type="number"
-                        value={brSell}
-                        onChange={(e) => setBrSell(e.target.value)}
-                        className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-slate-300">Quantity</label>
-                    <input
-                      type="number"
-                      value={brQty}
-                      onChange={(e) => setBrQty(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-amber-500/30 bg-[#070d18] p-5">
-                  <span className="text-xs font-bold uppercase text-amber-400">Total Statutory Deductions</span>
-                  <div className="mt-1 text-2xl font-black text-rose-400">
-                    -₹{formatINR(res.totalCharges)}
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Breakeven Sell Price: <span className="font-bold text-white">₹{formatINR(res.breakevenPrice)}</span>
-                  </p>
-
-                  <div className="mt-4 grid grid-cols-2 gap-2 text-[11px] border-t border-[#1e2e4f] pt-3">
-                    <span className="text-slate-400">Brokerage: ₹{formatINR(res.brokerage)}</span>
-                    <span className="text-slate-400">STT / CTT: ₹{formatINR(res.stt)}</span>
-                    <span className="text-slate-400">Exchange Fee: ₹{formatINR(res.exchangeCharges)}</span>
-                    <span className="text-slate-400">GST (18%): ₹{formatINR(res.gst)}</span>
-                    <span className="text-slate-400">Stamp Duty: ₹{formatINR(res.stampDuty)}</span>
-                    <span className="text-slate-400">SEBI Charges: ₹{formatINR(res.sebiCharges)}</span>
                   </div>
                 </div>
               </div>
