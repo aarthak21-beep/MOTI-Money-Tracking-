@@ -363,3 +363,120 @@ nav, aside {
   .reports-tools-content { gap: 1rem; }
   .reports-tools-content > section { border-radius: 1rem !important; }
 }
+
+
+/* ── MOTI Royal Purple theme: complete application skin ───────────────── */
+:root {
+  --bg-main: #090514;
+  --bg-card: #160d28;
+  --bg-subtle: #211238;
+  --border-subtle: rgba(192, 132, 252, .19);
+  --moti-panel: rgba(22, 13, 40, .91);
+  --moti-panel-raised: rgba(34, 19, 58, .96);
+  --moti-line: rgba(192, 132, 252, .18);
+  --moti-edge-light: rgba(216, 180, 254, .23);
+  --moti-glow-cyan: rgba(168, 85, 247, .22);
+  --moti-glow-green: rgba(52, 211, 153, .16);
+  --moti-purple: #c084fc;
+  --moti-purple-bright: #a855f7;
+}
+html { background: #090514; }
+body {
+  background:
+    radial-gradient(ellipse at 8% -8%, rgba(147, 51, 234, .24), transparent 34rem),
+    radial-gradient(ellipse at 96% 8%, rgba(192, 132, 252, .16), transparent 32rem),
+    radial-gradient(ellipse at 50% 100%, rgba(88, 28, 135, .20), transparent 42rem),
+    linear-gradient(145deg, #090514 0%, #10091f 48%, #080411 100%) !important;
+  background-attachment: fixed;
+  color: #f7f0ff;
+}
+::selection { background: rgba(168, 85, 247, .38); color: #fff; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline-color: rgba(192, 132, 252, .9);
+}
+
+/* Purple glass surfaces across dashboard, accounts, reports, tools and settings. */
+div[class*="rounded-2xl"][class*="border"],
+div[class*="rounded-xl"][class*="border"] {
+  border-color: rgba(192, 132, 252, .20);
+  background-image: linear-gradient(145deg, rgba(35, 19, 58, .88), rgba(15, 8, 29, .94));
+  box-shadow:
+    0 18px 42px -25px rgba(0, 0, 0, .96),
+    0 0 24px -20px rgba(168, 85, 247, .55),
+    inset 0 1px 0 rgba(245, 230, 255, .075);
+}
+@media (hover: hover) and (pointer: fine) {
+  div[class*="rounded-2xl"][class*="border"]:hover,
+  div[class*="rounded-xl"][class*="border"]:hover {
+    border-color: rgba(216, 180, 254, .42);
+    box-shadow: 0 26px 52px -27px rgba(0,0,0,.98), 0 0 30px -16px rgba(168,85,247,.45), inset 0 1px 0 rgba(255,255,255,.10);
+  }
+}
+
+/* Consistent purple focus, controls and table treatment. */
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  border-color: rgba(192, 132, 252, .24);
+  background-color: rgba(12, 6, 24, .92);
+  color: #faf5ff;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: rgba(192, 132, 252, .82);
+  box-shadow: inset 0 2px 7px rgba(0,0,0,.28), 0 0 0 3px rgba(168,85,247,.16), 0 0 24px -12px rgba(192,132,252,.65);
+}
+input::placeholder, textarea::placeholder { color: #a493b8; }
+input[type="date"] { color-scheme: dark; }
+thead th { background: rgba(16, 8, 30, .94); color: #d8b4fe; }
+tbody tr:hover { background-color: rgba(168, 85, 247, .065); }
+td, th { border-color: rgba(192, 132, 252, .12); }
+::-webkit-scrollbar-track { background: #0b0615; }
+::-webkit-scrollbar-thumb { background: #60358a; }
+::-webkit-scrollbar-thumb:hover { background: #9254c5; }
+
+/* Replace decorative gold/cyan theme accents with royal purple; keep P&L semantics green/red. */
+.text-gold-gradient {
+  background: linear-gradient(120deg, #f3e8ff 0%, #d8b4fe 35%, #a855f7 72%, #7e22ce 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.glow-gold { box-shadow: 0 0 28px -7px rgba(168, 85, 247, .42); }
+.text-amber-300, .text-amber-400, .text-amber-500 { color: #d8b4fe !important; }
+.border-amber-400, .border-amber-500 { border-color: rgba(192, 132, 252, .62) !important; }
+.bg-amber-500 { background-color: #9333ea !important; }
+.bg-amber-500\/10 { background-color: rgba(168, 85, 247, .12) !important; }
+.bg-amber-500\/15 { background-color: rgba(168, 85, 247, .17) !important; }
+.ring-amber-400 { --tw-ring-color: #c084fc !important; }
+.focus\\:ring-amber-500:focus { --tw-ring-color: #a855f7 !important; }
+[class*="from-amber-"] { --tw-gradient-from: #a855f7 var(--tw-gradient-from-position) !important; }
+[class*="to-orange-"] { --tw-gradient-to: #6b21a8 var(--tw-gradient-to-position) !important; }
+
+/* Header and navigation use a soft translucent purple glass finish. */
+nav, aside, header {
+  border-color: rgba(192, 132, 252, .15);
+  backdrop-filter: blur(20px) saturate(145%);
+  -webkit-backdrop-filter: blur(20px) saturate(145%);
+}
+[aria-current="page"], [aria-selected="true"] {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 8px 24px -12px rgba(168,85,247,.48);
+}
+.reports-tools-hero {
+  border-color: rgba(192,132,252,.32);
+  background:
+    radial-gradient(ellipse at 8% 0%, rgba(168,85,247,.28), transparent 48%),
+    radial-gradient(ellipse at 92% 100%, rgba(126,34,206,.22), transparent 44%),
+    linear-gradient(135deg, rgba(39,19,65,.98), rgba(13,7,27,.98) 70%);
+  box-shadow: 0 22px 55px -30px rgba(147,51,234,.55), inset 0 1px 0 rgba(255,255,255,.09);
+}
+.reports-tools-content > section {
+  border-color: rgba(192,132,252,.22) !important;
+  background: linear-gradient(145deg, rgba(32,17,53,.97), rgba(13,7,26,.98)) !important;
+}
+.reports-tools-content > section > div:first-child h2 {
+  text-shadow: 0 0 22px rgba(192,132,252,.24);
+}
+@media (max-width: 767px) {
+  div[class*="rounded-2xl"][class*="border"],
+  div[class*="rounded-xl"][class*="border"] {
+    box-shadow: 0 14px 30px -22px rgba(0,0,0,.96), inset 0 1px 0 rgba(245,230,255,.06);
+  }
+}
