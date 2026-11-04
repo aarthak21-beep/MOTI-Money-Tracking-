@@ -26,7 +26,7 @@ const netResult = (trade: StockTrade) => (
 const money = (value: number) => `${value < 0 ? '-₹' : '₹'}${formatINR(Math.abs(value))}`;
 
 export const TradingAnalyticsView: React.FC<TradingAnalyticsViewProps> = ({ trades }) => {
-  const [period, setPeriod] = useState<'all' | '12m' | 'year'>('all');
+  const [period, setPeriod] = useState<'all' | '1d' | '7d' | 'lastMonth' | '12m' | 'year'>('all');
 
   const analytics = useMemo(() => {
     const closed = trades
@@ -36,10 +36,16 @@ export const TradingAnalyticsView: React.FC<TradingAnalyticsViewProps> = ({ trad
       .sort((a, b) => a.date!.getTime() - b.date!.getTime());
 
     const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const cutoff = new Date(now.getFullYear(), now.getMonth(), 1);
     if (period === '12m') cutoff.setMonth(cutoff.getMonth() - 11);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const filtered = closed.filter(({ date }) => {
       if (!date) return false;
+      if (period === '1d') return date >= today && date < new Date(today.getTime() + 86400000);
+      if (period === '7d') { const start = new Date(today); start.setDate(start.getDate() - 6); return date >= start && date < new Date(today.getTime() + 86400000); }
+      if (period === 'lastMonth') return date >= lastMonthStart && date < thisMonthStart;
       if (period === 'year') return date.getFullYear() === now.getFullYear();
       if (period === '12m') return date >= cutoff;
       return true;
@@ -112,8 +118,8 @@ export const TradingAnalyticsView: React.FC<TradingAnalyticsViewProps> = ({ trad
           <p className="mt-1 text-[10px] text-slate-400">Closed Equity Delivery trades · net P&L after saved charges</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select value={period} onChange={(e) => setPeriod(e.target.value as 'all' | '12m' | 'year')} className="rounded-lg border border-[#263858] bg-[#070d18] px-3 py-2 text-xs text-slate-200 outline-none">
-            <option value="all">All time</option><option value="12m">Last 12 months</option><option value="year">This year</option>
+          <select value={period} onChange={(e) => setPeriod(e.target.value as 'all' | '1d' | '7d' | 'lastMonth' | '12m' | 'year')} className="rounded-lg border border-[#263858] bg-[#070d18] px-3 py-2 text-xs text-slate-200 outline-none">
+            <option value="1d">1 day</option><option value="7d">7 days</option><option value="lastMonth">Last month</option><option value="all">All time</option><option value="12m">Last 12 months</option><option value="year">This year</option>
           </select>
           <button onClick={exportReport} className="flex items-center gap-1.5 rounded-lg border border-[#263858] px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white"><Download className="h-3.5 w-3.5" />Export CSV</button>
         </div>
