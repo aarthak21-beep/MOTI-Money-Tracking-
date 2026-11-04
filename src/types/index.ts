@@ -47,11 +47,9 @@ export interface StockTrade {
   totalInvestment: number; // entryPrice * quantity
   exitDate?: string;
   exitPrice?: number;
-  brokerage: number;
-  otherCharges: number;
   targetEarnings?: number;
   actualPnl?: number; // Gross P&L: (exitPrice - entryPrice) * quantity
-  netPnl?: number; // actualPnl - brokerage - otherCharges
+  netPnl?: number; // realized P&L
   pnlPercentage?: number; // (netPnl / totalInvestment) * 100
   status: 'OPEN' | 'CLOSED';
   currentMarketPrice?: number; // for open position unrealized P&L
@@ -67,7 +65,6 @@ export interface StockTrade {
   disciplineImprovement?: string;
   source?: 'ZERODHA' | 'MANUAL';
   brokerTradeIds?: string[];
-  chargesKnown?: boolean;
 }
 
 export interface WeeklyIncomeRecord {
