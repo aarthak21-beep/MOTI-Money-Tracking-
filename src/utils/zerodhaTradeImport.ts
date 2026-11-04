@@ -1,15 +1,5 @@
 import type { StockTrade } from '../types';
 
-export type KiteFillCharges = {
-  brokerage?: number;
-  transaction_tax?: number;
-  exchange_turnover_charge?: number;
-  sebi_turnover_charge?: number;
-  stamp_duty?: number;
-  gst?: number;
-  total?: number;
-};
-
 export type KiteExecution = {
   trade_id: string;
   order_id?: string;
@@ -20,7 +10,6 @@ export type KiteExecution = {
   price?: number;
   fill_timestamp?: string;
   product?: string;
-  charges?: KiteFillCharges;
 };
 
 export type KiteImportSummary = {
@@ -43,13 +32,8 @@ const timestamp = (value?: string): number => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-const fillCharge = (fill: KiteExecution, field: keyof KiteFillCharges): number =>
-  Number(fill.charges?.[field]) || 0;
-
 /**
  * Rebuild broker-origin journal rows from the complete, de-duplicated fill history.
- * Charges are allocated from the order-level Kite virtual contract note to each fill,
- * then split between matched BUY/SELL lots. DP charges are not returned by this API.
  */
 export const buildZerodhaJournal = (
   existingTrades: StockTrade[],
@@ -81,30 +65,18 @@ export const buildZerodhaJournal = (
     const exitPrice = sell ? Number(sell.price) : undefined;
     const totalInvestment = entryPrice * quantity;
     const actualPnl = sell && exitPrice !== undefined ? (exitPrice - entryPrice) * quantity : undefined;
-    const buyRatio = Number(buy.quantity) > 0 ? quantity / Number(buy.quantity) : 0;
-    const sellRatio = sell && Number(sell.quantity) > 0 ? quantity / Number(sell.quantity) : 0;
-    const brokerage = fillCharge(buy, 'brokerage') * buyRatio +
-      (sell ? fillCharge(sell, 'brokerage') * sellRatio : 0);
-    const buyOther = Math.max(0, fillCharge(buy, 'total') - fillCharge(buy, 'brokerage')) * buyRatio;
-    const sellOther = sell ? Math.max(0, fillCharge(sell, 'total') - fillCharge(sell, 'brokerage')) * sellRatio : 0;
-    const chargesKnown = buy.charges?.total !== undefined && (!sell || sell.charges?.total !== undefined);
-    const otherCharges = buyOther + sellOther;
-    const totalCharges = brokerage + otherCharges;
-    const netPnl = actualPnl === undefined ? undefined : chargesKnown ? actualPnl - totalCharges : actualPnl;
+    const netPnl = actualPnl;
     return {
       id, serialNumber: 0, entryDate: toJournalDate(buy.fill_timestamp),
       stockName: String(buy.tradingsymbol).trim().toUpperCase(),
       entryPrice, quantity, totalInvestment,
       exitDate: sell ? toJournalDate(sell.fill_timestamp) : undefined, exitPrice,
-      brokerage, otherCharges, chargesKnown,
       source: 'ZERODHA',
       brokerTradeIds: sell ? [String(buy.trade_id), String(sell.trade_id)] : [String(buy.trade_id)],
       actualPnl, netPnl,
       pnlPercentage: netPnl === undefined || totalInvestment <= 0 ? undefined : (netPnl / totalInvestment) * 100,
       status: sell ? 'CLOSED' : 'OPEN',
-      notes: chargesKnown
-        ? 'Imported from Zerodha. Charges include Kite order-wise brokerage, taxes and exchange fees; DP charges are not included in the Kite charges response.'
-        : 'Imported from Zerodha fills. Actual charges are pending; P&L is before charges.',
+      notes: 'Imported from Zerodha trade executions.',
     };
   };
 
