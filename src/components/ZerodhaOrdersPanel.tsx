@@ -30,6 +30,19 @@ const mergeUnique = <T,>(oldRows: T[], newRows: T[], key: keyof T): T[] => {
   });
   return Array.from(map.values()).slice(-10000);
 };
+const enrichTradePrices = (trades: KiteTrade[], orders: KiteOrder[]): KiteTrade[] => {
+  const orderPrices = new Map<string, number>();
+  orders.forEach((order) => {
+    const price = Number(order.average_price);
+    if (order.order_id && Number.isFinite(price) && price > 0) orderPrices.set(String(order.order_id), price);
+  });
+  return trades.map((trade) => {
+    const tradePrice = Number(trade.price);
+    if (Number.isFinite(tradePrice) && tradePrice > 0) return trade;
+    const fallbackPrice = trade.order_id ? orderPrices.get(String(trade.order_id)) : undefined;
+    return fallbackPrice ? { ...trade, price: fallbackPrice } : trade;
+  });
+};
 const money = (value?: number) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const dateText = (value?: string) => value ? new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 const exportCsv = (filename: string, rows: Array<Record<string, unknown>>) => {
@@ -96,7 +109,7 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
       const history = await api('/kite/auto-history');
       if (!active) return;
       const nextOrders = mergeUnique(orders, history.orders || [], 'order_id');
-      const nextTrades = mergeUnique(executions, history.trades || [], 'trade_id');
+      const nextTrades = enrichTradePrices(mergeUnique(executions, history.trades || [], 'trade_id'), nextOrders);
       setOrders(nextOrders); setExecutions(nextTrades);
       localStorage.setItem(ORDERS_KEY, JSON.stringify(nextOrders));
       localStorage.setItem(TRADES_KEY, JSON.stringify(nextTrades));
@@ -134,7 +147,7 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
     try {
       const result = await api('/kite/orders');
       const nextOrders = mergeUnique(orders, result.historyOrders || result.orders || [], 'order_id');
-      const nextTrades = mergeUnique(executions, result.historyTrades || result.trades || [], 'trade_id');
+      const nextTrades = enrichTradePrices(mergeUnique(executions, result.historyTrades || result.trades || [], 'trade_id'), nextOrders);
       setOrders(nextOrders); setExecutions(nextTrades);
       localStorage.setItem(ORDERS_KEY, JSON.stringify(nextOrders));
       localStorage.setItem(TRADES_KEY, JSON.stringify(nextTrades));
