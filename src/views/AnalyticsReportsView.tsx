@@ -52,7 +52,6 @@ export const AnalyticsReportsView: React.FC<AnalyticsReportsViewProps> = ({
 
   // Multi-dimensional aggregations
   const totalStockGrossPnl = trades.reduce((sum, t) => sum + (t.actualPnl || 0), 0);
-  const totalStockCharges = trades.reduce((sum, t) => sum + (t.brokerage || 0) + (t.otherCharges || 0), 0);
   const totalStockNetPnl = summary.stockRealizedPnl;
 
   const totalWeeklyIn = weekly.reduce((sum, w) => sum + w.totalIncome, 0);
@@ -80,7 +79,6 @@ export const AnalyticsReportsView: React.FC<AnalyticsReportsViewProps> = ({
       ['Stock Trading', 'Realized Net Profit / Loss', totalStockNetPnl],
       ['Stock Trading', 'Open Capital Deployed', summary.totalStockInvestment],
       ['Stock Trading', 'Unrealized P&L on Open Positions', summary.stockUnrealizedPnl],
-      ['Stock Trading', 'Total Brokerage & Taxes Paid', totalStockCharges],
       ['Weekly Incomes', 'Total Weekly Inflow', totalWeeklyIn],
       ['Weekly Incomes', 'Total Weekly Outflow', totalWeeklyOut],
       ['Weekly Incomes', 'Net Retained Savings', totalWeeklyNet],
@@ -232,7 +230,7 @@ export const AnalyticsReportsView: React.FC<AnalyticsReportsViewProps> = ({
                   +₹{formatINR(summary.totalStockProfit)}
                 </td>
                 <td className="py-3 px-3 text-right font-medium text-rose-400">
-                  -₹{formatINR(summary.totalStockLoss + totalStockCharges)}
+                  -₹{formatINR(summary.totalStockLoss)}
                 </td>
                 <td className={`py-3 px-3 text-right font-black ${totalStockNetPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                   {totalStockNetPnl >= 0 ? '+' : ''}₹{formatINR(totalStockNetPnl)}
@@ -311,7 +309,7 @@ export const AnalyticsReportsView: React.FC<AnalyticsReportsViewProps> = ({
                   +₹{formatINR(totalWeeklyIn + totalDailyIn + totalInvoiceReceived + summary.totalStockProfit)}
                 </td>
                 <td className="py-3.5 px-3 text-right text-rose-400">
-                  -₹{formatINR(totalExpensesLogged + totalWeeklyOut + totalDailyOut + summary.totalStockLoss + totalStockCharges)}
+                  -₹{formatINR(totalExpensesLogged + totalWeeklyOut + totalDailyOut + summary.totalStockLoss)}
                 </td>
                 <td className="py-3.5 px-3 text-right text-amber-400 text-sm">
                   ₹{formatINR(summary.netWorth)}
