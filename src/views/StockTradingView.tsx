@@ -199,7 +199,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       if (!day || !month || !year) return null;
       return new Date(year, month - 1, day);
     };
-    const closed = trades.filter((trade) => trade.source !== 'ZERODHA' && trade.status === 'CLOSED' && trade.exitDate && trade.chargesKnown !== false);
+    const closed = trades.filter((trade) => trade.status === 'CLOSED' && trade.exitDate && trade.chargesKnown !== false);
+    const pendingCount = trades.filter((trade) => trade.status === 'CLOSED' && trade.exitDate && trade.chargesKnown === false).length;
     const aggregate = (period: 'week' | 'month') => {
       const buckets = new Map<string, { label: string; brokerage: number; dp: number; statutory: number; total: number; dpKeys: Set<string> }>();
       closed.forEach((trade) => {
@@ -219,7 +220,9 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         if (!buckets.has(key)) buckets.set(key, { label, brokerage: 0, dp: 0, statutory: 0, total: 0, dpKeys: new Set() });
         const bucket = buckets.get(key)!;
         const dpKey = `${trade.exitDate}|${trade.stockName.trim().toUpperCase()}`;
-        const hasDp = (Number(trade.otherCharges) || 0) >= 15.34;
+        // Zerodha's imported otherCharges already contains non-brokerage statutory charges;
+        // DP charges are not supplied by the read-only Kite charges endpoint.
+        const hasDp = trade.source !== 'ZERODHA' && (Number(trade.otherCharges) || 0) >= 15.34;
         const dpForTrade = hasDp ? 15.34 : 0;
         bucket.brokerage += Number(trade.brokerage) || 0;
         bucket.dpKeys.add(dpKey);
@@ -231,7 +234,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         return { key, ...bucket };
       }).sort((a, b) => b.key.localeCompare(a.key));
     };
-    return { weekly: aggregate('week'), monthly: aggregate('month') };
+    return { weekly: aggregate('week'), monthly: aggregate('month'), pendingCount };
   }, [trades]);
 
   // Filtered trades
@@ -736,14 +739,14 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           </div>
       {/* Brokerage and DP charge reports */}
       <section className="space-y-3 rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4">
-        <div><h2 className="text-sm font-black text-white">BROKERAGE &amp; DP CHARGES REPORT</h2><p className="text-[10px] text-slate-400">Manual journal trades with saved charge estimates · Zerodha-imported rows are excluded because actual charges are unavailable</p></div>
+        <div><h2 className="text-sm font-black text-white">BROKERAGE &amp; DP CHARGES REPORT</h2><p className="text-[10px] text-slate-400">Manual + Zerodha closed trades · Zerodha totals use charges returned by Kite; DP charges are not included</p></div>
         <div className="grid gap-4 lg:grid-cols-2">
           {([{ title: 'Weekly Charges', rows: chargeReports.weekly }, { title: 'Monthly Charges', rows: chargeReports.monthly }] as const).map((report) => <div key={report.title} className="overflow-x-auto rounded-xl border border-[#1e2e4f]">
             <h3 className="px-3 py-2 text-xs font-bold text-cyan-300">{report.title}</h3>
             <table className="w-full min-w-[440px] text-xs"><thead><tr className="bg-[#0a101f] text-[10px] uppercase text-slate-400"><th className="px-2 py-2 text-left">Period</th><th className="px-2 py-2 text-right">Brokerage</th><th className="px-2 py-2 text-right">DP</th><th className="px-2 py-2 text-right">Other Taxes</th><th className="px-2 py-2 text-right">Total</th></tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{report.rows.length ? report.rows.map((row) => <tr key={row.key}><td className="px-2 py-2 text-slate-300">{row.label}</td><td className="px-2 py-2 text-right">{formatINR(row.brokerage)}</td><td className="px-2 py-2 text-right">{formatINR(row.dp)}</td><td className="px-2 py-2 text-right">{formatINR(row.statutory)}</td><td className="px-2 py-2 text-right font-bold text-cyan-300">{formatINR(row.total)}</td></tr>) : <tr><td colSpan={5} className="px-2 py-4 text-center text-slate-500">No closed trades yet</td></tr>}</tbody></table>
           </div>)}
         </div>
-        <p className="text-[10px] leading-relaxed text-slate-500">This report includes only manual journal trades with saved charge estimates. Zerodha-imported executions are excluded because the read-only connector does not provide actual brokerage, statutory taxes or DP charges.</p>
+        <p className="text-[10px] leading-relaxed text-slate-500">Includes closed manual trades with saved estimates and Zerodha-imported trades when Kite returns charge data. Zerodha Brokerage and statutory taxes are included; DP charges are not provided by Kite and are excluded. {chargeReports.pendingCount > 0 ? `${chargeReports.pendingCount} closed trade(s) have charges pending and are not included in totals yet.` : 'No closed trades are waiting for charge data.'}</p>
       </section>
 
       {/* Detailed trading performance analytics; read-only and never mutates saved trades */}
