@@ -181,15 +181,47 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
     };
   }, [trades]);
 
-  // Filtered trades
+  // Open tab shows one weighted-average position per Zerodha exchange + symbol.
+  // Overview and Closed Trades retain the original individual execution-lot records.
   const filteredTrades = useMemo(() => {
+    const matchesSearch = (t: StockTrade) =>
+      t.stockName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.entryDate.includes(searchTerm) ||
+      (t.notes && t.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    if (activeTab === 'OPEN') {
+      const openRows = trades.filter((t) => t.status === 'OPEN');
+      const manualRows = openRows.filter((t) => t.source !== 'ZERODHA');
+      const zerodhaGroups = new Map<string, StockTrade[]>();
+      openRows.filter((t) => t.source === 'ZERODHA').forEach((trade) => {
+        const key = (trade.exchange || '') + ':' + trade.stockName.trim().toUpperCase();
+        zerodhaGroups.set(key, [...(zerodhaGroups.get(key) || []), trade]);
+      });
+      const aggregatedZerodha = Array.from(zerodhaGroups.entries()).map(([key, rows]) => {
+        const quantity = rows.reduce((sum, row) => sum + row.quantity, 0);
+        const investment = rows.reduce((sum, row) => sum + row.totalInvestment, 0);
+        const weightedAverage = quantity > 0 ? investment / quantity : 0;
+        const latest = [...rows].sort((a, b) => {
+          const [ad, am, ay] = a.entryDate.split('-').map(Number);
+          const [bd, bm, by] = b.entryDate.split('-').map(Number);
+          return new Date(by, bm - 1, bd).getTime() - new Date(ay, am - 1, ad).getTime();
+        })[0];
+        return {
+          ...latest,
+          id: 'kite:open-position:' + key,
+          entryDate: rows.length === 1 ? rows[0].entryDate : 'Multiple dates',
+          entryPrice: weightedAverage,
+          quantity,
+          totalInvestment: investment,
+          notes: rows.length + ' Zerodha BUY lots combined for this open position.',
+        };
+      });
+      return [...manualRows, ...aggregatedZerodha].filter(matchesSearch);
+    }
+
     return trades.filter((t) => {
       const matchesTab = activeTab === 'overview' || activeTab === 'tools' || t.status === activeTab;
-      const matchesSearch =
-        t.stockName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.entryDate.includes(searchTerm) ||
-        (t.notes && t.notes.toLowerCase().includes(searchTerm.toLowerCase()));
-      return matchesTab && matchesSearch;
+      return matchesTab && matchesSearch(t);
     });
   }, [trades, activeTab, searchTerm]);
 
@@ -553,7 +585,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {([
             { id: 'overview', label: 'Overview', count: trades.length },
-            { id: 'OPEN', label: 'Open Positions', count: trades.filter((t) => t.status === 'OPEN').length },
+            { id: 'OPEN', label: 'Open Positions', count: new Set(trades.filter((t) => t.status === 'OPEN' && t.source === 'ZERODHA').map((t) => (t.exchange || '') + ':' + t.stockName.trim().toUpperCase())).size + trades.filter((t) => t.status === 'OPEN' && t.source !== 'ZERODHA').length },
             { id: 'CLOSED', label: 'Closed Trades', count: trades.filter((t) => t.status === 'CLOSED').length },
             { id: 'tools', label: 'Reports & Tools' },
             { id: 'zerodha', label: 'Zerodha Orders' },
@@ -629,9 +661,9 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                     <td className={`py-3 px-3 text-right font-bold ${pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{closed ? pct.toFixed(2) + '%' : '-'}</td>
                     <td className="py-3 px-3 text-center">
                       <div className="flex items-center justify-center space-x-1.5">
-                        {!closed && <button onClick={() => handleQuickClose(t)} title="Exit Trade" className="rounded-lg p-1.5 text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"><CheckCircle className="h-4 w-4" /></button>}
-                        <button onClick={() => handleOpenModal(t)} title="Edit Trade" className="rounded-lg p-1.5 text-slate-400 hover:bg-[#1e2e4f] hover:text-white cursor-pointer"><Edit2 className="h-3.5 w-3.5" /></button>
-                        <button onClick={() => handleDeleteTrade(t.id, t.stockName)} title="Delete Trade" className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
+                        {!closed && !t.id.startsWith('kite:open-position:') && <button onClick={() => handleQuickClose(t)} title="Exit Trade" className="rounded-lg p-1.5 text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"><CheckCircle className="h-4 w-4" /></button>}
+                        {!t.id.startsWith('kite:open-position:') && <button onClick={() => handleOpenModal(t)} title="Edit Trade" className="rounded-lg p-1.5 text-slate-400 hover:bg-[#1e2e4f] hover:text-white cursor-pointer"><Edit2 className="h-3.5 w-3.5" /></button>}
+                        {!t.id.startsWith('kite:open-position:') && <button onClick={() => handleDeleteTrade(t.id, t.stockName)} title="Delete Trade" className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>}
                       </div>
                     </td>
                   </tr>
