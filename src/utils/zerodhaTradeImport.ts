@@ -55,7 +55,8 @@ export const buildZerodhaJournal = (
     String(a.trade_id).localeCompare(String(b.trade_id)));
 
   type BuyLot = { fill: KiteExecution; remaining: number };
-  // Keep NSE and BSE lots separate even when the trading symbol is identical.
+  // Match the same equity symbol across NSE/BSE. The exchange is retained on
+  // each journal row for reference, but it must not create a false open lot.
   const lotsBySymbol = new Map<string, BuyLot[]>();
   const generated: StockTrade[] = [];
   let unmatchedSellFills = 0;
@@ -84,18 +85,16 @@ export const buildZerodhaJournal = (
 
   for (const fill of eligible) {
     const symbol = String(fill.tradingsymbol).trim().toUpperCase();
-    const exchange = String(fill.exchange || '').trim().toUpperCase();
-    const lotKey = exchange + ':' + symbol;
     const side = String(fill.transaction_type).toUpperCase();
     const quantity = Number(fill.quantity);
     if (side === 'BUY') {
-      const lots = lotsBySymbol.get(lotKey) || [];
+      const lots = lotsBySymbol.get(symbol) || [];
       lots.push({ fill, remaining: quantity });
-      lotsBySymbol.set(lotKey, lots);
+      lotsBySymbol.set(symbol, lots);
       continue;
     }
     let remainingToSell = quantity;
-    const lots = lotsBySymbol.get(lotKey) || [];
+    const lots = lotsBySymbol.get(symbol) || [];
     for (const lot of lots) {
       if (remainingToSell <= 0) break;
       if (lot.remaining <= 0) continue;
