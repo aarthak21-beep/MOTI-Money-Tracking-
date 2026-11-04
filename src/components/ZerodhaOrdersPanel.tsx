@@ -78,7 +78,6 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
 
   useEffect(() => { onExecutionsChangeRef.current = onExecutionsChange; }, [onExecutionsChange]);
   useEffect(() => {
-    if (!executions.length) return;
     const summary = onExecutionsChangeRef.current?.(executions);
     if (summary) setJournalSummary(summary);
   }, [executions]);
@@ -176,6 +175,16 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
     } finally { setBusy(false); }
   };
 
+  const clearSyncedData = () => {
+    if (!window.confirm('Clear only imported Zerodha orders, fills, holdings, positions and Zerodha-generated journal rows from this device? Other MOTI data will remain unchanged.')) return;
+    setOrders([]); setExecutions([]); setHoldings([]); setPositions([]);
+    setJournalSummary(null);
+    [ORDERS_KEY, TRADES_KEY, HOLDINGS_KEY, POSITIONS_KEY].forEach((key) => localStorage.removeItem(key));
+    onExecutionsChangeRef.current?.([]);
+    window.dispatchEvent(new Event('moti-cloud-backup-request'));
+    setMessage('Old Zerodha sync data cleared from this device. Connect Zerodha and run Sync all Zerodha to fetch fresh data.');
+  };
+
   const disconnect = async () => {
     setBusy(true);
     try { await api('/kite/logout', 'POST'); } catch { /* local disconnect still clears this device's connector password */ }
@@ -215,6 +224,7 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
           <button disabled={busy} onClick={connect} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 px-4 py-2 text-xs font-black text-slate-950 disabled:opacity-50"><Link2 className="h-4 w-4" /> Connect Zerodha</button>
           <button disabled={busy || !connected} onClick={syncOrders} className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-xs font-bold text-cyan-200 disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} /> Sync all Zerodha</button>
           <button disabled={busy || !password} onClick={disconnect} className="inline-flex items-center gap-2 rounded-xl border border-rose-400/20 px-3 py-2 text-xs font-bold text-rose-300 disabled:opacity-40"><Unplug className="h-4 w-4" /> Disconnect</button>
+          <button disabled={busy} onClick={clearSyncedData} className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs font-bold text-rose-200 disabled:opacity-40">Clear old Zerodha data</button>
         </div>
         {message && <p className="mt-3 rounded-xl border border-cyan-300/15 bg-cyan-300/5 p-3 text-xs text-cyan-100">{message}</p>}
         {journalSummary && <div className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-100"><p className="font-bold">Equity Journal reconciliation</p><p className="mt-1">{journalSummary.eligibleFills} eligible NSE/BSE fills · {journalSummary.importedJournalRows} journal rows generated.</p>{journalSummary.unmatchedSellFills > 0 && <p className="mt-1 text-amber-200">Attention: {journalSummary.unmatchedSellFills} SELL fills ({journalSummary.unmatchedSellQuantity} shares) have no earlier BUY fill in the available history and were not matched.</p>}</div>}
