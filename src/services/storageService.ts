@@ -576,8 +576,23 @@ export class StorageService {
       expenses: this.getExpenses(userId),
       savingsGoals: this.getSavingsGoals(userId),
       notifications: this.getNotifications(userId),
+      zerodhaHistory: {
+        orders: this.readExternalHistory('moti_kite_orders_history_v1'),
+        trades: this.readExternalHistory('moti_kite_trades_history_v1'),
+        holdings: this.readExternalHistory('moti_kite_holdings_v1'),
+        positions: this.readExternalHistory('moti_kite_positions_v1'),
+      },
     };
     return JSON.stringify(backupData, null, 2);
+  }
+
+  private static readExternalHistory(key: string): unknown[] {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || '[]');
+      return Array.isArray(value) ? value : [];
+    } catch {
+      return [];
+    }
   }
 
   static importCompleteBackup(jsonString: string, userId = 'usr_default'): boolean {
@@ -597,6 +612,19 @@ export class StorageService {
       if (data.profile !== undefined && (!data.profile || typeof data.profile !== 'object' || Array.isArray(data.profile))) return false;
       if (arrayFields.some((field) => data[field] !== undefined && !Array.isArray(data[field]))) return false;
 
+      if (data.zerodhaHistory !== undefined) {
+        if (!data.zerodhaHistory || typeof data.zerodhaHistory !== 'object' || Array.isArray(data.zerodhaHistory)) return false;
+        const historyKeys = {
+          orders: 'moti_kite_orders_history_v1',
+          trades: 'moti_kite_trades_history_v1',
+          holdings: 'moti_kite_holdings_v1',
+          positions: 'moti_kite_positions_v1',
+        } as const;
+        if (Object.keys(historyKeys).some((field) =>
+          data.zerodhaHistory[field] !== undefined && !Array.isArray(data.zerodhaHistory[field])
+        )) return false;
+      }
+
       if (data.profile) this.saveProfile({ ...data.profile, id: userId });
       if (Array.isArray(data.accounts)) this.saveAccounts(data.accounts, userId);
       if (Array.isArray(data.budgets)) this.saveBudgets(data.budgets, userId);
@@ -607,6 +635,19 @@ export class StorageService {
       if (Array.isArray(data.expenses)) this.saveExpenses(data.expenses, userId);
       if (Array.isArray(data.savingsGoals)) this.saveSavingsGoals(data.savingsGoals, userId);
       if (Array.isArray(data.notifications)) this.saveNotifications(data.notifications, userId);
+      if (data.zerodhaHistory) {
+        const historyKeys = {
+          orders: 'moti_kite_orders_history_v1',
+          trades: 'moti_kite_trades_history_v1',
+          holdings: 'moti_kite_holdings_v1',
+          positions: 'moti_kite_positions_v1',
+        } as const;
+        Object.entries(historyKeys).forEach(([field, key]) => {
+          if (Array.isArray(data.zerodhaHistory[field])) {
+            localStorage.setItem(key, JSON.stringify(data.zerodhaHistory[field]));
+          }
+        });
+      }
 
       return true;
     } catch (e) {
