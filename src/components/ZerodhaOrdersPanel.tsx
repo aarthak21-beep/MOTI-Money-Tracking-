@@ -182,6 +182,7 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
     setJournalSummary(null);
     [ORDERS_KEY, TRADES_KEY, HOLDINGS_KEY, POSITIONS_KEY].forEach((key) => localStorage.removeItem(key));
     onExecutionsChangeRef.current?.([]);
+    window.dispatchEvent(new Event('moti-clear-zerodha-journal'));
     window.dispatchEvent(new Event('moti-cloud-backup-request'));
     setMessage('Old Zerodha sync data cleared from this device. Connect Zerodha and run Sync all Zerodha to fetch fresh data.');
   };
