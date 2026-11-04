@@ -30,11 +30,7 @@ const parseDate = (value?: string): Date | null => {
   return date;
 };
 
-const getNetPnl = (trade: StockTrade) => (
-  typeof trade.netPnl === 'number'
-    ? trade.netPnl
-    : (Number(trade.actualPnl) || 0) - (Number(trade.brokerage) || 0) - (Number(trade.otherCharges) || 0)
-);
+const getNetPnl = (trade: StockTrade) => Number(trade.actualPnl ?? trade.netPnl) || 0;
 
 const getDisciplineScore = (trade: StockTrade): number | null => {
   const checks: Array<'yes' | 'no' | 'na' | ''> = [
