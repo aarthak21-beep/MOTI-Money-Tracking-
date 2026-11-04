@@ -1,5 +1,15 @@
 import type { StockTrade } from '../types';
 
+export type KiteFillCharges = {
+  brokerage?: number;
+  transaction_tax?: number;
+  exchange_turnover_charge?: number;
+  sebi_turnover_charge?: number;
+  stamp_duty?: number;
+  gst?: number;
+  total?: number;
+};
+
 export type KiteExecution = {
   trade_id: string;
   order_id?: string;
@@ -10,6 +20,7 @@ export type KiteExecution = {
   price?: number;
   fill_timestamp?: string;
   product?: string;
+  charges?: KiteFillCharges;
 };
 
 export type KiteImportSummary = {
@@ -32,11 +43,13 @@ const timestamp = (value?: string): number => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+const fillCharge = (fill: KiteExecution, field: keyof KiteFillCharges): number =>
+  Number(fill.charges?.[field]) || 0;
+
 /**
  * Rebuild broker-origin journal rows from the complete, de-duplicated fill history.
- * NSE and BSE executions for the same equity symbol share the same delivery holding,
- * so FIFO matching is by symbol (not exchange). Unmatched sells are surfaced for
- * reconciliation and are never assigned a fabricated entry price or P&L.
+ * Charges are allocated from the order-level Kite virtual contract note to each fill,
+ * then split between matched BUY/SELL lots. DP charges are not returned by this API.
  */
 export const buildZerodhaJournal = (
   existingTrades: StockTrade[],
@@ -63,36 +76,35 @@ export const buildZerodhaJournal = (
   let unmatchedSellFills = 0;
   let unmatchedSellQuantity = 0;
 
-  const makeRecord = (
-    id: string,
-    buy: KiteExecution,
-    quantity: number,
-    sell?: KiteExecution,
-  ): StockTrade => {
+  const makeRecord = (id: string, buy: KiteExecution, quantity: number, sell?: KiteExecution): StockTrade => {
     const entryPrice = Number(buy.price);
     const exitPrice = sell ? Number(sell.price) : undefined;
     const totalInvestment = entryPrice * quantity;
     const actualPnl = sell && exitPrice !== undefined ? (exitPrice - entryPrice) * quantity : undefined;
+    const buyRatio = Number(buy.quantity) > 0 ? quantity / Number(buy.quantity) : 0;
+    const sellRatio = sell && Number(sell.quantity) > 0 ? quantity / Number(sell.quantity) : 0;
+    const brokerage = fillCharge(buy, 'brokerage') * buyRatio +
+      (sell ? fillCharge(sell, 'brokerage') * sellRatio : 0);
+    const buyOther = Math.max(0, fillCharge(buy, 'total') - fillCharge(buy, 'brokerage')) * buyRatio;
+    const sellOther = sell ? Math.max(0, fillCharge(sell, 'total') - fillCharge(sell, 'brokerage')) * sellRatio : 0;
+    const chargesKnown = buy.charges?.total !== undefined && (!sell || sell.charges?.total !== undefined);
+    const otherCharges = buyOther + sellOther;
+    const totalCharges = brokerage + otherCharges;
+    const netPnl = actualPnl === undefined ? undefined : chargesKnown ? actualPnl - totalCharges : actualPnl;
     return {
-      id,
-      serialNumber: 0,
-      entryDate: toJournalDate(buy.fill_timestamp),
+      id, serialNumber: 0, entryDate: toJournalDate(buy.fill_timestamp),
       stockName: String(buy.tradingsymbol).trim().toUpperCase(),
-      entryPrice,
-      quantity,
-      totalInvestment,
-      exitDate: sell ? toJournalDate(sell.fill_timestamp) : undefined,
-      exitPrice,
-      brokerage: 0,
-      otherCharges: 0,
-      chargesKnown: false,
+      entryPrice, quantity, totalInvestment,
+      exitDate: sell ? toJournalDate(sell.fill_timestamp) : undefined, exitPrice,
+      brokerage, otherCharges, chargesKnown,
       source: 'ZERODHA',
       brokerTradeIds: sell ? [String(buy.trade_id), String(sell.trade_id)] : [String(buy.trade_id)],
-      actualPnl,
-      netPnl: actualPnl,
-      pnlPercentage: actualPnl === undefined || totalInvestment <= 0 ? undefined : (actualPnl / totalInvestment) * 100,
+      actualPnl, netPnl,
+      pnlPercentage: netPnl === undefined || totalInvestment <= 0 ? undefined : (netPnl / totalInvestment) * 100,
       status: sell ? 'CLOSED' : 'OPEN',
-      notes: 'Imported from Zerodha fills. Actual brokerage, taxes and DP charges are not supplied by this connector; P&L is before charges.',
+      notes: chargesKnown
+        ? 'Imported from Zerodha. Charges include Kite order-wise brokerage, taxes and exchange fees; DP charges are not included in the Kite charges response.'
+        : 'Imported from Zerodha fills. Actual charges are pending; P&L is before charges.',
     };
   };
 
@@ -101,13 +113,11 @@ export const buildZerodhaJournal = (
     const side = String(fill.transaction_type).toUpperCase();
     const quantity = Number(fill.quantity);
     if (side === 'BUY') {
-      const lot = { fill, remaining: quantity };
       const lots = lotsBySymbol.get(symbol) || [];
-      lots.push(lot);
+      lots.push({ fill, remaining: quantity });
       lotsBySymbol.set(symbol, lots);
       continue;
     }
-
     let remainingToSell = quantity;
     const lots = lotsBySymbol.get(symbol) || [];
     for (const lot of lots) {
@@ -131,18 +141,9 @@ export const buildZerodhaJournal = (
   const manualTrades = existingTrades.filter((trade) =>
     trade.source !== 'ZERODHA' && !trade.id.startsWith('kite:')
   );
-  const combined = [...manualTrades, ...generated].map((trade, index) => ({
-    ...trade,
-    serialNumber: index + 1,
-  }));
-
+  const combined = [...manualTrades, ...generated].map((trade, index) => ({ ...trade, serialNumber: index + 1 }));
   return {
     trades: combined,
-    summary: {
-      eligibleFills: eligible.length,
-      importedJournalRows: generated.length,
-      unmatchedSellFills,
-      unmatchedSellQuantity,
-    },
+    summary: { eligibleFills: eligible.length, importedJournalRows: generated.length, unmatchedSellFills, unmatchedSellQuantity },
   };
 };
