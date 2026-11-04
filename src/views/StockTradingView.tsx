@@ -531,12 +531,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         </div>
       </div>
 
-      {activeTab === 'overview' && (
-        <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] px-4 py-3">
-          <p className="text-sm font-bold text-white">Trading Overview</p>
-          <p className="mt-1 text-xs text-slate-400">Your key performance numbers and complete trade ledger in one place.</p>
-        </div>
-      )}
       {activeTab === 'OPEN' && (
         <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] px-4 py-3">
           <p className="text-sm font-bold text-white">Open Positions</p>
