@@ -59,6 +59,7 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
 
   useEffect(() => { onExecutionsChangeRef.current = onExecutionsChange; }, [onExecutionsChange]);
   useEffect(() => {
+    if (!executions.length) return;
     const summary = onExecutionsChangeRef.current?.(executions);
     if (summary) setJournalSummary(summary);
   }, [executions]);
