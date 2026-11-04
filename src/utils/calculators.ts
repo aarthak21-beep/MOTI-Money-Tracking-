@@ -8,17 +8,12 @@ export interface StockPnlInput {
   entryPrice: number;
   exitPrice: number;
   quantity: number;
-  brokerage: number;
-  otherCharges: number;
 }
 export function calculateStockPnl(input: StockPnlInput) {
   const investment = (input.entryPrice || 0) * (input.quantity || 0);
-  const turnover = ((input.entryPrice || 0) + (input.exitPrice || 0)) * (input.quantity || 0);
   const grossPnl = ((input.exitPrice || 0) - (input.entryPrice || 0)) * (input.quantity || 0);
-  const totalCharges = (input.brokerage || 0) + (input.otherCharges || 0);
-  const netPnl = grossPnl - totalCharges;
-  const pnlPercent = investment > 0 ? (netPnl / investment) * 100 : 0;
-  return { investment, turnover, grossPnl, totalCharges, netPnl, pnlPercent };
+  const pnlPercent = investment > 0 ? (grossPnl / investment) * 100 : 0;
+  return { investment, grossPnl, netPnl: grossPnl, pnlPercent };
 }
 
 // 2. Average Buy Price
