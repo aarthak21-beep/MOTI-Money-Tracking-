@@ -531,28 +531,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         </div>
       </div>
 
-      {/* Equity Trading workspace navigation */}
-      <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-2">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-          {([
-            { id: 'overview', label: 'Overview', count: trades.length },
-            { id: 'OPEN', label: 'Open Positions', count: trades.filter((t) => t.status === 'OPEN').length },
-            { id: 'CLOSED', label: 'Closed Trades', count: trades.filter((t) => t.status === 'CLOSED').length },
-            { id: 'tools', label: 'Reports & Tools' },
-            { id: 'zerodha', label: 'Zerodha Orders' },
-          ] as const).map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`rounded-xl px-3 py-3 text-left transition-all ${activeTab === tab.id ? 'bg-emerald-300 text-[#04110d] shadow-lg shadow-amber-500/10' : 'bg-[#070d18] text-slate-300 hover:bg-[#131f38] hover:text-white'}`}
-            >
-              <span className="block text-xs font-bold">{tab.label}</span>
-              {'count' in tab && <span className={`mt-1 block text-[10px] ${activeTab === tab.id ? 'text-slate-800' : 'text-slate-500'}`}>{tab.count} records</span>}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {activeTab === 'overview' && (
         <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] px-4 py-3">
           <p className="text-sm font-bold text-white">Trading Overview</p>
@@ -649,6 +627,28 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         </div>
       </div>
       )}
+
+      {/* Equity Trading workspace navigation - placed directly above the trade ledger */}
+      <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-2.5 shadow-lg shadow-black/10">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {([
+            { id: 'overview', label: 'Overview', count: trades.length },
+            { id: 'OPEN', label: 'Open Positions', count: trades.filter((t) => t.status === 'OPEN').length },
+            { id: 'CLOSED', label: 'Closed Trades', count: trades.filter((t) => t.status === 'CLOSED').length },
+            { id: 'tools', label: 'Reports & Tools' },
+            { id: 'zerodha', label: 'Zerodha Orders' },
+          ] as const).map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`min-h-[58px] rounded-xl border px-3 py-2.5 text-left transition-all focus:outline-none focus:ring-2 focus:ring-emerald-300/60 ${activeTab === tab.id ? 'border-emerald-300 bg-emerald-300 text-[#04110d] shadow-md shadow-emerald-400/10' : 'border-[#1e2e4f] bg-[#070d18] text-slate-300 hover:border-slate-500 hover:bg-[#131f38] hover:text-white'}`}
+            >
+              <span className="block text-xs font-bold leading-tight">{tab.label}</span>
+              {'count' in tab && <span className={`mt-1 block text-[10px] ${activeTab === tab.id ? 'text-slate-700' : 'text-slate-500'}`}>{tab.count} records</span>}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {activeTab !== 'tools' && activeTab !== 'zerodha' && (
         <div className="space-y-3">
