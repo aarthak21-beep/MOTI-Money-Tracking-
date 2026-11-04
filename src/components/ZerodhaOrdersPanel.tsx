@@ -21,6 +21,7 @@ const ORDERS_KEY = 'moti_kite_orders_history_v1';
 const TRADES_KEY = 'moti_kite_trades_history_v1';
 const HOLDINGS_KEY = 'moti_kite_holdings_v1';
 const POSITIONS_KEY = 'moti_kite_positions_v1';
+const SKIP_AUTO_HISTORY_KEY = 'moti_kite_skip_auto_history_after_clear_v1';
 
 const readList = <T,>(key: string): T[] => {
   try { const value = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(value) ? value : []; }
@@ -112,6 +113,9 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
       if (!active) return;
       setConnected(Boolean(result.connected));
       if (result.lastAutoSync) setLastSync(result.lastAutoSync);
+      // A user clear must remain effective across reloads. Do not silently
+      // repopulate the deleted local history from the Worker on app startup.
+      if (localStorage.getItem(SKIP_AUTO_HISTORY_KEY) === '1') return;
       const history = await api('/kite/auto-history');
       if (!active) return;
       const nextOrders = mergeUnique(orders, history.orders || [], 'order_id');
@@ -155,6 +159,8 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
 
   const syncOrders = async () => {
     setBusy(true); setMessage('');
+    // An explicit manual sync is the user's consent to fetch Zerodha history again.
+    localStorage.removeItem(SKIP_AUTO_HISTORY_KEY);
     try {
       const result = await api('/kite/orders');
       const nextOrders = mergeUnique(orders, result.historyOrders || result.orders || [], 'order_id');
@@ -178,6 +184,7 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
 
   const clearSyncedData = () => {
     if (!window.confirm('Clear only imported Zerodha orders, fills, holdings, positions and Zerodha-generated journal rows from this device? Other MOTI data will remain unchanged.')) return;
+    localStorage.setItem(SKIP_AUTO_HISTORY_KEY, '1');
     setOrders([]); setExecutions([]); setHoldings([]); setPositions([]);
     setJournalSummary(null);
     [ORDERS_KEY, TRADES_KEY, HOLDINGS_KEY, POSITIONS_KEY].forEach((key) => localStorage.removeItem(key));
