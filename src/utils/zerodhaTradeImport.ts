@@ -133,9 +133,13 @@ export const buildZerodhaJournal = (
     if (lot.remaining > 0) generated.push(makeRecord('kite:open:' + lot.fill.trade_id, lot.fill, lot.remaining));
   }));
 
-  const manualTrades = existingTrades.filter((trade) =>
-    trade.source !== 'ZERODHA' && !trade.id.startsWith('kite:')
-  );
+  const manualTrades = existingTrades.filter((trade) => {
+    const notes = String(trade.notes || '').toLowerCase();
+    return !(trade.source === 'ZERODHA' || trade.id.startsWith('kite:') ||
+      Boolean(trade.brokerTradeIds?.length) ||
+      notes.includes('imported from zerodha') ||
+      notes.includes('zerodha sell execution'));
+  });
   const combined = [...manualTrades, ...generated].map((trade, index) => ({ ...trade, serialNumber: index + 1 }));
   return {
     trades: combined,
