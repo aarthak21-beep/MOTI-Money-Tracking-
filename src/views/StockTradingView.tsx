@@ -23,7 +23,6 @@ import { EquityRiskCalculator } from './EquityRiskCalculator';
 import { TradeNotesJournal } from './TradeNotesJournal';
 import { TradingDisciplineTracker } from './TradingDisciplineTracker';
 import { EquityTradeCalendar } from './EquityTradeCalendar';
-import { StrategyPerformanceReport } from './StrategyPerformanceReport';
 import { MonthlyTradingReview } from './MonthlyTradingReview';
 import { OpenPortfolioAllocation } from './OpenPortfolioAllocation';
 import { ZerodhaOrdersPanel } from '../components/ZerodhaOrdersPanel';
@@ -746,7 +745,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       {/* Detailed trading performance analytics; read-only and never mutates saved trades */}
       <TradingAnalyticsView trades={trades} />
       <EquityTradeCalendar trades={trades} />
-      <StrategyPerformanceReport trades={trades} />
       <MonthlyTradingReview trades={trades} />
       <OpenPortfolioAllocation trades={trades} />
       <EquityRiskCalculator />
