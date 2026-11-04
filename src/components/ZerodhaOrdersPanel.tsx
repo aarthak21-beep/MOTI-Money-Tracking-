@@ -8,6 +8,8 @@ type KiteOrder = {
   price?: number; status?: string; order_timestamp?: string; exchange_timestamp?: string;
   product?: string; order_type?: string; status_message?: string;
 };
+type KiteHolding = { tradingsymbol: string; exchange?: string; quantity?: number; average_price?: number; last_price?: number; pnl?: number; product?: string };
+type KitePosition = { tradingsymbol: string; exchange?: string; product?: string; quantity?: number; average_price?: number; last_price?: number; pnl?: number; realised?: number; unrealised?: number };
 type KiteTrade = {
   trade_id: string; order_id?: string; exchange?: string; tradingsymbol?: string;
   transaction_type?: string; quantity?: number; price?: number; fill_timestamp?: string; product?: string;
@@ -17,6 +19,8 @@ const URL_KEY = 'moti_kite_worker_url_v1';
 const PASSWORD_KEY = 'moti_kite_worker_password_session';
 const ORDERS_KEY = 'moti_kite_orders_history_v1';
 const TRADES_KEY = 'moti_kite_trades_history_v1';
+const HOLDINGS_KEY = 'moti_kite_holdings_v1';
+const POSITIONS_KEY = 'moti_kite_positions_v1';
 
 const readList = <T,>(key: string): T[] => {
   try { const value = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(value) ? value : []; }
@@ -63,6 +67,8 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
   const [password, setPassword] = useState(() => sessionStorage.getItem(PASSWORD_KEY) || '');
   const [orders, setOrders] = useState<KiteOrder[]>(() => readList<KiteOrder>(ORDERS_KEY));
   const [executions, setExecutions] = useState<KiteTrade[]>(() => readList<KiteTrade>(TRADES_KEY));
+  const [holdings, setHoldings] = useState<KiteHolding[]>(() => readList<KiteHolding>(HOLDINGS_KEY));
+  const [positions, setPositions] = useState<KitePosition[]>(() => readList<KitePosition>(POSITIONS_KEY));
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [lastSync, setLastSync] = useState('');
@@ -110,9 +116,13 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
       if (!active) return;
       const nextOrders = mergeUnique(orders, history.orders || [], 'order_id');
       const nextTrades = enrichTradePrices(mergeUnique(executions, history.trades || [], 'trade_id'), nextOrders);
-      setOrders(nextOrders); setExecutions(nextTrades);
+      const nextHoldings = history.holdings || [];
+      const nextPositions = history.positions || [];
+      setOrders(nextOrders); setExecutions(nextTrades); setHoldings(nextHoldings); setPositions(nextPositions);
       localStorage.setItem(ORDERS_KEY, JSON.stringify(nextOrders));
       localStorage.setItem(TRADES_KEY, JSON.stringify(nextTrades));
+      localStorage.setItem(HOLDINGS_KEY, JSON.stringify(nextHoldings));
+      localStorage.setItem(POSITIONS_KEY, JSON.stringify(nextPositions));
       if (history.lastAutoSyncStatus === 'success') {
         setMessage(history.lastAutoSyncMessage || 'Latest scheduled Zerodha sync loaded.');
       } else if (history.lastAutoSyncStatus === 'needs_login') {
@@ -148,12 +158,16 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
       const result = await api('/kite/orders');
       const nextOrders = mergeUnique(orders, result.historyOrders || result.orders || [], 'order_id');
       const nextTrades = enrichTradePrices(mergeUnique(executions, result.historyTrades || result.trades || [], 'trade_id'), nextOrders);
-      setOrders(nextOrders); setExecutions(nextTrades);
+      const nextHoldings = result.historyHoldings || result.holdings || [];
+      const nextPositions = result.historyPositions || result.positions || [];
+      setOrders(nextOrders); setExecutions(nextTrades); setHoldings(nextHoldings); setPositions(nextPositions);
       localStorage.setItem(ORDERS_KEY, JSON.stringify(nextOrders));
       localStorage.setItem(TRADES_KEY, JSON.stringify(nextTrades));
+      localStorage.setItem(HOLDINGS_KEY, JSON.stringify(nextHoldings));
+      localStorage.setItem(POSITIONS_KEY, JSON.stringify(nextPositions));
       setLastSync(result.fetchedAt || new Date().toISOString());
       setConnected(true);
-      setMessage(`Synced ${(result.orders || []).length} orders and ${(result.trades || []).length} executions. Saved history is retained on this device.`);
+      setMessage('Synced ' + (result.orders || []).length + ' orders, ' + (result.trades || []).length + ' fills, ' + nextHoldings.length + ' holdings and ' + nextPositions.length + ' positions.');
     } catch (error) {
       const text = error instanceof Error ? error.message : 'Could not sync orders.';
       setMessage(text);
@@ -178,7 +192,7 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="rounded-xl bg-cyan-300/10 p-2 text-cyan-300"><Activity className="h-5 w-5" /></div>
-            <div><h2 className="text-base font-black text-white">Zerodha Kite · Orders & Journal Sync</h2><p className="text-[11px] text-slate-400">Read-only order book and executed trade book</p></div>
+            <div><h2 className="text-base font-black text-white">Zerodha Kite · Full Portfolio Sync</h2><p className="text-[11px] text-slate-400">Orders · Executions · Demat Holdings · Trading Positions</p></div>
           </div>
           <span className={`rounded-full border px-3 py-1 text-[10px] font-bold ${connected ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300' : 'border-slate-500/30 bg-slate-500/10 text-slate-400'}`}>
             {connected ? 'CONNECTED' : 'NOT CONNECTED'}
@@ -198,7 +212,7 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
           <button onClick={() => exportCsv('MOTI_Zerodha_Orders.csv', orders as unknown as Array<Record<string, unknown>>)} disabled={!orders.length} className="rounded-xl border border-[#29405e] px-3 py-2 text-xs font-bold text-slate-300 disabled:opacity-40">Export Orders CSV</button>
           <button onClick={() => exportCsv('MOTI_Zerodha_Executions.csv', executions as unknown as Array<Record<string, unknown>>)} disabled={!executions.length} className="rounded-xl border border-[#29405e] px-3 py-2 text-xs font-bold text-slate-300 disabled:opacity-40">Export Fills CSV</button>
           <button disabled={busy} onClick={connect} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 px-4 py-2 text-xs font-black text-slate-950 disabled:opacity-50"><Link2 className="h-4 w-4" /> Connect Zerodha</button>
-          <button disabled={busy || !connected} onClick={syncOrders} className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-xs font-bold text-cyan-200 disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} /> Sync orders</button>
+          <button disabled={busy || !connected} onClick={syncOrders} className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-xs font-bold text-cyan-200 disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} /> Sync all Zerodha</button>
           <button disabled={busy || !password} onClick={disconnect} className="inline-flex items-center gap-2 rounded-xl border border-rose-400/20 px-3 py-2 text-xs font-bold text-rose-300 disabled:opacity-40"><Unplug className="h-4 w-4" /> Disconnect</button>
         </div>
         {message && <p className="mt-3 rounded-xl border border-cyan-300/15 bg-cyan-300/5 p-3 text-xs text-cyan-100">{message}</p>}
@@ -207,6 +221,20 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
         {lastSync && <p className="mt-2 text-[10px] text-slate-500">Last synced: {dateText(lastSync)}</p>}
       </div>
 
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[{ label: 'Demat Holdings', value: holdings.length }, { label: 'Net Positions', value: positions.length }].map((item) => (
+          <div key={item.label} className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-3"><p className="text-[10px] font-bold uppercase text-slate-500">{item.label}</p><p className="mt-1 text-xl font-black text-white">{item.value}</p></div>
+        ))}
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
+        <div className="border-b border-[#1e2e4f] p-4"><h3 className="text-sm font-black text-white">Demat Holdings</h3><p className="text-[10px] text-slate-500">Zerodha current delivery holdings with average buy price and market value</p></div>
+        <div className="max-h-[320px] overflow-auto"><table className="w-full min-w-[620px] text-left text-xs"><thead className="sticky top-0 bg-[#101d33] text-[10px] uppercase text-slate-400"><tr>{['Stock','Qty','Avg. Buy','LTP','P&L'].map((x) => <th key={x} className="px-3 py-3">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{holdings.length ? holdings.map((h) => <tr key={(h.exchange || '') + h.tradingsymbol}><td className="px-3 py-3 font-bold text-white">{h.tradingsymbol}<span className="block text-[10px] text-slate-500">{h.exchange}</span></td><td className="px-3 py-3 text-slate-300">{h.quantity ?? 0}</td><td className="px-3 py-3 text-slate-300">₹{money(h.average_price)}</td><td className="px-3 py-3 text-slate-300">₹{money(h.last_price)}</td><td className={`px-3 py-3 font-bold ${(h.pnl || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>₹{money(h.pnl)}</td></tr>) : <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-500">No Demat holdings returned by Zerodha.</td></tr>}</tbody></table></div>
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
+        <div className="border-b border-[#1e2e4f] p-4"><h3 className="text-sm font-black text-white">Net Trading Positions</h3><p className="text-[10px] text-slate-500">Current net positions including intraday and carried positions</p></div>
+        <div className="max-h-[320px] overflow-auto"><table className="w-full min-w-[620px] text-left text-xs"><thead className="sticky top-0 bg-[#101d33] text-[10px] uppercase text-slate-400"><tr>{['Stock','Product','Qty','Avg. Price','LTP','P&L'].map((x) => <th key={x} className="px-3 py-3">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{positions.length ? positions.map((p) => <tr key={(p.exchange || '') + p.tradingsymbol + (p.product || '')}><td className="px-3 py-3 font-bold text-white">{p.tradingsymbol}<span className="block text-[10px] text-slate-500">{p.exchange}</span></td><td className="px-3 py-3 text-slate-400">{p.product || '—'}</td><td className="px-3 py-3 text-slate-300">{p.quantity ?? 0}</td><td className="px-3 py-3 text-slate-300">₹{money(p.average_price)}</td><td className="px-3 py-3 text-slate-300">₹{money(p.last_price)}</td><td className={`px-3 py-3 font-bold ${(p.pnl || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>₹{money(p.pnl)}</td></tr>) : <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">No net positions returned by Zerodha.</td></tr>}</tbody></table></div>
+      </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[{ label: 'Total Orders', value: orders.length }, { label: 'Completed', value: completed }, { label: 'Pending', value: pending }, { label: 'Executed Fills', value: executions.length }].map((item) => (
           <div key={item.label} className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-3"><p className="text-[10px] font-bold uppercase text-slate-500">{item.label}</p><p className="mt-1 text-xl font-black text-white">{item.value}</p></div>
@@ -230,7 +258,7 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
           </table>
         </div>
       </div>
-      <div className="flex items-start gap-2 rounded-xl border border-amber-300/15 bg-amber-300/5 p-3 text-[10px] leading-relaxed text-amber-100/80"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Read-only connector: MOTI can only fetch orders and executions. It cannot place, modify or cancel orders, and it does not request holdings, positions, funds or live market prices. Kite exposes the current trading day’s order/trade book; MOTI keeps synced history in this browser’s local storage. The Worker can automatically sync once per weekday at 3:45 PM IST after you complete Zerodha login that day. Kite tokens expire at 6:00 AM, so daily login is still required; manual Sync remains available as a fallback. Keep your normal MOTI JSON backup.</p></div>
+      <div className="flex items-start gap-2 rounded-xl border border-amber-300/15 bg-amber-300/5 p-3 text-[10px] leading-relaxed text-amber-100/80"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Read-only connector: MOTI fetches orders, executions, Demat holdings and net positions. It cannot place, modify or cancel orders. Orders and executions are the current trading day's book; holdings and positions are current portfolio snapshots. Kite exposes the current trading day’s order/trade book; MOTI keeps synced history in this browser’s local storage. The Worker can automatically sync once per weekday at 3:45 PM IST after you complete Zerodha login that day. Kite tokens expire at 6:00 AM, so daily login is still required; manual Sync remains available as a fallback. Keep your normal MOTI JSON backup.</p></div>
     </section>
   );
 };
