@@ -65,6 +65,9 @@ export interface StockTrade {
   targetFollowed?: 'yes' | 'no' | 'na';
   disciplineMistakes?: string[];
   disciplineImprovement?: string;
+  source?: 'ZERODHA' | 'MANUAL';
+  brokerTradeIds?: string[];
+  chargesKnown?: boolean;
 }
 
 export interface WeeklyIncomeRecord {
