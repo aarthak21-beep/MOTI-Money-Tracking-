@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { KiteExecution, KiteImportSummary } from '../utils/zerodhaTradeImport';
 import { Activity, Link2, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
 
 type KiteOrder = {
@@ -42,7 +43,9 @@ const exportCsv = (filename: string, rows: Array<Record<string, unknown>>) => {
   URL.revokeObjectURL(url);
 };
 
-export const ZerodhaOrdersPanel: React.FC = () => {
+interface ZerodhaOrdersPanelProps { onExecutionsChange?: (executions: KiteExecution[]) => KiteImportSummary | void; }
+
+export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecutionsChange }) => {
   const [workerUrl, setWorkerUrl] = useState(() => localStorage.getItem(URL_KEY) || '');
   const [password, setPassword] = useState(() => sessionStorage.getItem(PASSWORD_KEY) || '');
   const [orders, setOrders] = useState<KiteOrder[]>(() => readList<KiteOrder>(ORDERS_KEY));
@@ -51,6 +54,15 @@ export const ZerodhaOrdersPanel: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [lastSync, setLastSync] = useState('');
   const [message, setMessage] = useState('');
+  const [journalSummary, setJournalSummary] = useState<KiteImportSummary | null>(null);
+  const onExecutionsChangeRef = useRef(onExecutionsChange);
+
+  useEffect(() => { onExecutionsChangeRef.current = onExecutionsChange; }, [onExecutionsChange]);
+  useEffect(() => {
+    if (!executions.length) return;
+    const summary = onExecutionsChangeRef.current?.(executions);
+    if (summary) setJournalSummary(summary);
+  }, [executions]);
 
   const baseUrl = workerUrl.trim().replace(/\/+$/, '');
   const api = async (path: string, method = 'GET') => {
@@ -153,7 +165,7 @@ export const ZerodhaOrdersPanel: React.FC = () => {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="rounded-xl bg-cyan-300/10 p-2 text-cyan-300"><Activity className="h-5 w-5" /></div>
-            <div><h2 className="text-base font-black text-white">Zerodha Kite · Orders only</h2><p className="text-[11px] text-slate-400">Read-only order book and executed trade book</p></div>
+            <div><h2 className="text-base font-black text-white">Zerodha Kite · Orders & Journal Sync</h2><p className="text-[11px] text-slate-400">Read-only order book and executed trade book</p></div>
           </div>
           <span className={`rounded-full border px-3 py-1 text-[10px] font-bold ${connected ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300' : 'border-slate-500/30 bg-slate-500/10 text-slate-400'}`}>
             {connected ? 'CONNECTED' : 'NOT CONNECTED'}
@@ -177,6 +189,7 @@ export const ZerodhaOrdersPanel: React.FC = () => {
           <button disabled={busy || !password} onClick={disconnect} className="inline-flex items-center gap-2 rounded-xl border border-rose-400/20 px-3 py-2 text-xs font-bold text-rose-300 disabled:opacity-40"><Unplug className="h-4 w-4" /> Disconnect</button>
         </div>
         {message && <p className="mt-3 rounded-xl border border-cyan-300/15 bg-cyan-300/5 p-3 text-xs text-cyan-100">{message}</p>}
+        {journalSummary && <div className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-100"><p className="font-bold">Equity Journal reconciliation</p><p className="mt-1">{journalSummary.eligibleFills} eligible NSE/BSE fills · {journalSummary.importedJournalRows} journal rows generated.</p>{journalSummary.unmatchedSellFills > 0 && <p className="mt-1 text-amber-200">Attention: {journalSummary.unmatchedSellFills} SELL fills ({journalSummary.unmatchedSellQuantity} shares) have no earlier BUY fill in the available history and were not matched.</p>}</div>}
         <p className="mt-2 text-[10px] leading-relaxed text-cyan-100/70">Automatic sync: every weekday at 3:45 PM IST. For it to work, complete Zerodha Connect once after 6:00 AM on each trading day; Kite access tokens expire daily. You do not need to press Sync orders.</p>
         {lastSync && <p className="mt-2 text-[10px] text-slate-500">Last synced: {dateText(lastSync)}</p>}
       </div>

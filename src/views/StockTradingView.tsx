@@ -27,6 +27,7 @@ import { StrategyPerformanceReport } from './StrategyPerformanceReport';
 import { MonthlyTradingReview } from './MonthlyTradingReview';
 import { OpenPortfolioAllocation } from './OpenPortfolioAllocation';
 import { ZerodhaOrdersPanel } from '../components/ZerodhaOrdersPanel';
+import { buildZerodhaJournal, type KiteExecution } from '../utils/zerodhaTradeImport';
 
 // Zerodha NSE equity-delivery estimate (resident individual account).
 // Brokerage is zero; statutory/exchange fees still apply.
@@ -55,7 +56,7 @@ const consolidateOpenPositions = (items: StockTrade[]): StockTrade[] => {
 
   for (const trade of items) {
     const symbol = trade.stockName.trim().toUpperCase();
-    if (trade.status !== 'OPEN') {
+    if (trade.source === 'ZERODHA' || trade.status !== 'OPEN') {
       result.push(trade);
       continue;
     }
@@ -109,6 +110,12 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   const [currentMarketPrice, setCurrentMarketPrice] = useState('');
   const [notes, setNotes] = useState('');
   const [strategy, setStrategy] = useState('');
+
+  const handleZerodhaExecutions = (executions: KiteExecution[]) => {
+    const result = buildZerodhaJournal(trades, executions);
+    onSaveTrades(result.trades);
+    return result.summary;
+  };
 
   // One-time cleanup on load: legacy duplicate OPEN entries become one weighted-average position.
   useEffect(() => {
@@ -180,6 +187,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       winRate,
       bestTrade,
       worstTrade,
+      hasUnknownCharges: trades.some((trade) => trade.status === 'CLOSED' && trade.chargesKnown === false),
     };
   }, [trades]);
 
@@ -191,7 +199,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       if (!day || !month || !year) return null;
       return new Date(year, month - 1, day);
     };
-    const closed = trades.filter((trade) => trade.status === 'CLOSED' && trade.exitDate);
+    const closed = trades.filter((trade) => trade.status === 'CLOSED' && trade.exitDate && trade.chargesKnown !== false);
     const aggregate = (period: 'week' | 'month') => {
       const buckets = new Map<string, { label: string; brokerage: number; dp: number; statutory: number; total: number; dpKeys: Set<string> }>();
       closed.forEach((trade) => {
@@ -491,7 +499,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
-            Equity Delivery only · Zerodha-style charges estimate · No intraday or F&O.
+            NSE/BSE equity cash executions · F&O excluded · imported fills show P&L before charges when actual charges are unavailable.
           </p>
         </div>
 
@@ -576,7 +584,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       {activeTab === 'overview' && (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
         <div className="rounded-2xl border border-emerald-500/30 bg-[#0d1527] p-3.5">
-          <span className="text-[11px] font-semibold text-slate-400">Realized Net P&L</span>
+          <span className="text-[11px] font-semibold text-slate-400">{metrics.hasUnknownCharges ? 'Realized P&L (net / pre-charges)' : 'Realized Net P&L'}</span>
           <div
             className={`mt-1 text-lg font-black ${
               metrics.realizedNetPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'
@@ -584,7 +592,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           >
             {metrics.realizedNetPnl >= 0 ? '+' : ''}₹{formatINR(metrics.realizedNetPnl)}
           </div>
-          <p className="text-[10px] text-slate-500">Gross: ₹{formatINR(metrics.realizedGrossPnl)}</p>
+          <p className="text-[10px] text-slate-500">{metrics.hasUnknownCharges ? 'Zerodha fills are before unavailable charges' : `Gross: ₹${formatINR(metrics.realizedGrossPnl)}`}</p>
         </div>
 
         <div className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-3.5">
@@ -712,7 +720,9 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         </div>
       )}
 
-      {activeTab === 'zerodha' && <ZerodhaOrdersPanel />}
+      <div className={activeTab === 'zerodha' ? '' : 'hidden'}>
+        <ZerodhaOrdersPanel onExecutionsChange={handleZerodhaExecutions} />
+      </div>
 
       {activeTab === 'tools' && (
         <div className="space-y-5">
@@ -722,14 +732,14 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           </div>
       {/* Brokerage and DP charge reports */}
       <section className="space-y-3 rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4">
-        <div><h2 className="text-sm font-black text-white">BROKERAGE &amp; DP CHARGES REPORT</h2><p className="text-[10px] text-slate-400">Closed Equity Delivery trades · grouped by exit date · estimated Zerodha resident-individual charges</p></div>
+        <div><h2 className="text-sm font-black text-white">BROKERAGE &amp; DP CHARGES REPORT</h2><p className="text-[10px] text-slate-400">Manual journal trades with saved charge estimates · Zerodha-imported rows are excluded because actual charges are unavailable</p></div>
         <div className="grid gap-4 lg:grid-cols-2">
           {([{ title: 'Weekly Charges', rows: chargeReports.weekly }, { title: 'Monthly Charges', rows: chargeReports.monthly }] as const).map((report) => <div key={report.title} className="overflow-x-auto rounded-xl border border-[#1e2e4f]">
             <h3 className="px-3 py-2 text-xs font-bold text-cyan-300">{report.title}</h3>
             <table className="w-full min-w-[440px] text-xs"><thead><tr className="bg-[#0a101f] text-[10px] uppercase text-slate-400"><th className="px-2 py-2 text-left">Period</th><th className="px-2 py-2 text-right">Brokerage</th><th className="px-2 py-2 text-right">DP</th><th className="px-2 py-2 text-right">Other Taxes</th><th className="px-2 py-2 text-right">Total</th></tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{report.rows.length ? report.rows.map((row) => <tr key={row.key}><td className="px-2 py-2 text-slate-300">{row.label}</td><td className="px-2 py-2 text-right">{formatINR(row.brokerage)}</td><td className="px-2 py-2 text-right">{formatINR(row.dp)}</td><td className="px-2 py-2 text-right">{formatINR(row.statutory)}</td><td className="px-2 py-2 text-right font-bold text-cyan-300">{formatINR(row.total)}</td></tr>) : <tr><td colSpan={5} className="px-2 py-4 text-center text-slate-500">No closed trades yet</td></tr>}</tbody></table>
           </div>)}
         </div>
-        <p className="text-[10px] leading-relaxed text-slate-500">Zerodha equity-delivery brokerage is ₹0. DP estimate is ₹15.34 per stock per sell-day (standard male primary-holder rate); actual DP can differ by account holder category. Other taxes are derived from the saved trade charge estimates.</p>
+        <p className="text-[10px] leading-relaxed text-slate-500">This report includes only manual journal trades with saved charge estimates. Zerodha-imported executions are excluded because the read-only connector does not provide actual brokerage, statutory taxes or DP charges.</p>
       </section>
 
       {/* Detailed trading performance analytics; read-only and never mutates saved trades */}
