@@ -112,14 +112,14 @@ export const EquityTradeCalendar: React.FC<EquityTradeCalendarProps> = ({ trades
 
       <div className="overflow-hidden rounded-lg border border-[#1e2e4f] bg-[#070d18]">
         <div className="grid grid-cols-7 border-b border-[#1e2e4f]">
-          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <div key={day} className="py-2 text-center text-[10px] font-bold text-slate-500">{day}</div>)}
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <div key={day} className="py-1.5 text-center text-[9px] font-bold text-slate-500">{day}</div>)}
         </div>
         <div className="grid grid-cols-7">
           {calendar.cells.map((cell, index) => {
             const bucket = cell.key ? calendar.byDay.get(cell.key) : undefined;
             const active = cell.key === selectedDay;
-            return <button key={cell.key || `blank-${index}`} type="button" disabled={!cell.day} onClick={() => setSelectedDay(cell.key)} className={`min-h-12 border-b border-r border-[#1e2e4f] p-1 text-left transition-colors sm:min-h-14 ${!cell.day ? 'bg-[#090f1d]' : active ? 'bg-amber-500/15 ring-1 ring-inset ring-amber-400' : 'hover:bg-slate-800/60'}`}>
-              {cell.day && <><span className="text-[10px] font-semibold text-slate-300">{cell.day}</span>{bucket && <div className="mt-1"><p className={`whitespace-nowrap text-[8px] font-black leading-tight tracking-tight sm:text-[9px] ${bucket.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{bucket.pnl >= 0 ? '+' : ''}{money(bucket.pnl)}</p><p className="whitespace-nowrap text-[7px] leading-tight text-slate-500">{bucket.count}<span className="sm:hidden"> tr</span><span className="hidden sm:inline"> trade{bucket.count === 1 ? '' : 's'}</span></p></div>}</>}
+            return <button key={cell.key || `blank-${index}`} type="button" disabled={!cell.day} onClick={() => setSelectedDay(cell.key)} className={`relative flex min-h-10 flex-col items-center justify-center border-b border-r border-[#1e2e4f] px-0.5 py-1 text-center transition-colors sm:min-h-12 ${!cell.day ? 'bg-[#090f1d]' : active ? 'bg-amber-500/15 ring-1 ring-inset ring-amber-400' : 'hover:bg-slate-800/60'}`}>
+              {cell.day && <><span className="absolute left-1 top-0.5 text-[9px] font-semibold text-slate-400">{cell.day}</span>{bucket && <div className="mt-2 flex w-full flex-col items-center justify-center"><p className={`max-w-full whitespace-nowrap text-[8px] font-black leading-tight tracking-tight sm:text-[9px] ${bucket.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{bucket.pnl >= 0 ? '+' : ''}{money(bucket.pnl)}</p><p className="whitespace-nowrap text-[7px] leading-tight text-slate-500">{bucket.count}<span className="sm:hidden"> tr</span><span className="hidden sm:inline"> trade{bucket.count === 1 ? '' : 's'}</span></p></div>}</>}
             </button>;
           })}
         </div>
