@@ -725,17 +725,32 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       </div>
 
       {activeTab === 'tools' && (
-        <div className="space-y-5">
-          <div>
-            <h2 className="text-lg font-black text-white">Reports & Tools</h2>
-            <p className="mt-1 text-xs text-slate-400">Detailed analysis and review tools are grouped here to keep the trading workspace clean.</p>
+        <div className="reports-tools-page space-y-6">
+          <div className="reports-tools-hero">
+            <div className="reports-tools-orb reports-tools-orb-one" />
+            <div className="reports-tools-orb reports-tools-orb-two" />
+            <div className="relative z-10 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_10px_#6ee7b7]" /> Trading intelligence
+                </div>
+                <h2 className="text-2xl font-black tracking-tight text-white sm:text-3xl">Reports <span className="text-emerald-300">&</span> Tools</h2>
+                <p className="mt-2 max-w-xl text-xs leading-5 text-slate-300 sm:text-sm">Your trading performance, monthly discipline, portfolio exposure and risk planning — all in one place.</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-slate-950/40 px-4 py-2.5 backdrop-blur">
+                <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">Workspace</p>
+                <p className="mt-1 text-xs font-semibold text-cyan-200">Equity delivery · Read only</p>
+              </div>
+            </div>
           </div>
-      {/* Detailed trading performance analytics; read-only and never mutates saved trades */}
-      <TradingAnalyticsView trades={trades} />
-      <EquityTradeCalendar trades={trades} />
-      <MonthlyTradingReview trades={trades} />
-      <OpenPortfolioAllocation trades={trades} />
-      <EquityRiskCalculator />
+          <div className="reports-tools-content space-y-6">
+            {/* Detailed trading performance analytics; read-only and never mutates saved trades */}
+            <TradingAnalyticsView trades={trades} />
+            <EquityTradeCalendar trades={trades} />
+            <MonthlyTradingReview trades={trades} />
+            <OpenPortfolioAllocation trades={trades} />
+            <EquityRiskCalculator />
+          </div>
         </div>
       )}
 
