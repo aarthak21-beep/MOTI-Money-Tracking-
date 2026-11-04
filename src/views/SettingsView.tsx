@@ -329,7 +329,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             <p className="mt-3 text-xs text-slate-400 leading-relaxed">
-              Export a complete JSON snapshot of your financial records. The file is not encrypted; store it somewhere private.
+              Export a complete JSON snapshot, including Zerodha orders, fills, holdings and positions. Save backups regularly; the file is not encrypted, so store it somewhere private.
             </p>
 
             <div className="mt-4 space-y-2.5">
@@ -360,7 +360,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <h2 className="text-base font-bold text-white">Google Sheets Cloud Sync</h2>
             </div>
             <p className="mt-3 text-xs text-slate-400 leading-relaxed">
-              Connect your Google Apps Script Web App. Only Weekly Capital Growth records sync between devices; other financial modules stay local.
+              Connect your Google Apps Script Web App. Only Weekly Capital Growth records sync between devices. Zerodha history is included in the JSON backup and can be restored on another device.
             </p>
             <label className="mt-4 block text-xs font-semibold text-slate-300">Apps Script Web App URL</label>
             <input
