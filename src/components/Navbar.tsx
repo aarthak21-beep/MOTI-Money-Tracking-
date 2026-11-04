@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Bell,
-  Sparkles,
   Lock,
   Plus,
   TrendingUp,
@@ -12,12 +11,7 @@ import {
   ExternalLink,
   LayoutDashboard,
   CalendarDays,
-  Receipt,
   Wallet,
-  ArrowLeftRight,
-  PiggyBank,
-  Calculator,
-  BarChart3,
   Settings
 } from 'lucide-react';
 import { UserProfile, AppNotification, FinancialContextSummary } from '../types';
@@ -43,7 +37,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   profile,
   summary,
   notifications,
-  onOpenAi,
   onOpenQuickAdd,
   onOpenSettings,
   onSelectTab,
@@ -247,13 +240,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
             { id: 'stockTrading', label: 'Stocks', icon: TrendingUp },
             { id: 'weeklyIncome', label: 'Weekly', icon: CalendarDays },
-            { id: 'dailyEarnings', label: 'Earnings', icon: Wallet },
-            { id: 'businessInvoices', label: 'Invoices', icon: Receipt },
-            { id: 'expenseManagement', label: 'Expenses', icon: Wallet },
-            { id: 'cashflowManagement', label: 'Cashflow', icon: ArrowLeftRight },
-            { id: 'savingsGoals', label: 'Savings', icon: PiggyBank },
-            { id: 'calculators', label: 'Tools', icon: Calculator },
-            { id: 'analyticsReports', label: 'Reports', icon: BarChart3 },
+            
           ].map((item) => {
             const Icon = item.icon;
             const active = currentTab === item.id;
@@ -272,17 +259,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             );
           })}
-          <span className="mx-1 h-6 w-px shrink-0 bg-white/10" />
-          <button
-            onClick={onOpenAi}
-            className={`inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${
-              currentTab === 'aiAssistant'
-                ? 'border-cyan-300/30 bg-cyan-300/10 text-cyan-200'
-                : 'border-transparent text-slate-400 hover:border-cyan-300/20 hover:bg-cyan-300/5 hover:text-cyan-200'
-            }`}
-          >
-            <Sparkles className="h-4 w-4" /> AI
-          </button>
           <button
             onClick={onOpenSettings}
             className={`inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${
