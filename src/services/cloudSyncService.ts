@@ -24,6 +24,35 @@ export const CloudSyncService = {
     else localStorage.removeItem(CONFIG_KEY);
   },
 
+  async saveSnapshot(snapshot: Record<string, unknown>): Promise<void> {
+    const url = this.getUrl();
+    if (!url) throw new Error('Save your Apps Script URL first.');
+    const body = JSON.stringify({ action: 'save', snapshot });
+    writeQueue = writeQueue.catch(() => undefined).then(async () => {
+      await fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body });
+    });
+    await writeQueue;
+  },
+
+  loadSnapshot(): Promise<Record<string, unknown> | null> {
+    const url = this.getUrl();
+    if (!url) return Promise.reject(new Error('Apps Script URL is not configured.'));
+    return new Promise((resolve, reject) => {
+      const callbackName = `motiBackupCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const script = document.createElement('script');
+      const cleanup = () => { delete (window as any)[callbackName]; script.remove(); };
+      const timeout = window.setTimeout(() => { cleanup(); reject(new Error('Google Sheets backup restore timed out.')); }, 20000);
+      (window as any)[callbackName] = (response: { ok: boolean; snapshot?: Record<string, unknown> | null; error?: string }) => {
+        window.clearTimeout(timeout); cleanup();
+        if (!response.ok) reject(new Error(response.error || 'Could not load MOTI backup.'));
+        else resolve(response.snapshot || null);
+      };
+      script.onerror = () => { window.clearTimeout(timeout); cleanup(); reject(new Error('Could not connect to Google Apps Script. Check deployment URL and Google sign-in.')); };
+      script.src = `${url}${url.includes('?') ? '&' : '?'}action=load&callback=${callbackName}&_=${Date.now()}`;
+      document.body.appendChild(script);
+    });
+  },
+
   async saveWeekly(records: WeeklyIncomeRecord[]): Promise<void> {
     const url = this.getUrl();
     if (!url) throw new Error('Save your Apps Script URL first.');
