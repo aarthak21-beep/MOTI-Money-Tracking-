@@ -225,7 +225,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         const hasDp = trade.source !== 'ZERODHA' && (Number(trade.otherCharges) || 0) >= 15.34;
         const dpForTrade = hasDp ? 15.34 : 0;
         bucket.brokerage += Number(trade.brokerage) || 0;
-        bucket.dpKeys.add(dpKey);
+        if (hasDp) bucket.dpKeys.add(dpKey);
         bucket.statutory += Math.max(0, (Number(trade.otherCharges) || 0) - dpForTrade);
       });
       return Array.from(buckets.entries()).map(([key, bucket]) => {
