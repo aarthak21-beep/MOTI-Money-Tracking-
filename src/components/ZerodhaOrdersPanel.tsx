@@ -22,11 +22,15 @@ const TRADES_KEY = 'moti_kite_trades_history_v1';
 const HOLDINGS_KEY = 'moti_kite_holdings_v1';
 const POSITIONS_KEY = 'moti_kite_positions_v1';
 const SKIP_AUTO_HISTORY_KEY = 'moti_kite_skip_auto_history_after_clear_v1';
+const IGNORED_TRADE_IDS_KEY = 'moti_kite_cleared_trade_ids_v1';
+const IGNORED_ORDER_IDS_KEY = 'moti_kite_cleared_order_ids_v1';
 
 const readList = <T,>(key: string): T[] => {
   try { const value = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(value) ? value : []; }
   catch { return []; }
 };
+const readIgnoredIds = (key: string): Set<string> => new Set(readList<unknown>(key).filter((id): id is string => typeof id === 'string'));
+const withoutClearedRows = <T,>(rows: T[], key: keyof T, ignored: Set<string>): T[] => rows.filter((row) => !ignored.has(String(row[key] ?? '')));
 const mergeUnique = <T,>(oldRows: T[], newRows: T[], key: keyof T): T[] => {
   const map = new Map<string, T>();
   [...oldRows, ...newRows].forEach((row) => {
@@ -127,8 +131,12 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
       if (localStorage.getItem(SKIP_AUTO_HISTORY_KEY) === '1') return;
       const history = await api('/kite/auto-history');
       if (!active) return;
-      const nextOrders = mergeUnique(orders, history.orders || [], 'order_id');
-      const nextTrades = enrichTradePrices(mergeUnique(executions, history.trades || [], 'trade_id'), nextOrders);
+      const ignoredOrders = readIgnoredIds(IGNORED_ORDER_IDS_KEY);
+      const ignoredTrades = readIgnoredIds(IGNORED_TRADE_IDS_KEY);
+      const freshOrders = withoutClearedRows(history.orders || [], 'order_id', ignoredOrders);
+      const freshTrades = withoutClearedRows(history.trades || [], 'trade_id', ignoredTrades);
+      const nextOrders = mergeUnique(orders, freshOrders, 'order_id');
+      const nextTrades = enrichTradePrices(mergeUnique(executions, freshTrades, 'trade_id'), nextOrders);
       const nextHoldings = history.holdings || [];
       const nextPositions = history.positions || [];
       setOrders(nextOrders); setExecutions(nextTrades); setHoldings(nextHoldings); setPositions(nextPositions);
@@ -172,8 +180,12 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
     localStorage.removeItem(SKIP_AUTO_HISTORY_KEY);
     try {
       const result = await api('/kite/orders');
-      const nextOrders = mergeUnique(orders, result.historyOrders || result.orders || [], 'order_id');
-      const nextTrades = enrichTradePrices(mergeUnique(executions, result.historyTrades || result.trades || [], 'trade_id'), nextOrders);
+      const ignoredOrders = readIgnoredIds(IGNORED_ORDER_IDS_KEY);
+      const ignoredTrades = readIgnoredIds(IGNORED_TRADE_IDS_KEY);
+      const freshOrders = withoutClearedRows(result.historyOrders || result.orders || [], 'order_id', ignoredOrders);
+      const freshTrades = withoutClearedRows(result.historyTrades || result.trades || [], 'trade_id', ignoredTrades);
+      const nextOrders = mergeUnique(orders, freshOrders, 'order_id');
+      const nextTrades = enrichTradePrices(mergeUnique(executions, freshTrades, 'trade_id'), nextOrders);
       const nextHoldings = result.historyHoldings || result.holdings || [];
       const nextPositions = result.historyPositions || result.positions || [];
       setOrders(nextOrders); setExecutions(nextTrades); setHoldings(nextHoldings); setPositions(nextPositions);
@@ -194,6 +206,12 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
   const clearSyncedData = () => {
     if (!window.confirm('Clear only imported Zerodha orders, fills, holdings, positions and Zerodha-generated journal rows from this device? Other MOTI data will remain unchanged.')) return;
     localStorage.setItem(SKIP_AUTO_HISTORY_KEY, '1');
+    const ignoredOrders = readIgnoredIds(IGNORED_ORDER_IDS_KEY);
+    orders.forEach((order) => { if (order.order_id) ignoredOrders.add(String(order.order_id)); });
+    localStorage.setItem(IGNORED_ORDER_IDS_KEY, JSON.stringify(Array.from(ignoredOrders)));
+    const ignoredTrades = readIgnoredIds(IGNORED_TRADE_IDS_KEY);
+    executions.forEach((trade) => { if (trade.trade_id) ignoredTrades.add(String(trade.trade_id)); });
+    localStorage.setItem(IGNORED_TRADE_IDS_KEY, JSON.stringify(Array.from(ignoredTrades)));
     setOrders([]); setExecutions([]); setHoldings([]); setPositions([]);
     setJournalSummary(null);
     [ORDERS_KEY, TRADES_KEY, HOLDINGS_KEY, POSITIONS_KEY].forEach((key) => localStorage.removeItem(key));
