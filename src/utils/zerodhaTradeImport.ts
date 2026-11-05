@@ -38,6 +38,7 @@ const timestamp = (value?: string): number => {
 export const buildZerodhaJournal = (
   existingTrades: StockTrade[],
   executions: KiteExecution[],
+  ignoredJournalRowIds: readonly string[] = [],
 ): { trades: StockTrade[]; summary: KiteImportSummary } => {
   const unique = new Map<string, KiteExecution>();
   executions.forEach((fill) => {
@@ -140,9 +141,11 @@ export const buildZerodhaJournal = (
       notes.includes('imported from zerodha') ||
       notes.includes('zerodha sell execution'));
   });
-  const combined = [...manualTrades, ...generated].map((trade, index) => ({ ...trade, serialNumber: index + 1 }));
+  const ignoredIds = new Set(ignoredJournalRowIds);
+  const visibleGenerated = generated.filter((trade) => !ignoredIds.has(trade.id));
+  const combined = [...manualTrades, ...visibleGenerated].map((trade, index) => ({ ...trade, serialNumber: index + 1 }));
   return {
     trades: combined,
-    summary: { eligibleFills: eligible.length, importedJournalRows: generated.length, unmatchedSellFills, unmatchedSellQuantity },
+    summary: { eligibleFills: eligible.length, importedJournalRows: visibleGenerated.length, unmatchedSellFills, unmatchedSellQuantity },
   };
 };

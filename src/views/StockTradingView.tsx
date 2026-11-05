@@ -32,6 +32,28 @@ interface StockTradingViewProps {
   onSaveTrades: (trades: StockTrade[]) => void;
 }
 
+const IGNORED_ZERODHA_JOURNAL_ROWS_KEY = 'moti_kite_ignored_journal_rows_v1';
+
+const readIgnoredZerodhaJournalRows = (): string[] => {
+  try {
+    const raw = window.localStorage.getItem(IGNORED_ZERODHA_JOURNAL_ROWS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+};
+
+const ignoreZerodhaJournalRow = (id: string) => {
+  const ignored = new Set(readIgnoredZerodhaJournalRows());
+  ignored.add(id);
+  try {
+    window.localStorage.setItem(IGNORED_ZERODHA_JOURNAL_ROWS_KEY, JSON.stringify(Array.from(ignored)));
+  } catch {
+    // The row is still deleted from the current journal if browser storage is unavailable.
+  }
+};
+
 // Consolidate duplicate OPEN entries for the same equity into one weighted-average position.
 const consolidateOpenPositions = (items: StockTrade[]): StockTrade[] => {
   const result: StockTrade[] = [];
@@ -105,13 +127,14 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   const [strategy, setStrategy] = useState('');
 
   const handleZerodhaExecutions = (executions: KiteExecution[]) => {
-    const result = buildZerodhaJournal(trades, executions);
+    const result = buildZerodhaJournal(trades, executions, readIgnoredZerodhaJournalRows());
     onSaveTrades(result.trades);
     return result.summary;
   };
 
   useEffect(() => {
     const clearZerodhaJournal = () => {
+      window.localStorage.removeItem(IGNORED_ZERODHA_JOURNAL_ROWS_KEY);
       const manualTrades = trades.filter((trade) => {
         const notes = String(trade.notes || '').toLowerCase();
         return !(trade.source === 'ZERODHA' || trade.id.startsWith('kite:') ||
@@ -404,6 +427,10 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   // Delete trade with confirmation
   const handleDeleteTrade = (id: string, name: string) => {
     if (window.confirm(`Are you sure you want to delete the trade for ${name}?`)) {
+      const deletedTrade = trades.find((trade) => trade.id === id);
+      if (deletedTrade?.source === 'ZERODHA' || id.startsWith('kite:')) {
+        ignoreZerodhaJournalRow(id);
+      }
       const updated = trades
         .filter((t) => t.id !== id)
         .map((t, idx) => ({ ...t, serialNumber: idx + 1 }));
