@@ -134,7 +134,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
 
   useEffect(() => {
     const clearZerodhaJournal = () => {
-      window.localStorage.removeItem(IGNORED_ZERODHA_JOURNAL_ROWS_KEY);
+      // Keep deleted-row tombstones so historical fills cannot recreate cleared journal rows.
       const manualTrades = trades.filter((trade) => {
         const notes = String(trade.notes || '').toLowerCase();
         return !(trade.source === 'ZERODHA' || trade.id.startsWith('kite:') ||
