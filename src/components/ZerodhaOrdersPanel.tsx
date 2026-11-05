@@ -50,6 +50,15 @@ const enrichTradePrices = (trades: KiteTrade[], orders: KiteOrder[]): KiteTrade[
 };
 const money = (value?: number) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const dateText = (value?: string) => value ? new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+const isToday = (value?: string) => {
+  if (!value) return false;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return false;
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
+};
 const exportCsv = (filename: string, rows: Array<Record<string, unknown>>) => {
   if (!rows.length) return;
   const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
@@ -202,8 +211,12 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
     setBusy(false);
   };
 
-  const completed = useMemo(() => orders.filter((o) => o.status === 'COMPLETE').length, [orders]);
-  const pending = useMemo(() => orders.filter((o) => ['OPEN', 'TRIGGER PENDING', 'VALIDATION PENDING', 'PUT ORDER REQ RECEIVED'].includes(o.status || '')).length, [orders]);
+  // Keep the complete local execution history for FIFO journal reconciliation,
+  // but show only the current trading day's activity in the Zerodha Order Book.
+  const todayOrders = useMemo(() => orders.filter((o) => isToday(o.exchange_timestamp || o.order_timestamp)), [orders]);
+  const todayExecutions = useMemo(() => executions.filter((t) => isToday(t.fill_timestamp)), [executions]);
+  const completed = useMemo(() => todayOrders.filter((o) => o.status === 'COMPLETE').length, [todayOrders]);
+  const pending = useMemo(() => todayOrders.filter((o) => ['OPEN', 'TRIGGER PENDING', 'VALIDATION PENDING', 'PUT ORDER REQ RECEIVED'].includes(o.status || '')).length, [todayOrders]);
 
   return (
     <section className="space-y-4">
@@ -256,25 +269,25 @@ export const ZerodhaOrdersPanel: React.FC<ZerodhaOrdersPanelProps> = ({ onExecut
         <div className="max-h-[320px] overflow-auto"><table className="w-full min-w-[620px] text-left text-xs"><thead className="sticky top-0 bg-[#101d33] text-[10px] uppercase text-slate-400"><tr>{['Stock','Product','Qty','Avg. Price','LTP','P&L'].map((x) => <th key={x} className="px-3 py-3">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{positions.length ? positions.map((p) => <tr key={(p.exchange || '') + p.tradingsymbol + (p.product || '')}><td className="px-3 py-3 font-bold text-white">{p.tradingsymbol}<span className="block text-[10px] text-slate-500">{p.exchange}</span></td><td className="px-3 py-3 text-slate-400">{p.product || '—'}</td><td className="px-3 py-3 text-slate-300">{p.quantity ?? 0}</td><td className="px-3 py-3 text-slate-300">₹{money(p.average_price)}</td><td className="px-3 py-3 text-slate-300">₹{money(p.last_price)}</td><td className={`px-3 py-3 font-bold ${(p.pnl || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>₹{money(p.pnl)}</td></tr>) : <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">No net positions returned by Zerodha.</td></tr>}</tbody></table></div>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[{ label: 'Total Orders', value: orders.length }, { label: 'Completed', value: completed }, { label: 'Pending', value: pending }, { label: 'Executed Fills', value: executions.length }].map((item) => (
+        {[{ label: 'Total Orders Today', value: todayOrders.length }, { label: 'Completed', value: completed }, { label: 'Pending', value: pending }, { label: 'Executed Fills Today', value: todayExecutions.length }].map((item) => (
           <div key={item.label} className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-3"><p className="text-[10px] font-bold uppercase text-slate-500">{item.label}</p><p className="mt-1 text-xl font-black text-white">{item.value}</p></div>
         ))}
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
-        <div className="flex items-center justify-between border-b border-[#1e2e4f] p-4"><div><h3 className="text-sm font-black text-white">Order Book</h3><p className="text-[10px] text-slate-500">Includes complete, pending, cancelled and rejected orders</p></div><span className="text-xs text-slate-400">{orders.length} records</span></div>
+        <div className="flex items-center justify-between border-b border-[#1e2e4f] p-4"><div><h3 className="text-sm font-black text-white">Order Book</h3><p className="text-[10px] text-slate-500">Today's complete, pending, cancelled and rejected orders only</p></div><span className="text-xs text-slate-400">{todayOrders.length} records today</span></div>
         <div className="max-h-[420px] overflow-auto">
           <table className="w-full min-w-[720px] text-left text-xs"><thead className="sticky top-0 bg-[#101d33] text-[10px] uppercase text-slate-400"><tr>{['Time','Stock','Side','Qty / Filled','Avg. Price','Order Type','Status'].map((x) => <th key={x} className="px-3 py-3">{x}</th>)}</tr></thead>
-            <tbody className="divide-y divide-[#1e2e4f]/60">{orders.length ? [...orders].reverse().map((o) => <tr key={o.order_id}><td className="whitespace-nowrap px-3 py-3 text-slate-400">{dateText(o.exchange_timestamp || o.order_timestamp)}</td><td className="px-3 py-3 font-bold text-white">{o.tradingsymbol || '—'}<span className="block text-[10px] text-slate-500">{o.exchange || ''}</span></td><td className={`px-3 py-3 font-black ${o.transaction_type === 'BUY' ? 'text-emerald-300' : 'text-rose-300'}`}>{o.transaction_type || '—'}</td><td className="px-3 py-3 text-slate-300">{o.quantity ?? 0} / {o.filled_quantity ?? 0}</td><td className="px-3 py-3 text-right text-slate-200">₹{money(o.average_price)}</td><td className="px-3 py-3 text-slate-400">{o.order_type || '—'}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${o.status === 'COMPLETE' ? 'bg-emerald-400/10 text-emerald-300' : o.status === 'REJECTED' || o.status === 'CANCELLED' ? 'bg-rose-400/10 text-rose-300' : 'bg-amber-400/10 text-amber-200'}`}>{o.status || 'UNKNOWN'}</span></td></tr>) : <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-500">No orders synced yet. Complete today's Zerodha login and wait for the scheduled sync.</td></tr>}</tbody>
+            <tbody className="divide-y divide-[#1e2e4f]/60">{todayOrders.length ? [...todayOrders].reverse().map((o) => <tr key={o.order_id}><td className="whitespace-nowrap px-3 py-3 text-slate-400">{dateText(o.exchange_timestamp || o.order_timestamp)}</td><td className="px-3 py-3 font-bold text-white">{o.tradingsymbol || '—'}<span className="block text-[10px] text-slate-500">{o.exchange || ''}</span></td><td className={`px-3 py-3 font-black ${o.transaction_type === 'BUY' ? 'text-emerald-300' : 'text-rose-300'}`}>{o.transaction_type || '—'}</td><td className="px-3 py-3 text-slate-300">{o.quantity ?? 0} / {o.filled_quantity ?? 0}</td><td className="px-3 py-3 text-right text-slate-200">₹{money(o.average_price)}</td><td className="px-3 py-3 text-slate-400">{o.order_type || '—'}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${o.status === 'COMPLETE' ? 'bg-emerald-400/10 text-emerald-300' : o.status === 'REJECTED' || o.status === 'CANCELLED' ? 'bg-rose-400/10 text-rose-300' : 'bg-amber-400/10 text-amber-200'}`}>{o.status || 'UNKNOWN'}</span></td></tr>) : <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-500">No orders synced yet. Complete today's Zerodha login and wait for the scheduled sync.</td></tr>}</tbody>
           </table>
         </div>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
-        <div className="flex items-center justify-between border-b border-[#1e2e4f] p-4"><div><h3 className="text-sm font-black text-white">Executed Trades</h3><p className="text-[10px] text-slate-500">Actual exchange fills; partial fills appear as separate executions</p></div><span className="text-xs text-slate-400">{executions.length} fills</span></div>
+        <div className="flex items-center justify-between border-b border-[#1e2e4f] p-4"><div><h3 className="text-sm font-black text-white">Executed Trades</h3><p className="text-[10px] text-slate-500">Today's actual exchange fills; partial fills appear separately</p></div><span className="text-xs text-slate-400">{todayExecutions.length} fills today</span></div>
         <div className="max-h-[360px] overflow-auto">
           <table className="w-full min-w-[620px] text-left text-xs"><thead className="sticky top-0 bg-[#101d33] text-[10px] uppercase text-slate-400"><tr>{['Fill Time','Stock','Side','Quantity','Fill Price','Trade ID'].map((x) => <th key={x} className="px-3 py-3">{x}</th>)}</tr></thead>
-            <tbody className="divide-y divide-[#1e2e4f]/60">{executions.length ? [...executions].reverse().map((t) => <tr key={t.trade_id}><td className="whitespace-nowrap px-3 py-3 text-slate-400">{dateText(t.fill_timestamp)}</td><td className="px-3 py-3 font-bold text-white">{t.tradingsymbol || '—'}<span className="block text-[10px] text-slate-500">{t.exchange || ''}</span></td><td className={`px-3 py-3 font-black ${t.transaction_type === 'BUY' ? 'text-emerald-300' : 'text-rose-300'}`}>{t.transaction_type || '—'}</td><td className="px-3 py-3 text-slate-300">{t.quantity ?? 0}</td><td className="px-3 py-3 text-slate-200">₹{money(t.price)}</td><td className="px-3 py-3 font-mono text-[10px] text-slate-500">{t.trade_id}</td></tr>) : <tr><td colSpan={6} className="px-3 py-10 text-center text-slate-500">No executed trades synced yet.</td></tr>}</tbody>
+            <tbody className="divide-y divide-[#1e2e4f]/60">{todayExecutions.length ? [...todayExecutions].reverse().map((t) => <tr key={t.trade_id}><td className="whitespace-nowrap px-3 py-3 text-slate-400">{dateText(t.fill_timestamp)}</td><td className="px-3 py-3 font-bold text-white">{t.tradingsymbol || '—'}<span className="block text-[10px] text-slate-500">{t.exchange || ''}</span></td><td className={`px-3 py-3 font-black ${t.transaction_type === 'BUY' ? 'text-emerald-300' : 'text-rose-300'}`}>{t.transaction_type || '—'}</td><td className="px-3 py-3 text-slate-300">{t.quantity ?? 0}</td><td className="px-3 py-3 text-slate-200">₹{money(t.price)}</td><td className="px-3 py-3 font-mono text-[10px] text-slate-500">{t.trade_id}</td></tr>) : <tr><td colSpan={6} className="px-3 py-10 text-center text-slate-500">No executed trades synced yet.</td></tr>}</tbody>
           </table>
         </div>
       </div>
