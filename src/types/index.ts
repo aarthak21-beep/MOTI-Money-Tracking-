@@ -51,6 +51,9 @@ export interface StockTrade {
   targetEarnings?: number;
   actualPnl?: number; // Gross P&L: (exitPrice - entryPrice) * quantity
   netPnl?: number; // realized P&L
+  brokerage?: number; // saved brokerage charge, when known
+  otherCharges?: number; // saved statutory and other charges, when known
+  chargesKnown?: boolean; // false when broker execution history does not include actual charges
   pnlPercentage?: number; // (netPnl / totalInvestment) * 100
   status: 'OPEN' | 'CLOSED';
   currentMarketPrice?: number; // for open position unrealized P&L
