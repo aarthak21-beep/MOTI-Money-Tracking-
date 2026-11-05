@@ -140,6 +140,15 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
     if (changed) onSaveTrades(consolidated);
   }, [trades, onSaveTrades]);
 
+  // Parse the app's DD-MM-YYYY dates using local calendar values (not UTC).
+  const isTradeFromToday = (value?: string) => {
+    if (!value) return false;
+    const [day, month, year] = value.split('-').map(Number);
+    if (!day || !month || !year) return false;
+    const now = new Date();
+    return day === now.getDate() && month === now.getMonth() + 1 && year === now.getFullYear();
+  };
+
   // Performance analytics
   const metrics = useMemo(() => {
     let openInvestment = 0;
@@ -238,7 +247,10 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
 
     return trades.filter((t) => {
       const matchesTab = activeTab === 'overview' || activeTab === 'tools' || t.status === activeTab;
-      return matchesTab && matchesSearch(t);
+      // The main Trade History overview is today's activity only. Full history
+      // remains stored and is still used by analytics and Zerodha FIFO matching.
+      const matchesToday = activeTab !== 'overview' || isTradeFromToday(t.entryDate) || isTradeFromToday(t.exitDate);
+      return matchesTab && matchesToday && matchesSearch(t);
     });
   }, [trades, activeTab, searchTerm]);
 
