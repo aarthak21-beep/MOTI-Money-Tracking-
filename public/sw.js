@@ -1,5 +1,5 @@
 // MOTI Service Worker for PWA offline caching & instant load
-const CACHE_NAME = 'moti-v3';
+const CACHE_NAME = 'moti-v4';
 const BASE_PATH = new URL('.', self.location).pathname;
 const STATIC_ASSETS = [
   BASE_PATH,
