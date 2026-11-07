@@ -177,6 +177,28 @@ app.get('/api/fyers/trade-history', async (req: Request, res: Response) => {
   }
 });
 
+// FYERS order book: today's orders across platforms, filtered to F&O (segment=11) in the UI.
+app.get('/api/fyers/orders', async (_req: Request, res: Response) => {
+  if (!fyersAppId || !fyersAccessToken) {
+    res.status(401).json({ error: 'FYERS is not connected. Connect your account first.' });
+    return;
+  }
+  try {
+    const response = await fetch('https://api-t1.fyers.in/api/v3/orders', {
+      headers: { Authorization: fyersAppId + ':' + fyersAccessToken }
+    });
+    const data = await response.json();
+    if (!response.ok || data?.s !== 'ok') {
+      res.status(response.status || 502).json({ error: data?.message || 'FYERS order book request failed', code: data?.code });
+      return;
+    }
+    res.json(data);
+  } catch (error) {
+    console.error('FYERS order book error:', error);
+    res.status(502).json({ error: 'Could not fetch FYERS order book.' });
+  }
+});
+
 app.get('/api/fyers/positions', async (_req: Request, res: Response) => {
   if (!fyersAppId || !fyersAccessToken) {
     res.status(401).json({ error: 'FYERS is not connected. Connect your account first.' });
