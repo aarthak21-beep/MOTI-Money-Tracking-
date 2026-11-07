@@ -22,6 +22,23 @@ type FyersFill = {
   segment?: number;
 };
 
+type FyersOrder = {
+  id?: string;
+  symbol?: string;
+  description?: string;
+  orderDateTime?: string;
+  side?: number;
+  qty?: number;
+  filledQty?: number;
+  remainingQuantity?: number;
+  limitPrice?: number;
+  tradedPrice?: number;
+  productType?: string;
+  status?: number;
+  message?: string;
+  segment?: number;
+};
+
 type FyersPosition = {
   symbol?: string;
   netQty?: number;
@@ -47,6 +64,7 @@ export const FyersFnoView: React.FC = () => {
   const [status, setStatus] = useState<ApiStatus>({});
   const [fills, setFills] = useState<FyersFill[]>([]);
   const [positions, setPositions] = useState<FyersPosition[]>([]);
+  const [orders, setOrders] = useState<FyersOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
   const [error, setError] = useState('');
@@ -62,6 +80,7 @@ export const FyersFnoView: React.FC = () => {
       if (!nextStatus.connected) {
         setFills([]);
         setPositions([]);
+        setOrders([]);
         return;
       }
 
@@ -81,8 +100,17 @@ export const FyersFnoView: React.FC = () => {
         throw new Error(positionsPayload.error || positionsPayload.message || 'FYERS Positions मिळाली नाही.');
       }
       const positionRows = Array.isArray(positionsPayload.netPositions) ? positionsPayload.netPositions.filter((position: FyersPosition) => /(?:CE|PE|FUT)$/i.test(position.symbol || '')) : [];
+      const ordersResponse = await fetch(`${API}/orders`);
+      const ordersPayload = await ordersResponse.json();
+      if (!ordersResponse.ok || ordersPayload.s !== 'ok') {
+        throw new Error(ordersPayload.error || ordersPayload.message || 'FYERS Order Book मिळाली नाही.');
+      }
+      const orderRows = Array.isArray(ordersPayload.orderBook)
+        ? ordersPayload.orderBook.filter((order: FyersOrder) => Number(order.segment) === 11)
+        : [];
       setFills(allFills);
       setPositions(positionRows);
+      setOrders(orderRows);
       setLastSynced(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sync करताना अडचण आली.');
@@ -165,6 +193,32 @@ export const FyersFnoView: React.FC = () => {
             {positions.length === 0 ? <tr><td colSpan={5} className="p-6 text-center text-slate-500">सध्या Positions उपलब्ध नाहीत.</td></tr> : positions.map((p, i) => {
               const pnl = Number(p.pl ?? 0);
               return <tr key={p.symbol || i} className="text-slate-200"><td className="p-3 font-bold">{p.symbol || '—'}</td><td className="p-3">{p.netQty ?? p.qty ?? 0}</td><td className="p-3">₹{money(p.netAvg)}</td><td className="p-3">₹{money(p.realized_profit ?? p.pl_realized)}</td><td className={`p-3 font-bold ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{pnl < 0 ? '-' : '+'}₹{money(Math.abs(pnl))}</td></tr>;
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section className="space-y-2">
+      <div><h3 className="text-sm font-bold text-white">FYERS F&O Orders · आजच्या ऑर्डर्स</h3><p className="text-[11px] text-slate-500">Rejected, Pending, Cancelled, Filled आणि इतर ऑर्डर स्थिती · फक्त Equity Derivatives.</p></div>
+      <div className="overflow-x-auto rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
+        <table className="w-full min-w-[1050px] text-left text-xs">
+          <thead className="bg-[#0a101f] text-slate-400"><tr>{['Date & Time','Contract','Side','Qty','Filled','Price','Status','Reason / Message','Order ID'].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead>
+          <tbody className="divide-y divide-[#1e2e4f]/60">
+            {orders.length === 0 ? <tr><td colSpan={9} className="p-8 text-center text-slate-500">आज FYERS F&O Order Book मध्ये ऑर्डर्स उपलब्ध नाहीत.</td></tr> : orders.map((order, i) => {
+              const statusLabels: Record<number, string> = { 1: 'Cancelled', 2: 'Executed', 4: 'Transit', 5: 'Rejected', 6: 'Pending', 7: 'Expired' };
+              const status = Number(order.status);
+              const statusTone = status === 5 ? 'text-rose-400' : status === 2 ? 'text-emerald-400' : status === 6 || status === 4 ? 'text-amber-300' : 'text-slate-300';
+              return <tr key={order.id || i} className="text-slate-200">
+                <td className="p-3 whitespace-nowrap">{order.orderDateTime || '—'}</td>
+                <td className="p-3 font-bold">{order.symbol || order.description || '—'}</td>
+                <td className="p-3">{Number(order.side) === 1 ? 'BUY' : Number(order.side) === -1 ? 'SELL' : '—'}</td>
+                <td className="p-3">{order.qty ?? '—'}</td><td className="p-3">{order.filledQty ?? 0}</td>
+                <td className="p-3">₹{money(order.tradedPrice || order.limitPrice)}</td>
+                <td className={`p-3 font-bold ${statusTone}`}>{statusLabels[status] || `Status ${status || '—'}`}</td>
+                <td className="p-3 max-w-[280px] whitespace-normal">{order.message || '—'}</td>
+                <td className="p-3">{order.id || '—'}</td>
+              </tr>;
             })}
           </tbody>
         </table>
