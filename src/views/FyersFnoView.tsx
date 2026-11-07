@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Download, Plus, Trash2 } from 'lucide-react';
+import { Download, Plus, Trash2, Upload } from 'lucide-react';
 import { downloadCSV, formatINR } from '../utils/exportUtils';
 
 type FyersTrade = {
@@ -46,6 +46,32 @@ export const FyersFnoView: React.FC = () => {
       ...(exit !== undefined ? { exitPremium: exit } : {}), charges: Number(charges), notes }, ...trades]);
     setStrike(''); setQuantity(''); setEntryPremium(''); setExitPremium(''); setCharges('0'); setNotes('');
   };
+  const importCSV = async (file?: File) => {
+    if (!file) return;
+    const text = await file.text();
+    const lines = text.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(Boolean);
+    const parse = (line: string) => {
+      const cells: string[] = []; let cell = ''; let quoted = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"' && line[i + 1] === '"' && quoted) { cell += '"'; i++; }
+        else if (ch === '"') quoted = !quoted;
+        else if (ch === ',' && !quoted) { cells.push(cell); cell = ''; }
+        else cell += ch;
+      }
+      cells.push(cell); return cells;
+    };
+    const rows = lines.slice(1).map(parse);
+    const imported = rows.map((c, i) => ({
+      id: `fyers-import-${Date.now()}-${i}`, date: c[0] || today(), underlying: (c[1] || 'NIFTY').toUpperCase(),
+      optionType: (c[2] === 'PE' ? 'PE' : 'CE') as 'CE' | 'PE', strike: Number(c[3]), expiry: c[4] || '',
+      side: (c[5] === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL', quantity: Number(c[6]),
+      entryPremium: Number(c[7]), ...(c[8] !== '' && c[8] !== undefined ? { exitPremium: Number(c[8]) } : {}),
+      charges: Number(c[9]) || 0, notes: c[12] || ''
+    })).filter(t => t.underlying && t.expiry && t.strike > 0 && t.quantity > 0 && t.entryPremium > 0);
+    if (imported.length) setTrades(current => [...imported, ...current]);
+    else window.alert('Valid FYERS journal CSV rows were not found. Use the exported MOTI FYERS CSV template.');
+  };
   const exportTrades = () => downloadCSV('MOTI_FYERS_FNO_Journal',
     ['Date','Underlying','Option','Strike','Expiry','Side','Qty','Entry Premium','Exit Premium','Charges','Net P&L','Status','Notes'],
     trades.map(t => [t.date,t.underlying,t.optionType,t.strike,t.expiry,t.side,t.quantity,t.entryPremium,t.exitPremium ?? '',t.charges,
@@ -57,6 +83,7 @@ export const FyersFnoView: React.FC = () => {
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 className="text-xl font-black text-white">FYERS · NIFTY F&O JOURNAL</h2>
         <p className="mt-1 text-xs text-slate-400">स्वतंत्र F&O नोंदी. Zerodha Cash Equity ledger पासून पूर्णपणे वेगळ्या.</p></div>
+      <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#1e2e4f] px-3 py-2 text-xs text-slate-200"><Upload className="h-4 w-4"/> Import CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={e => { void importCSV(e.target.files?.[0]); e.currentTarget.value = ''; }}/></label>
       <button onClick={exportTrades} className="inline-flex items-center gap-2 rounded-xl border border-[#1e2e4f] px-3 py-2 text-xs text-slate-200"><Download className="h-4 w-4"/> Export CSV</button>
     </div>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
