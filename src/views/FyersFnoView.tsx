@@ -80,7 +80,7 @@ export const FyersFnoView: React.FC = () => {
       if (!positionsResponse.ok || positionsPayload.s !== 'ok') {
         throw new Error(positionsPayload.error || positionsPayload.message || 'FYERS Positions मिळाली नाही.');
       }
-      const positionRows = Array.isArray(positionsPayload.netPositions) ? positionsPayload.netPositions : [];
+      const positionRows = Array.isArray(positionsPayload.netPositions) ? positionsPayload.netPositions.filter((position: FyersPosition) => /(?:CE|PE|FUT)$/i.test(position.symbol || '')) : [];
       setFills(allFills);
       setPositions(positionRows);
       setLastSynced(new Date());
