@@ -3,6 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import { createHash, randomBytes } from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
@@ -29,6 +30,113 @@ app.get('/api/health', (_req: Request, res: Response) => {
     hasAiKey: Boolean(geminiApiKey),
     timestamp: new Date().toISOString()
   });
+});
+
+// FYERS read-only OAuth integration. Tokens remain server-side and are never sent to the browser.
+const fyersAppId = process.env.FYERS_APP_ID || '';
+const fyersAppSecret = process.env.FYERS_APP_SECRET || '';
+const fyersRedirectUri = process.env.FYERS_REDIRECT_URI || '';
+const allowedFrontendOrigin = 'https://aarthak21-beep.github.io';
+const pendingFyersStates = new Map<string, number>();
+let fyersAccessToken = '';
+let fyersTokenCreatedAt = 0;
+
+app.use('/api/fyers', (req: Request, res: Response, next) => {
+  const origin = req.headers.origin;
+  if (origin === allowedFrontendOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', allowedFrontendOrigin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
+
+app.get('/api/fyers/status', (_req: Request, res: Response) => {
+  res.json({
+    configured: Boolean(fyersAppId && fyersAppSecret && fyersRedirectUri),
+    connected: Boolean(fyersAccessToken),
+    tokenCreatedAt: fyersTokenCreatedAt || null,
+    note: fyersAccessToken ? 'FYERS session is connected in this server process.' : 'Connect FYERS to start a read-only session.'
+  });
+});
+
+app.get('/api/fyers/connect', (_req: Request, res: Response) => {
+  if (!fyersAppId || !fyersAppSecret || !fyersRedirectUri) {
+    res.status(503).send('FYERS is not configured. Set FYERS_APP_ID, FYERS_APP_SECRET and FYERS_REDIRECT_URI in the server environment.');
+    return;
+  }
+  const state = randomBytes(24).toString('hex');
+  pendingFyersStates.set(state, Date.now() + 10 * 60 * 1000);
+  const authUrl = new URL('https://api-t1.fyers.in/api/v3/generate-authcode');
+  authUrl.searchParams.set('client_id', fyersAppId);
+  authUrl.searchParams.set('redirect_uri', fyersRedirectUri);
+  authUrl.searchParams.set('response_type', 'code');
+  authUrl.searchParams.set('state', state);
+  res.redirect(authUrl.toString());
+});
+
+app.get('/api/fyers/callback', async (req: Request, res: Response) => {
+  const authCode = typeof req.query.auth_code === 'string' ? req.query.auth_code : '';
+  const state = typeof req.query.state === 'string' ? req.query.state : '';
+  const expiresAt = pendingFyersStates.get(state);
+  pendingFyersStates.delete(state);
+
+  if (!authCode || !state || !expiresAt || expiresAt < Date.now()) {
+    res.status(400).send('FYERS login could not be verified. Please return to MOTI and connect again.');
+    return;
+  }
+  if (!fyersAppId || !fyersAppSecret || !fyersRedirectUri) {
+    res.status(503).send('FYERS server configuration is incomplete.');
+    return;
+  }
+
+  try {
+    const appIdHash = createHash('sha256').update(fyersAppId + ':' + fyersAppSecret).digest('hex');
+    const tokenResponse = await fetch('https://api-t1.fyers.in/api/v3/validate-authcode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_type: 'authorization_code', appIdHash, code: authCode })
+    });
+    const tokenData: any = await tokenResponse.json();
+    if (!tokenResponse.ok || tokenData?.s !== 'ok' || !tokenData?.access_token) {
+      console.error('FYERS token exchange failed:', tokenData?.message || tokenResponse.status);
+      res.status(502).send('FYERS authorization was not completed. Please return to MOTI and try connecting again.');
+      return;
+    }
+
+    fyersAccessToken = tokenData.access_token;
+    fyersTokenCreatedAt = Date.now();
+    res.status(200).send('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>MOTI FYERS</title></head><body style="font-family:system-ui;padding:32px;text-align:center"><h2>FYERS connected to MOTI</h2><p>Read-only account connection successful. You can close this tab and return to MOTI.</p></body></html>');
+  } catch (error) {
+    console.error('FYERS callback error:', error);
+    res.status(500).send('Could not complete FYERS connection. Please try again.');
+  }
+});
+
+app.get('/api/fyers/tradebook', async (_req: Request, res: Response) => {
+  if (!fyersAppId || !fyersAccessToken) {
+    res.status(401).json({ error: 'FYERS is not connected. Connect your account first.' });
+    return;
+  }
+  try {
+    const response = await fetch('https://api-t1.fyers.in/api/v3/tradebook', {
+      headers: { Authorization: fyersAppId + ':' + fyersAccessToken }
+    });
+    const data = await response.json();
+    if (!response.ok || data?.s !== 'ok') {
+      res.status(response.status || 502).json({ error: data?.message || 'FYERS tradebook request failed', code: data?.code });
+      return;
+    }
+    res.json(data);
+  } catch (error) {
+    console.error('FYERS tradebook error:', error);
+    res.status(502).json({ error: 'Could not fetch FYERS tradebook.' });
+  }
 });
 
 // AI Financial Assistant endpoint
