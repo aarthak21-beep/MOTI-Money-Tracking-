@@ -49,7 +49,7 @@ export const FyersFnoView: React.FC = () => {
   const importCSV = async (file?: File) => {
     if (!file) return;
     const text = await file.text();
-    const lines = text.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(Boolean);
+    const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
     const parse = (line: string) => {
       const cells: string[] = []; let cell = ''; let quoted = false;
       for (let i = 0; i < line.length; i++) {
