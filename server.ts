@@ -139,6 +139,65 @@ app.get('/api/fyers/tradebook', async (_req: Request, res: Response) => {
   }
 });
 
+// FYERS historical executed trades: equity derivatives only (segment_type=2).
+app.get('/api/fyers/trade-history', async (req: Request, res: Response) => {
+  if (!fyersAppId || !fyersAccessToken) {
+    res.status(401).json({ error: 'FYERS is not connected. Connect your account first.' });
+    return;
+  }
+  const now = new Date();
+  const fyStartYear = now.getUTCMonth() >= 3 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+  const fromDate = typeof req.query.from_date === 'string' ? req.query.from_date : `${fyStartYear}-04-01`;
+  const toDate = typeof req.query.to_date === 'string' ? req.query.to_date : now.toISOString().slice(0, 10);
+  const pageNo = Math.max(1, Math.min(100, Number(req.query.page_no) || 1));
+  const pageSize = Math.max(1, Math.min(100, Number(req.query.page_size) || 100));
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(fromDate) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(toDate) || fromDate > toDate) {
+    res.status(400).json({ error: 'Dates must use YYYY-MM-DD and from_date must not be after to_date.' });
+    return;
+  }
+  try {
+    const url = new URL('https://api-t1.fyers.in/api/v3/trade-history');
+    url.searchParams.set('from_date', fromDate);
+    url.searchParams.set('to_date', toDate);
+    url.searchParams.set('segment_type', '2');
+    url.searchParams.set('page_size', String(pageSize));
+    url.searchParams.set('page_no', String(pageNo));
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: fyersAppId + ':' + fyersAccessToken }
+    });
+    const data = await response.json();
+    if (!response.ok || data?.s !== 'ok') {
+      res.status(response.status || 502).json({ error: data?.message || 'FYERS trade history request failed', code: data?.code });
+      return;
+    }
+    res.json({ ...data, from_date: fromDate, to_date: toDate, segment_type: 2, page_no: pageNo, page_size: pageSize });
+  } catch (error) {
+    console.error('FYERS trade history error:', error);
+    res.status(502).json({ error: 'Could not fetch FYERS trade history.' });
+  }
+});
+
+app.get('/api/fyers/positions', async (_req: Request, res: Response) => {
+  if (!fyersAppId || !fyersAccessToken) {
+    res.status(401).json({ error: 'FYERS is not connected. Connect your account first.' });
+    return;
+  }
+  try {
+    const response = await fetch('https://api-t1.fyers.in/api/v3/positions', {
+      headers: { Authorization: fyersAppId + ':' + fyersAccessToken }
+    });
+    const data = await response.json();
+    if (!response.ok || data?.s !== 'ok') {
+      res.status(response.status || 502).json({ error: data?.message || 'FYERS positions request failed', code: data?.code });
+      return;
+    }
+    res.json(data);
+  } catch (error) {
+    console.error('FYERS positions error:', error);
+    res.status(502).json({ error: 'Could not fetch FYERS positions.' });
+  }
+});
+
 // AI Financial Assistant endpoint
 app.post('/api/ai/chat', async (req: Request, res: Response) => {
   try {
