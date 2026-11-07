@@ -151,7 +151,7 @@ app.get('/api/fyers/trade-history', async (req: Request, res: Response) => {
   const toDate = typeof req.query.to_date === 'string' ? req.query.to_date : now.toISOString().slice(0, 10);
   const pageNo = Math.max(1, Math.min(100, Number(req.query.page_no) || 1));
   const pageSize = Math.max(1, Math.min(100, Number(req.query.page_size) || 100));
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(fromDate) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(toDate) || fromDate > toDate) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate) || !/^\d{4}-\d{2}-\d{2}$/.test(toDate) || fromDate > toDate) {
     res.status(400).json({ error: 'Dates must use YYYY-MM-DD and from_date must not be after to_date.' });
     return;
   }
