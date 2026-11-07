@@ -24,6 +24,7 @@ import { EquityTradeCalendar } from './EquityTradeCalendar';
 import { MonthlyTradingReview } from './MonthlyTradingReview';
 import { OpenPortfolioAllocation } from './OpenPortfolioAllocation';
 import { ZerodhaOrdersPanel } from '../components/ZerodhaOrdersPanel';
+import { FyersFnoView } from './FyersFnoView';
 import { buildZerodhaJournal, type KiteExecution } from '../utils/zerodhaTradeImport';
 
 interface StockTradingViewProps {
@@ -106,7 +107,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   profile,
   onSaveTrades,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'OPEN' | 'CLOSED' | 'tools' | 'zerodha'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'OPEN' | 'CLOSED' | 'tools' | 'zerodha' | 'fyers'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 25;
@@ -564,7 +565,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           <p className="mt-1 text-xs text-slate-400">Your completed trades and realized performance history.</p>
         </div>
       )}
-      {activeTab !== 'tools' && activeTab !== 'zerodha' && (
+      {activeTab !== 'tools' && activeTab !== 'zerodha' && activeTab !== 'fyers' && (
         <div className="relative w-full sm:max-w-sm">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input
@@ -645,13 +646,14 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
 
       {/* Equity Trading workspace navigation - placed directly above the trade ledger */}
       <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-2.5 shadow-lg shadow-black/10">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-3">
           {([
             { id: 'overview', label: 'Overview', count: trades.length },
             { id: 'OPEN', label: 'Open Positions', count: new Set(trades.filter((t) => t.status === 'OPEN' && t.source === 'ZERODHA').map((t) => (t.exchange || '') + ':' + t.stockName.trim().toUpperCase())).size + trades.filter((t) => t.status === 'OPEN' && t.source !== 'ZERODHA').length },
             { id: 'CLOSED', label: 'Closed Trades', count: trades.filter((t) => t.status === 'CLOSED').length },
             { id: 'tools', label: 'Reports & Tools' },
             { id: 'zerodha', label: 'Zerodha Orders' },
+            { id: 'fyers', label: 'FYERS F&O Journal' },
           ] as const).map((tab) => (
             <button
               key={tab.id}
@@ -762,6 +764,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       <div className={activeTab === 'zerodha' ? '' : 'hidden'}>
         <ZerodhaOrdersPanel onExecutionsChange={handleZerodhaExecutions} />
       </div>
+
+      {activeTab === 'fyers' && <FyersFnoView />}
 
       {activeTab === 'tools' && (
         <div className="reports-tools-page space-y-6">
