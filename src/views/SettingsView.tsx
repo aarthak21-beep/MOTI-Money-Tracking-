@@ -141,6 +141,49 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const handleEncryptedTransferExport = async () => {
+    setCloudBusy(true);
+    setCloudStatus('Preparing encrypted transfer file…');
+    try {
+      const snapshot = StorageService.exportCompleteBackup(profile.id);
+      const encryptedFile = await GoogleDriveSyncService.exportEncryptedFile(snapshot, drivePassphrase);
+      const blob = new Blob([encryptedFile], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `MOTI_Encrypted_Transfer_${new Date().toISOString().slice(0, 10)}.enc`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setCloudStatus('Encrypted transfer file downloaded. Send this .enc file to your phone; it contains ciphertext, not readable finance data.');
+    } catch (error) {
+      setCloudStatus(error instanceof Error ? error.message : 'Encrypted file export failed.');
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const handleEncryptedTransferImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!window.confirm('Import this encrypted transfer file and save a copy to the Google Drive account currently signed in? This replaces records on this device. Export a local backup first if needed.')) return;
+    setCloudBusy(true);
+    setCloudStatus('Decrypting transfer file and saving it to this Google account…');
+    try {
+      const content = await file.text();
+      await GoogleDriveSyncService.connect();
+      const snapshot = await GoogleDriveSyncService.importEncryptedFile(content, drivePassphrase);
+      const success = StorageService.importCompleteBackup(snapshot, profile.id);
+      if (!success) throw new Error('Backup data is invalid. Check the source file; local records may not have been changed.');
+      onRefreshData();
+      setCloudStatus('Encrypted backup imported. It is now saved in this Google account’s private Drive app data.');
+    } catch (error) {
+      setCloudStatus(error instanceof Error ? error.message : 'Encrypted transfer import failed.');
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
   // Seed sample data
   const handleSeedData = () => {
     if (window.confirm('Populate with professional sample records (trades, weekly ledgers, invoices, expenses)?')) {
@@ -373,6 +416,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
             {cloudStatus && <p className="mt-3 text-[11px] text-emerald-300">{cloudStatus}</p>}
+            <div className="mt-4 border-t border-[#1e2e4f] pt-4">
+              <p className="text-xs font-bold text-white">Transfer to a different Gmail account</p>
+              <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
+                Laptop: download an encrypted .enc transfer file. Send it to your phone. On your phone, sign in to the destination Gmail, then import that file using the same passphrase.
+              </p>
+              <button disabled={cloudBusy || drivePassphrase.length < 12} onClick={handleEncryptedTransferExport} className="mt-3 w-full rounded-xl border border-cyan-500/40 bg-cyan-500/10 py-2.5 text-xs font-bold text-cyan-300 disabled:opacity-50">
+                Download encrypted transfer file
+              </button>
+              <label className={`mt-2 w-full flex items-center justify-center rounded-xl border border-cyan-500/40 bg-cyan-500/10 py-2.5 text-xs font-bold text-cyan-300 ${cloudBusy || drivePassphrase.length < 12 ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
+                Import encrypted file to this Gmail
+                <input type="file" accept=".enc,.json,application/json" onChange={handleEncryptedTransferImport} disabled={cloudBusy || drivePassphrase.length < 12} className="hidden" />
+              </label>
+            </div>
             <p className="mt-3 text-[10px] leading-relaxed text-slate-500">
               This is a manual encrypted backup/restore step for now. Automatic cross-device sync will be enabled only after conflict-safe syncing is added and tested.
             </p>
