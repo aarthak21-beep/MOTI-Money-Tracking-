@@ -18,12 +18,11 @@ const rsi = (values: number[]) => {
   const avgGain = average(gains), avgLoss = average(losses);
   return avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
 };
-const parseCsv = (text: string, filename: string): { symbol: string; candles: Candle[] }[] => {
-  const lines = text.replace(/^\\uFEFF/, '').trim().split(/\\r?\\n/);
-  if (lines.length < 52) throw new Error('किमान 51 trading-day rows आवश्यक आहेत.');
+const parseCsv = (text: string): { symbol: string; candle: Candle }[] => {
+  const lines = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
+  if (lines.length < 2) throw new Error('CSV मध्ये data rows नाहीत.');
   const headers = lines[0].split(',').map(value => value.trim().toLowerCase().replaceAll('"', ''));
   const col = (...names: string[]) => headers.findIndex(header => names.includes(header));
-  // Supports NSE CM-UDiFF bhavcopy and older NSE equity bhavcopy / security-wise CSV.
   const dateCol = col('traddt', 'trad dt', 'date1', 'date', 'timestamp');
   const symbolCol = col('tckrsymb', 'symbol');
   const seriesCol = col('sctysrs', 'series');
@@ -33,31 +32,74 @@ const parseCsv = (text: string, filename: string): { symbol: string; candles: Ca
   const closeCol = col('clspric', 'close_price', 'close');
   const volumeCol = col('ttltradgvol', 'ttl_trd_qnty', 'total_traded_quantity', 'volume');
   if ([dateCol, highCol, lowCol, closeCol, volumeCol].some(index => index < 0)) throw new Error('NSE CSV columns ओळखता आले नाहीत. NSE Equity Bhavcopy CSV वापरा.');
-  const groups = new Map<string, Candle[]>();
   const parseDate = (value: string) => {
     const raw = value.trim();
-    if (/^\\d{2}-[A-Za-z]{3}-\\d{4}$/.test(raw)) {
+    if (/^\d{2}-[A-Za-z]{3}-\d{4}$/.test(raw)) {
       const [day, month, year] = raw.split('-');
-      return new Date(`${day} ${month} ${year}`).toISOString().slice(0, 10);
+      return new Date(day + ' ' + month + ' ' + year).toISOString().slice(0, 10);
     }
-    if (/^\\d{8}$/.test(raw)) return `${raw.slice(4, 8)}-${raw.slice(2, 4)}-${raw.slice(0, 2)}`;
+    if (/^\d{8}$/.test(raw)) return raw.slice(4, 8) + '-' + raw.slice(2, 4) + '-' + raw.slice(0, 2);
     const parsed = new Date(raw);
     return Number.isNaN(parsed.getTime()) ? raw : parsed.toISOString().slice(0, 10);
   };
+  const rows: { symbol: string; candle: Candle }[] = [];
   for (const line of lines.slice(1)) {
     const cells = line.split(',').map(value => value.trim().replaceAll('"', ''));
     const series = seriesCol >= 0 ? cells[seriesCol]?.toUpperCase() : 'EQ';
     if (series && !['EQ', 'BE'].includes(series)) continue;
-    const symbol = (symbolCol >= 0 ? cells[symbolCol] : filename.replace(/\\.csv$/i, '').replace(/[-_ ]historical.*/i, '')).toUpperCase();
+    const symbol = (symbolCol >= 0 ? cells[symbolCol] : '').toUpperCase();
     const candle = { date: parseDate(cells[dateCol] || ''), open: Number(cells[openCol] || cells[closeCol]), high: Number(cells[highCol]), low: Number(cells[lowCol]), close: Number(cells[closeCol]), volume: Number(cells[volumeCol]) };
     if (!symbol || !candle.date || ![candle.high, candle.low, candle.close, candle.volume].every(Number.isFinite) || candle.close <= 0 || candle.volume < 0) continue;
-    if (!groups.has(symbol)) groups.set(symbol, []);
-    groups.get(symbol)!.push(candle);
+    rows.push({ symbol, candle });
   }
-  const parsed = Array.from(groups.entries()).map(([symbol, candles]) => ({ symbol, candles: candles.sort((a, b) => a.date.localeCompare(b.date)) })).filter(item => item.candles.length >= 51);
-  if (!parsed.length) throw new Error('किमान 51 वैध daily candles असलेला NSE symbol मिळाला नाही. योग्य date range आणि EQ series तपासा.');
-  return parsed;
+  if (!rows.length) throw new Error('या CSV मध्ये वैध NSE EQ/BE rows मिळाले नाहीत.');
+  return rows;
 };
+
+const readZipCsvFiles = async (file: File): Promise<{ name: string; text: string }[]> => {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const u32 = (offset: number) => view.getUint32(offset, true);
+  const u16 = (offset: number) => view.getUint16(offset, true);
+  let eocd = -1;
+  for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 65557); offset--) {
+    if (u32(offset) === 0x06054b50) { eocd = offset; break; }
+  }
+  if (eocd < 0) throw new Error('ZIP archive directory सापडली नाही.');
+  const entries = u16(eocd + 10);
+  const directoryOffset = u32(eocd + 16);
+  const decoder = new TextDecoder();
+  const output: { name: string; text: string }[] = [];
+  let cursor = directoryOffset;
+  for (let i = 0; i < entries; i++) {
+    if (u32(cursor) !== 0x02014b50) throw new Error('ZIP directory format समर्थित नाही.');
+    const method = u16(cursor + 10);
+    const compressedSize = u32(cursor + 20);
+    const nameLength = u16(cursor + 28);
+    const extraLength = u16(cursor + 30);
+    const commentLength = u16(cursor + 32);
+    const localOffset = u32(cursor + 42);
+    const name = decoder.decode(bytes.slice(cursor + 46, cursor + 46 + nameLength));
+    cursor += 46 + nameLength + extraLength + commentLength;
+    if (!name.toLowerCase().endsWith('.csv') || name.endsWith('/')) continue;
+    if (u32(localOffset) !== 0x04034b50) continue;
+    const localNameLength = u16(localOffset + 26);
+    const localExtraLength = u16(localOffset + 28);
+    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    const compressed = bytes.slice(dataStart, dataStart + compressedSize);
+    let plain: Uint8Array;
+    if (method === 0) plain = compressed;
+    else if (method === 8) {
+      if (typeof DecompressionStream === 'undefined') throw new Error('या browser मध्ये ZIP decompression उपलब्ध नाही. ZIP extract करून CSV upload करा.');
+      const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      plain = new Uint8Array(await new Response(stream).arrayBuffer());
+    } else throw new Error('Unsupported ZIP compression method: ' + method);
+    output.push({ name, text: decoder.decode(plain) });
+  }
+  if (!output.length) throw new Error('ZIP मध्ये CSV फाइल सापडली नाही.');
+  return output;
+};
+
 const analyse = (symbol: string, candles: Candle[]): Candidate => {
   const closes = candles.map(row => row.close), latest = candles[candles.length - 1];
   const ema20 = ema(closes.slice(-100), 20), ema50 = ema(closes.slice(-150), 50), strength = rsi(closes);
@@ -86,11 +128,35 @@ export const SwingScannerView: React.FC = () => {
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     setLoading(true); setErrors([]);
-    const found: Candidate[] = [], issues: string[] = [];
+    const allRows: { symbol: string; candle: Candle }[] = [], issues: string[] = [];
     for (const file of Array.from(files)) {
-      try { const parsed = parseCsv(await file.text(), file.name); found.push(...parsed.map(item => analyse(item.symbol, item.candles))); }
-      catch (error) { issues.push(file.name + ': ' + (error instanceof Error ? error.message : 'CSV वाचता आले नाही')); }
+      try {
+        const lowerName = file.name.toLowerCase();
+        const csvFiles = lowerName.endsWith('.zip')
+          ? await readZipCsvFiles(file)
+          : lowerName.endsWith('.csv')
+            ? [{ name: file.name, text: await file.text() }]
+            : [];
+        if (!csvFiles.length) throw new Error('फक्त NSE Bhavcopy .zip किंवा .csv फाइल upload करा.');
+        for (const csv of csvFiles) {
+          try { allRows.push(...parseCsv(csv.text)); }
+          catch (error) { issues.push(csv.name + ': ' + (error instanceof Error ? error.message : 'CSV वाचता आले नाही')); }
+        }
+      } catch (error) {
+        issues.push(file.name + ': ' + (error instanceof Error ? error.message : 'फाइल वाचता आली नाही'));
+      }
     }
+    const grouped = new Map<string, Candle[]>();
+    for (const row of allRows) {
+      if (!grouped.has(row.symbol)) grouped.set(row.symbol, []);
+      grouped.get(row.symbol)!.push(row.candle);
+    }
+    const found: Candidate[] = [];
+    for (const [symbol, candles] of grouped) {
+      const unique = Array.from(new Map(candles.map(candle => [candle.date, candle])).values()).sort((a, b) => a.date.localeCompare(b.date));
+      if (unique.length >= 51) found.push(analyse(symbol, unique));
+    }
+    if (!found.length && !issues.length) issues.push('एकत्रित फाइल्समध्ये किमान 51 trading days असलेला कोणताही NSE EQ/BE stock मिळाला नाही.');
     setCandidates(found.sort((a, b) => b.score - a.score)); setErrors(issues); setFileCount(files.length); setLoading(false);
   };
   const filtered = useMemo(() => candidates.filter(item => item.score >= minScore), [candidates, minScore]);
@@ -101,8 +167,8 @@ export const SwingScannerView: React.FC = () => {
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div><h1 className="text-2xl font-black text-white sm:text-3xl">Swing Movement Scanner</h1><p className="mt-2 max-w-2xl text-sm text-slate-300">Daily OHLCV data मधून breakout, volume surge आणि मजबूत uptrend शोधा. हा scanner 2–10 दिवसांच्या swing setup साठी आहे.</p></div>
         <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-300 px-4 py-3 text-xs font-black text-slate-950 hover:bg-emerald-200">
-          <Upload className="h-4 w-4" /> {loading ? 'Scanning...' : 'Import Daily CSV'}
-          <input type="file" accept=".csv,text/csv" multiple className="hidden" disabled={loading} onChange={event => { handleFiles(event.target.files); event.currentTarget.value = ''; }} />
+          <Upload className="h-4 w-4" /> {loading ? 'Scanning...' : 'Import NSE ZIP / CSV'}
+          <input type="file" accept=".csv,.zip,text/csv,application/zip" multiple className="hidden" disabled={loading} onChange={event => { handleFiles(event.target.files); event.currentTarget.value = ''; }} />
         </label>
       </div>
     </div>
@@ -117,14 +183,14 @@ export const SwingScannerView: React.FC = () => {
     </div>
     {errors.length > 0 && <div className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-3 text-xs text-rose-200">{errors.map(error => <p key={error}>{error}</p>)}</div>}
     {candidates.length === 0 ? <div className="rounded-2xl border border-dashed border-[#2b3c5b] bg-[#0d1527] p-8 text-center">
-      <FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><h2 className="mt-3 text-base font-bold text-white">Import NSE stock daily CSV files</h2>
-      <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-400">NSE India च्या Historical Reports मधून Equity Bhavcopy (CM-UDiFF) CSV डाउनलोड करा. एकाच Bhavcopy मध्ये अनेक NSE stocks असू शकतात. जुना NSE Equity Bhavcopy किंवा एखाद्या stock चा historical CSV सुद्धा चालेल. किमान 51 trading days आवश्यक आहेत.</p>
+      <FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><h2 className="mt-3 text-base font-bold text-white">Import NSE Bhavcopy ZIP / CSV files</h2>
+      <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-400">NSE India च्या Historical Reports मधून CM-UDiFF Bhavcopy ZIP किंवा CSV डाउनलोड करा. अनेक दिवसांच्या ZIP/CSV फाइल्स एकत्र select करा; scanner ZIP मधील CSV उघडून प्रत्येक stock चा 51+ trading days डेटा एकत्र करेल.</p>
       <a className="mt-3 inline-block text-xs font-semibold text-emerald-300 underline" href="https://www.nseindia.com/all-reports" target="_blank" rel="noreferrer">Open NSE India – All Reports</a>
     </div> : <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
       <div className="flex items-center justify-between border-b border-[#1e2e4f] px-4 py-3"><h2 className="text-sm font-bold text-white">Swing Candidates</h2><button onClick={() => { setCandidates([]); setErrors([]); setFileCount(0); }} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear</button></div>
       <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400"><tr>{['Stock / Signal','Score','Close','RSI 14','Vol vs 20D','EMA Trend','Entry','Stop Loss','2R Target','Data Date'].map(label => <th key={label} className="px-3 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{filtered.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]"><td className="px-3 py-3"><p className="font-black text-white">{item.symbol}</p><p className="mt-1 text-[10px] text-emerald-300">{item.signal}</p></td><td className="px-3 py-3"><span className={item.score >= 70 ? 'font-black text-emerald-300' : 'font-bold text-amber-300'}>{item.score}/100</span></td><td className="px-3 py-3 text-white">{money(item.close)}</td><td className="px-3 py-3 text-slate-200">{item.rsi.toFixed(1)}</td><td className="px-3 py-3 text-slate-200">{item.volumeRatio.toFixed(2)}x</td><td className="px-3 py-3">{item.ema20 > item.ema50 ? <span className="text-emerald-300">Bullish</span> : <span className="text-rose-300">Weak</span>}</td><td className="px-3 py-3 text-cyan-200">{money(item.entry)}</td><td className="px-3 py-3 text-rose-300">{money(item.stop)}</td><td className="px-3 py-3 text-emerald-300">{money(item.target)}</td><td className="px-3 py-3 text-slate-400">{item.lastDate}</td></tr>)}</tbody></table></div>
       {filtered.length === 0 && <p className="p-6 text-center text-xs text-slate-400">या score filter मध्ये stocks सापडले नाहीत.</p>}
-      <p className="border-t border-[#1e2e4f] px-4 py-2 text-[10px] text-slate-500">{fileCount} CSV file(s) processed. Data is as recent as the uploaded files; scanner does not fetch live prices.</p>
+      <p className="border-t border-[#1e2e4f] px-4 py-2 text-[10px] text-slate-500">{fileCount} ZIP/CSV file(s) processed. Data is as recent as the uploaded files; scanner does not fetch live prices.</p>
     </div>}
     <div className="rounded-xl border border-amber-300/20 bg-amber-300/5 p-4"><div className="flex items-center gap-2 text-xs font-bold text-amber-200"><ShieldAlert className="h-4 w-4" /> Risk & data note</div><p className="mt-2 text-[11px] leading-5 text-slate-400">Entry = शेवटचा उपलब्ध Close; Stop Loss = अलीकडील 10 दिवसांचा Low किंवा 4% buffer यांपैकी कमी; Target = 2R. हे गणिती reference levels आहेत, buy/sell recommendation नाहीत. CSV date आणि data quality तपासा. Corporate actions / adjusted prices मुळे परिणाम बदलू शकतात.</p></div>
     <div className="flex items-start gap-2 text-[11px] leading-5 text-slate-500"><Info className="mt-0.5 h-4 w-4 shrink-0" /> Score हा नियमांवर आधारित technical score आहे; तो probability किंवा guaranteed return नाही. प्रत्येक stock वर स्वतंत्रपणे risk तपासा.</div>
