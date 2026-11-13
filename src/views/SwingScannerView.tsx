@@ -30,7 +30,8 @@ const num = (v?: string) => {
 };
 const findCol = (headers: string[], ...aliases: string[]) => headers.findIndex(h => aliases.includes(norm(h)));
 const parseReport = (text: string, date: string, fileName: string): { type: ReportType; rows: DailyRow[] } => {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?
+/).filter(line => line.trim());
   let headerAt = -1, headers: string[] = [];
   for (let i = 0; i < Math.min(lines.length, 12); i++) {
     const candidate = splitCsvLine(lines[i]);
@@ -44,7 +45,8 @@ const parseReport = (text: string, date: string, fileName: string): { type: Repo
   const h = headers.map(norm);
   const hasTop = h.includes('prevclose') && h.includes('open') && h.includes('high');
   const hasVolume = h.includes('avgvolume') && h.some(x => x.includes('change'));
-  const isDeclineFile = /declin/i.test(fileName);\n  const type: ReportType = hasTop ? 'top20' : hasVolume ? 'volume' : isDeclineFile ? 'decline' : 'advance';
+  const isDeclineFile = /declin/i.test(fileName);
+  const type: ReportType = hasTop ? 'top20' : hasVolume ? 'volume' : isDeclineFile ? 'decline' : 'advance';
   const col = (...names: string[]) => findCol(headers, ...names);
   const symbolCol = col('symbol');
   const closeCol = col('ltp', 'lasttradedprice');
@@ -201,7 +203,8 @@ export const SwingScannerView: React.FC = () => {
         <li>Reports browser च्या local storage मध्ये राहतात; त्याच browser/device वर पुढच्या दिवशी नवीन reports add कर.</li>
         <li>Volume Gainers report मधील NSE 1-week volume multiple थेट दाखवला जातो.</li>
         <li>Range breakout साठी त्या stock चे किमान 3 आधीचे Top 20 daily observations आवश्यक आहेत; पुरेसा डेटा नसेल तर तसे दाखवले जाईल.</li>
-        <li>Top 20 आणि Volume Gainers हे निवडक stocks आहेत; फक्त या reports वरून संपूर्ण NSE universe चे सर्व stocks scan होत नाहीत.</li>\n        <li>Declines CSV चे नाव Decline/Declines असणे आवश्यक; आजचा +4% किंवा अधिक वाढ असलेले stocksच candidates मध्ये दिसतील.</li>
+        <li>Top 20 आणि Volume Gainers हे निवडक stocks आहेत; फक्त या reports वरून संपूर्ण NSE universe चे सर्व stocks scan होत नाहीत.</li>
+        <li>Declines CSV चे नाव Decline/Declines असणे आवश्यक; आजचा +4% किंवा अधिक वाढ असलेले stocksच candidates मध्ये दिसतील.</li>
       </ul>
     </div>
   </div>;
