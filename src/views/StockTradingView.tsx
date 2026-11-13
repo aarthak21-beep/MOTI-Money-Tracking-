@@ -252,109 +252,125 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
     setIsModalOpen(true);
   };
 
-  // Form Submission with Strict Mathematical Formulas
+  // Save BUY additions and SELL reductions against the existing holding.
   const handleSaveTrade = (e: React.FormEvent) => {
     e.preventDefault();
-    const ep = Number(entryPrice);
+    const price = Number(entryPrice);
     const qty = Number(quantity);
-    if (!stockName || ep <= 0 || qty <= 0) return;
-
-    const totalInvestment = ep * qty;
-    const target = targetEarnings ? Number(targetEarnings) : undefined;
-    const cmp = currentMarketPrice ? Number(currentMarketPrice) : ep;
-
-    let actualPnl: number | undefined;
-    let netPnl: number | undefined;
-    let pnlPercentage: number | undefined;
-    const isClosed = tradeStatus === 'CLOSED' && Number(exitPrice) > 0;
-
-    if (isClosed) {
-      const xp = Number(exitPrice);
-      // Automatic Formulas:
-      // P&L = (Exit Price - Entry Price) * Quantity
-      actualPnl = (xp - ep) * qty;
-      netPnl = actualPnl;
-      pnlPercentage = totalInvestment > 0 ? (netPnl / totalInvestment) * 100 : 0;
+    const symbol = stockName.toUpperCase().trim();
+    if (!symbol || price <= 0 || qty <= 0 || !Number.isInteger(qty)) {
+      window.alert('Enter a valid stock, price and whole-share quantity.');
+      return;
     }
 
+    if (tradeType === 'SELL') {
+      if (editingTrade) {
+        window.alert('To change a saved SELL, delete that sell record and enter it again. Your holding will not be changed by editing.');
+        return;
+      }
+
+      const matching = trades
+        .map((trade, index) => ({ trade, index }))
+        .filter(({ trade }) => trade.status === 'OPEN' && trade.stockName.trim().toUpperCase() === symbol);
+      const availableQty = matching.reduce((sum, item) => sum + item.trade.quantity, 0);
+
+      if (availableQty <= 0) {
+        window.alert(`No open ${symbol} shares found. Add a BUY trade first.`);
+        return;
+      }
+      if (qty > availableQty) {
+        window.alert(`You have only ${availableQty} ${symbol} shares available to sell.`);
+        return;
+      }
+
+      // Sell from the weighted-average cost basis across matching open holdings.
+      const totalCost = matching.reduce((sum, item) => sum + item.trade.totalInvestment, 0);
+      const averageCost = totalCost / availableQty;
+      let remainingToSell = qty;
+      const updated = trades.map((trade) => {
+        if (trade.status !== 'OPEN' || trade.stockName.trim().toUpperCase() !== symbol || remainingToSell <= 0) return trade;
+        const soldHere = Math.min(trade.quantity, remainingToSell);
+        remainingToSell -= soldHere;
+        const remainingQty = trade.quantity - soldHere;
+        return {
+          ...trade,
+          quantity: remainingQty,
+          totalInvestment: remainingQty * trade.entryPrice,
+          ...(remainingQty === 0 ? { status: 'CLOSED' as const, currentMarketPrice: undefined } : {}),
+        };
+      }).filter((trade) => !(trade.status === 'CLOSED' && trade.quantity === 0 && trade.stockName.trim().toUpperCase() === symbol));
+
+      const costOfSoldShares = averageCost * qty;
+      const realizedPnl = (price - averageCost) * qty;
+      const sellRecord: StockTrade = {
+        id: `trade_${Date.now()}`,
+        serialNumber: updated.length + 1,
+        entryDate,
+        tradeType: 'SELL',
+        stockName: symbol,
+        entryPrice: averageCost,
+        quantity: qty,
+        totalInvestment: costOfSoldShares,
+        exitDate: entryDate,
+        exitPrice: price,
+        actualPnl: realizedPnl,
+        netPnl: realizedPnl,
+        pnlPercentage: costOfSoldShares > 0 ? (realizedPnl / costOfSoldShares) * 100 : 0,
+        status: 'CLOSED',
+      };
+      onSaveTrades([...updated, sellRecord].map((trade, index) => ({ ...trade, serialNumber: index + 1 })));
+      setIsModalOpen(false);
+      return;
+    }
+
+    // BUY: add to the existing open position or create a new one.
     if (editingTrade) {
-      const updated = trades.map((t) =>
-        t.id === editingTrade.id
+      const updated = trades.map((trade) =>
+        trade.id === editingTrade.id
           ? {
-              ...t,
+              ...trade,
               entryDate,
-              tradeType,
-              stockName: stockName.toUpperCase().trim(),
-              entryPrice: ep,
+              tradeType: 'BUY' as const,
+              stockName: symbol,
+              entryPrice: price,
               quantity: qty,
-              totalInvestment,
-              exitDate: isClosed ? exitDate || entryDate : undefined,
-              exitPrice: isClosed ? Number(exitPrice) : undefined,
-              targetEarnings: target,
-              actualPnl,
-              netPnl,
-              pnlPercentage,
-              status: isClosed ? ('CLOSED' as const) : ('OPEN' as const),
-              currentMarketPrice: cmp,
-              notes,
-              strategy: strategy || undefined,
+              totalInvestment: price * qty,
+              status: 'OPEN' as const,
+              currentMarketPrice: price,
             }
-          : t
+          : trade
       );
       onSaveTrades(updated);
     } else {
-      const newTrade: StockTrade = {
-        id: `trade_${Date.now()}`,
-        serialNumber: trades.length + 1,
-        entryDate,
-        tradeType,
-        stockName: stockName.toUpperCase().trim(),
-        entryPrice: ep,
-        quantity: qty,
-        totalInvestment,
-        exitDate: isClosed ? exitDate || entryDate : undefined,
-        exitPrice: isClosed ? Number(exitPrice) : undefined,
-        targetEarnings: target,
-        actualPnl,
-        netPnl,
-        pnlPercentage,
-        status: isClosed ? ('CLOSED' as const) : ('OPEN' as const),
-        currentMarketPrice: cmp,
-        notes,
-        strategy: strategy || undefined,
-      };
-      if (newTrade.status === 'OPEN') {
-        const normalizedSymbol = newTrade.stockName.trim().toUpperCase();
-        const existingIndex = trades.findIndex(
-          (trade) => trade.status === 'OPEN' && trade.stockName.trim().toUpperCase() === normalizedSymbol
+      const existingIndex = trades.findIndex(
+        (trade) => trade.status === 'OPEN' && trade.stockName.trim().toUpperCase() === symbol
+      );
+      if (existingIndex >= 0) {
+        const existing = trades[existingIndex];
+        const combinedQuantity = existing.quantity + qty;
+        const combinedInvestment = existing.totalInvestment + price * qty;
+        const weightedAverageEntry = combinedInvestment / combinedQuantity;
+        const updated = trades.map((trade, index) => index === existingIndex
+          ? { ...trade, entryPrice: weightedAverageEntry, quantity: combinedQuantity, totalInvestment: combinedInvestment, currentMarketPrice: weightedAverageEntry }
+          : trade
         );
-
-        if (existingIndex >= 0) {
-          const existing = trades[existingIndex];
-          const combinedQuantity = existing.quantity + newTrade.quantity;
-          const combinedInvestment = existing.totalInvestment + newTrade.totalInvestment;
-          const weightedAverageEntry = combinedQuantity > 0 ? combinedInvestment / combinedQuantity : ep;
-          const updated = trades.map((trade, index) => index === existingIndex
-            ? {
-                ...trade,
-                entryPrice: weightedAverageEntry,
-                quantity: combinedQuantity,
-                totalInvestment: combinedInvestment,
-                currentMarketPrice: currentMarketPrice ? cmp : (trade.currentMarketPrice || weightedAverageEntry),
-                targetEarnings: target ?? trade.targetEarnings,
-                notes: [trade.notes, notes].filter(Boolean).join(' | '),
-              }
-            : trade
-          );
-          onSaveTrades(updated.map((trade, index) => ({ ...trade, serialNumber: index + 1 })));
-        } else {
-          onSaveTrades([...trades, newTrade]);
-        }
+        onSaveTrades(updated.map((trade, index) => ({ ...trade, serialNumber: index + 1 })));
       } else {
+        const newTrade: StockTrade = {
+          id: `trade_${Date.now()}`,
+          serialNumber: trades.length + 1,
+          entryDate,
+          tradeType: 'BUY',
+          stockName: symbol,
+          entryPrice: price,
+          quantity: qty,
+          totalInvestment: price * qty,
+          status: 'OPEN',
+          currentMarketPrice: price,
+        };
         onSaveTrades([...trades, newTrade]);
       }
     }
-
     setIsModalOpen(false);
   };
 
