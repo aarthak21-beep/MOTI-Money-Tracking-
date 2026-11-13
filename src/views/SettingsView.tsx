@@ -38,7 +38,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [drivePassphrase, setDrivePassphrase] = useState('');
   const [cloudStatus, setCloudStatus] = useState('');
-  const [cloudBusy, setCloudBusy] = useState(false);\n  const [sharedFolderName, setSharedFolderName] = useState('');
+  const [cloudBusy, setCloudBusy] = useState(false);\n  const [sharedFolderName, setSharedFolderName] = useState('');\n  const [sharedBackupName, setSharedBackupName] = useState('');
 
   const professions: Profession[] = [
     'Stock Trader',
@@ -115,6 +115,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setCloudStatus('Selected shared folder: ' + folder.name + '. Select it separately on each Gmail account.');
     } catch (error) {
       setCloudStatus(error instanceof Error ? error.message : 'Could not select the shared folder.');
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const handleSelectSharedBackupFile = async () => {
+    setCloudBusy(true);
+    setCloudStatus('Choose the existing encrypted MOTI backup in Google Picker…');
+    try {
+      await GoogleDriveSyncService.connect();
+      const file = await GoogleDriveSyncService.selectSharedBackupFile();
+      setSharedBackupName(file.name);
+      setCloudStatus('Selected encrypted backup: ' + file.name + '. This grants this Gmail account access to that file.');
+    } catch (error) {
+      setCloudStatus(error instanceof Error ? error.message : 'Could not select the encrypted backup file.');
     } finally {
       setCloudBusy(false);
     }
@@ -465,13 +480,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <button type="button" disabled={cloudBusy} onClick={handleSelectSharedFolder} className="mt-3 w-full rounded-xl border border-cyan-500/40 bg-cyan-500/10 py-2.5 text-xs font-bold text-cyan-300 disabled:opacity-50">
                 Select shared MOTI folder
               </button>
-              {sharedFolderName && <p className="mt-2 text-[10px] text-cyan-200">Selected: {sharedFolderName}</p>}
+              {sharedFolderName && <p className="mt-2 text-[10px] text-cyan-200">Folder: {sharedFolderName}</p>}
+              <button type="button" disabled={cloudBusy} onClick={handleSelectSharedBackupFile} className="mt-2 w-full rounded-xl border border-cyan-500/40 bg-[#070d18] py-2.5 text-xs font-bold text-cyan-200 disabled:opacity-50">
+                Select existing MOTI backup file (other Gmail)
+              </button>
+              {sharedBackupName && <p className="mt-2 text-[10px] text-cyan-200">Backup file: {sharedBackupName}</p>}
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <button type="button" disabled={cloudBusy || drivePassphrase.length < 12 || !sharedFolderName} onClick={handleSharedFolderBackup} className="rounded-xl bg-cyan-500 py-2.5 text-xs font-bold text-slate-950 disabled:opacity-50">
+                <button type="button" disabled={cloudBusy || drivePassphrase.length < 12 || (!sharedFolderName && !sharedBackupName)} onClick={handleSharedFolderBackup} className="rounded-xl bg-cyan-500 py-2.5 text-xs font-bold text-slate-950 disabled:opacity-50">
                   Encrypted folder backup
                 </button>
-                <button type="button" disabled={cloudBusy || drivePassphrase.length < 12 || !sharedFolderName} onClick={handleSharedFolderRestore} className="rounded-xl border border-cyan-500/40 bg-[#070d18] py-2.5 text-xs font-bold text-cyan-200 disabled:opacity-50">
-                  Restore from folder
+                <button type="button" disabled={cloudBusy || drivePassphrase.length < 12 || !sharedBackupName} onClick={handleSharedFolderRestore} className="rounded-xl border border-cyan-500/40 bg-[#070d18] py-2.5 text-xs font-bold text-cyan-200 disabled:opacity-50">
+                  Restore selected backup
                 </button>
               </div>
             </div>
