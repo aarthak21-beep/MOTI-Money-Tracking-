@@ -23,36 +23,12 @@ import { EquityRiskCalculator } from './EquityRiskCalculator';
 import { EquityTradeCalendar } from './EquityTradeCalendar';
 import { MonthlyTradingReview } from './MonthlyTradingReview';
 import { OpenPortfolioAllocation } from './OpenPortfolioAllocation';
-import { ZerodhaOrdersPanel } from '../components/ZerodhaOrdersPanel';
-import { buildZerodhaJournal, type KiteExecution } from '../utils/zerodhaTradeImport';
 
 interface StockTradingViewProps {
   trades: StockTrade[];
   profile: UserProfile;
   onSaveTrades: (trades: StockTrade[]) => void;
 }
-
-const IGNORED_ZERODHA_JOURNAL_ROWS_KEY = 'moti_kite_ignored_journal_rows_v1';
-
-const readIgnoredZerodhaJournalRows = (): string[] => {
-  try {
-    const raw = window.localStorage.getItem(IGNORED_ZERODHA_JOURNAL_ROWS_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
-  } catch {
-    return [];
-  }
-};
-
-const ignoreZerodhaJournalRow = (id: string) => {
-  const ignored = new Set(readIgnoredZerodhaJournalRows());
-  ignored.add(id);
-  try {
-    window.localStorage.setItem(IGNORED_ZERODHA_JOURNAL_ROWS_KEY, JSON.stringify(Array.from(ignored)));
-  } catch {
-    // The row is still deleted from the current journal if browser storage is unavailable.
-  }
-};
 
 // Consolidate duplicate OPEN entries for the same equity into one weighted-average position.
 const consolidateOpenPositions = (items: StockTrade[]): StockTrade[] => {
@@ -106,7 +82,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   profile,
   onSaveTrades,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'OPEN' | 'CLOSED' | 'tools' | 'zerodha'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'OPEN' | 'CLOSED' | 'tools'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 25;
@@ -125,28 +101,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   const [currentMarketPrice, setCurrentMarketPrice] = useState('');
   const [notes, setNotes] = useState('');
   const [strategy, setStrategy] = useState('');
-
-  const handleZerodhaExecutions = (executions: KiteExecution[]) => {
-    const result = buildZerodhaJournal(trades, executions, readIgnoredZerodhaJournalRows());
-    onSaveTrades(result.trades);
-    return result.summary;
-  };
-
-  useEffect(() => {
-    const clearZerodhaJournal = () => {
-      // Keep deleted-row tombstones so historical fills cannot recreate cleared journal rows.
-      const manualTrades = trades.filter((trade) => {
-        const notes = String(trade.notes || '').toLowerCase();
-        return !(trade.source === 'ZERODHA' || trade.id.startsWith('kite:') ||
-          Boolean(trade.brokerTradeIds?.length) ||
-          notes.includes('imported from zerodha') ||
-          notes.includes('zerodha sell execution'));
-      });
-      onSaveTrades(manualTrades.map((trade, index) => ({ ...trade, serialNumber: index + 1 })));
-    };
-    window.addEventListener('moti-clear-zerodha-journal', clearZerodhaJournal);
-    return () => window.removeEventListener('moti-clear-zerodha-journal', clearZerodhaJournal);
-  }, [trades, onSaveTrades]);
 
   // One-time cleanup on load: legacy duplicate OPEN entries become one weighted-average position.
   useEffect(() => {
@@ -240,38 +194,13 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
 
     if (activeTab === 'OPEN') {
       const openRows = trades.filter((t) => t.status === 'OPEN');
-      const manualRows = openRows.filter((t) => t.source !== 'ZERODHA');
-      const zerodhaGroups = new Map<string, StockTrade[]>();
-      openRows.filter((t) => t.source === 'ZERODHA').forEach((trade) => {
-        const key = trade.stockName.trim().toUpperCase();
-        zerodhaGroups.set(key, [...(zerodhaGroups.get(key) || []), trade]);
-      });
-      const aggregatedZerodha = Array.from(zerodhaGroups.entries()).map(([key, rows]) => {
-        const quantity = rows.reduce((sum, row) => sum + row.quantity, 0);
-        const investment = rows.reduce((sum, row) => sum + row.totalInvestment, 0);
-        const weightedAverage = quantity > 0 ? investment / quantity : 0;
-        const latest = [...rows].sort((a, b) => {
-          const [ad, am, ay] = a.entryDate.split('-').map(Number);
-          const [bd, bm, by] = b.entryDate.split('-').map(Number);
-          return new Date(by, bm - 1, bd).getTime() - new Date(ay, am - 1, ad).getTime();
-        })[0];
-        return {
-          ...latest,
-          id: 'kite:open-position:' + key,
-          entryDate: rows.length === 1 ? rows[0].entryDate : 'Multiple dates',
-          entryPrice: weightedAverage,
-          quantity,
-          totalInvestment: investment,
-          notes: rows.length + ' Zerodha BUY lots combined for this open position.',
-        };
-      });
-      return [...manualRows, ...aggregatedZerodha].filter(matchesSearch);
+      return openRows.filter(matchesSearch);
     }
 
     return trades.filter((t) => {
       const matchesTab = activeTab === 'overview' || activeTab === 'tools' || t.status === activeTab;
       // The main Trade History overview is today's activity only. Full history
-      // remains stored and is still used by analytics and Zerodha FIFO matching.
+      // remains stored and is still used by analytics.
       const matchesToday = activeTab !== 'overview' || isTradeFromToday(t.entryDate) || isTradeFromToday(t.exitDate);
       return matchesTab && matchesToday && matchesSearch(t);
     });
@@ -427,10 +356,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
   // Delete trade with confirmation
   const handleDeleteTrade = (id: string, name: string) => {
     if (window.confirm(`Are you sure you want to delete the trade for ${name}?`)) {
-      const deletedTrade = trades.find((trade) => trade.id === id);
-      if (deletedTrade?.source === 'ZERODHA' || id.startsWith('kite:')) {
-        ignoreZerodhaJournalRow(id);
-      }
       const updated = trades
         .filter((t) => t.id !== id)
         .map((t, idx) => ({ ...t, serialNumber: idx + 1 }));
@@ -564,7 +489,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           <p className="mt-1 text-xs text-slate-400">Your completed trades and realized performance history.</p>
         </div>
       )}
-      {activeTab !== 'tools' && activeTab !== 'zerodha' && (
+      {activeTab !== 'tools' && (
         <div className="relative w-full sm:max-w-sm">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input
@@ -648,10 +573,9 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-3">
           {([
             { id: 'overview', label: 'Overview', count: trades.length },
-            { id: 'OPEN', label: 'Open Positions', count: new Set(trades.filter((t) => t.status === 'OPEN' && t.source === 'ZERODHA').map((t) => (t.exchange || '') + ':' + t.stockName.trim().toUpperCase())).size + trades.filter((t) => t.status === 'OPEN' && t.source !== 'ZERODHA').length },
+            { id: 'OPEN', label: 'Open Positions', count: trades.filter((t) => t.status === 'OPEN').length },
             { id: 'CLOSED', label: 'Closed Trades', count: trades.filter((t) => t.status === 'CLOSED').length },
             { id: 'tools', label: 'Reports & Tools' },
-            { id: 'zerodha', label: 'Zerodha Orders' },
           ] as const).map((tab) => (
             <button
               key={tab.id}
@@ -665,7 +589,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         </div>
       </div>
 
-      {activeTab !== 'tools' && activeTab !== 'zerodha' && (
+      {activeTab !== 'tools' && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-black uppercase tracking-wide text-white">
@@ -724,9 +648,9 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                     <td className={`py-3 px-3 text-right font-bold ${pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{closed ? pct.toFixed(2) + '%' : '-'}</td>
                     <td className="py-3 px-3 text-center">
                       <div className="flex items-center justify-center space-x-1.5">
-                        {!closed && !t.id.startsWith('kite:open-position:') && <button onClick={() => handleQuickClose(t)} title="Exit Trade" className="rounded-lg p-1.5 text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"><CheckCircle className="h-4 w-4" /></button>}
-                        {!t.id.startsWith('kite:open-position:') && <button onClick={() => handleOpenModal(t)} title="Edit Trade" className="rounded-lg p-1.5 text-slate-400 hover:bg-[#1e2e4f] hover:text-white cursor-pointer"><Edit2 className="h-3.5 w-3.5" /></button>}
-                        {!t.id.startsWith('kite:open-position:') && <button onClick={() => handleDeleteTrade(t.id, t.stockName)} title="Delete Trade" className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>}
+                        {!closed && <button onClick={() => handleQuickClose(t)} title="Exit Trade" className="rounded-lg p-1.5 text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"><CheckCircle className="h-4 w-4" /></button>}
+                        {<button onClick={() => handleOpenModal(t)} title="Edit Trade" className="rounded-lg p-1.5 text-slate-400 hover:bg-[#1e2e4f] hover:text-white cursor-pointer"><Edit2 className="h-3.5 w-3.5" /></button>}
+                        {<button onClick={() => handleDeleteTrade(t.id, t.stockName)} title="Delete Trade" className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>}
                       </div>
                     </td>
                   </tr>
@@ -758,10 +682,6 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           )}
         </div>
       )}
-
-      <div className={activeTab === 'zerodha' ? '' : 'hidden'}>
-        <ZerodhaOrdersPanel onExecutionsChange={handleZerodhaExecutions} />
-      </div>
 
 
       {activeTab === 'tools' && (
