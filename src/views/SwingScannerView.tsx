@@ -21,17 +21,34 @@ const rsi = (values: number[]) => {
 const parseCsv = (text: string, csvFilename = ''): { symbol: string; candle: Candle }[] => {
   const lines = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
   if (lines.length < 2) throw new Error('CSV मध्ये data rows नाहीत.');
-  const headers = lines[0].split(',').map(value => value.trim().toLowerCase().replaceAll('"', ''));
+  const delimiter = (lines[0].match(/\t/g) || []).length > (lines[0].match(/,/g) || []).length ? '\t' : ',';
+  const splitLine = (line: string) => {
+    const cells: string[] = [];
+    let value = '', quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (quoted && line[i + 1] === '"') { value += '"'; i++; }
+        else quoted = !quoted;
+      } else if (char === delimiter && !quoted) {
+        cells.push(value.trim()); value = '';
+      } else value += char;
+    }
+    cells.push(value.trim());
+    return cells;
+  };
+  const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const headers = splitLine(lines[0]).map(normalize);
   const col = (...names: string[]) => headers.findIndex(header => names.includes(header));
-  const dateCol = col('traddt', 'trad dt', 'date1', 'date', 'timestamp');
+  const dateCol = col('traddt', 'traddate', 'tradtdt', 'date1', 'date', 'timestamp');
   const symbolCol = col('tckrsymb', 'symbol');
   const seriesCol = col('sctysrs', 'series');
-  const openCol = col('opnpric', 'open_price', 'open');
-  const highCol = col('hghpric', 'high_price', 'high');
-  const lowCol = col('lwpric', 'low_price', 'low');
-  const closeCol = col('clspric', 'close_price', 'close');
-  const volumeCol = col('ttltradgvol', 'ttl_trd_qnty', 'total_traded_quantity', 'volume');
-  if ([dateCol, highCol, lowCol, closeCol, volumeCol].some(index => index < 0)) throw new Error('NSE CSV columns ओळखता आले नाहीत. NSE Equity Bhavcopy CSV वापरा.');
+  const openCol = col('opnpric', 'openprice', 'open');
+  const highCol = col('hghpric', 'highprice', 'high');
+  const lowCol = col('lwpric', 'lowprice', 'low');
+  const closeCol = col('clspric', 'closeprice', 'close');
+  const volumeCol = col('ttltradgvol', 'ttltrdqn ty'.replace(/ /g, ''), 'totaltradedquantity', 'totaltrdquantity', 'volume');
+  if ([dateCol, highCol, lowCol, closeCol, volumeCol].some(index => index < 0)) throw new Error('CSV columns ओळखता आले नाहीत. NSE Bhavcopy किंवा Security-wise Price Volume CSV वापरा.');
   const parseDate = (value: string) => {
     const raw = value.trim();
     if (/^\d{2}-[A-Za-z]{3}-\d{4}$/.test(raw)) {
@@ -42,14 +59,15 @@ const parseCsv = (text: string, csvFilename = ''): { symbol: string; candle: Can
     const parsed = new Date(raw);
     return Number.isNaN(parsed.getTime()) ? raw : parsed.toISOString().slice(0, 10);
   };
+  const parseNumber = (value: string | undefined) => Number((value || '').replace(/,/g, '').replace(/[₹\s]/g, ''));
   const rows: { symbol: string; candle: Candle }[] = [];
+  const fallbackSymbol = csvFilename.replace(/\.csv$/i, '').replace(/[-_ ]historical.*/i, '').toUpperCase();
   for (const line of lines.slice(1)) {
-    const cells = line.split(',').map(value => value.trim().replaceAll('"', ''));
+    const cells = splitLine(line);
     const series = seriesCol >= 0 ? cells[seriesCol]?.toUpperCase() : 'EQ';
     if (series && !['EQ', 'BE'].includes(series)) continue;
-    const fallbackSymbol = csvFilename.replace(/\.csv$/i, '').replace(/[-_ ]historical.*/i, '').toUpperCase();
     const symbol = (symbolCol >= 0 ? cells[symbolCol] : fallbackSymbol).toUpperCase();
-    const candle = { date: parseDate(cells[dateCol] || ''), open: Number(cells[openCol] || cells[closeCol]), high: Number(cells[highCol]), low: Number(cells[lowCol]), close: Number(cells[closeCol]), volume: Number(cells[volumeCol]) };
+    const candle = { date: parseDate(cells[dateCol] || ''), open: parseNumber(cells[openCol]) || parseNumber(cells[closeCol]), high: parseNumber(cells[highCol]), low: parseNumber(cells[lowCol]), close: parseNumber(cells[closeCol]), volume: parseNumber(cells[volumeCol]) };
     if (!symbol || !candle.date || ![candle.high, candle.low, candle.close, candle.volume].every(Number.isFinite) || candle.close <= 0 || candle.volume < 0) continue;
     rows.push({ symbol, candle });
   }
