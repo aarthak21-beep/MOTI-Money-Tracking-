@@ -121,7 +121,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       await CloudSyncService.saveSnapshot(snapshot);
       const tradeCount = Array.isArray(snapshot.stockTrades) ? snapshot.stockTrades.length : 0;
       const weeklyCount = Array.isArray(snapshot.weeklyIncome) ? snapshot.weeklyIncome.length : 0;
-      setCloudStatus(`Complete MOTI backup sent: ${tradeCount} stock trades, ${weeklyCount} Weekly Capital records, and Zerodha history.`);
+      setCloudStatus(`Complete MOTI backup sent: ${tradeCount} stock trades, ${weeklyCount} Weekly Capital records, and all saved records.`);
     } catch (error) {
       setCloudStatus(error instanceof Error ? error.message : 'Weekly cloud sync failed.');
     } finally {
@@ -139,12 +139,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const snapshot = await CloudSyncService.loadSnapshot();
       if (!snapshot) {
         setCloudStatus('No MOTI cloud backup found. First use Backup all MOTI data on the device that has your existing history.');
-      } else if (window.confirm('Restore the complete MOTI backup from Google Sheets? This replaces the records on this device, including stock trades and Zerodha history. Export a JSON backup first if this device has newer data.')) {
+      } else if (window.confirm('Restore the complete MOTI backup from Google Sheets? This replaces the records on this device, including all saved stock trades. Export a JSON backup first if this device has newer data.')) {
         const success = StorageService.importCompleteBackup(JSON.stringify(snapshot), profile.id);
         if (!success) throw new Error('The Google Sheet backup format is invalid; local data was not changed.');
         onRefreshData();
         const count = Array.isArray(snapshot.stockTrades) ? snapshot.stockTrades.length : 0;
-        setCloudStatus(`Complete MOTI backup restored (${count} stock trade records, plus all saved modules and Zerodha history).`);
+        setCloudStatus(`Complete MOTI backup restored (${count} stock trade records, plus all saved modules).`);
       } else {
         setCloudStatus('Restore cancelled. Local data was not changed.');
       }
@@ -333,7 +333,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             <p className="mt-3 text-xs text-slate-400 leading-relaxed">
-              Export a complete JSON snapshot, including Zerodha orders, fills, holdings and positions. Save backups regularly; the file is not encrypted, so store it somewhere private.
+              Export a complete JSON snapshot, including all saved MOTI records. Save backups regularly; the file is not encrypted, so store it somewhere private.
             </p>
 
             <div className="mt-4 space-y-2.5">
@@ -364,7 +364,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <h2 className="text-base font-bold text-white">Google Sheets Cloud Sync</h2>
             </div>
             <p className="mt-3 text-xs text-slate-400 leading-relaxed">
-              Connect your private Google Apps Script Web App. All MOTI records, stock trades, and saved Zerodha order/trade/holding/position history are backed up to Google Sheets.
+              Connect your private Google Apps Script Web App. All MOTI records, stock trades, are backed up to Google Sheets.
             </p>
             <label className="mt-4 block text-xs font-semibold text-slate-300">Apps Script Web App URL</label>
             <input
