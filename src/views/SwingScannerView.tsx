@@ -128,8 +128,8 @@ export const SwingScannerView: React.FC = () => {
       item.symbol, item.series, item.close, item.weeklyChange ?? '', item.volumeMultiple ?? '',
       item.breakout ? 'Yes' : 'No', item.pctToday ?? '', item.sources.join('; ')
     ]);
-    const csv = [headers, ...rows].map(row => row.map(quote).join(',')).join('\\r\\n');
-    const blob = new Blob(['\\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const csv = [headers, ...rows].map(row => row.map(quote).join(',')).join('\r\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
