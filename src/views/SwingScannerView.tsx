@@ -168,6 +168,13 @@ export const SwingScannerView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
+  const [stockSearch, setStockSearch] = useState('');
+  const [minFiveDay, setMinFiveDay] = useState('');
+  const [minVolume, setMinVolume] = useState('');
+  const [minToday, setMinToday] = useState('');
+  const [breakoutFilter, setBreakoutFilter] = useState('all');
+  const [darvasFilter, setDarvasFilter] = useState('all');
+  const [darvasPeriod, setDarvasPeriod] = useState('20');
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); } catch { setMessage('Browser storage भरले आहे. जुन्या नोंदी clear करा.'); } }, [records]);
 
   const latestDate = useMemo(() => records.reduce((d, r) => r.date > d ? r.date : d, ''), [records]);
@@ -220,6 +227,27 @@ export const SwingScannerView: React.FC = () => {
     ).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
   }, [records, latestRows, latestDate]);
 
+  const filteredCandidates = candidates.filter(item => {
+    if (stockSearch && !item.symbol.toLowerCase().includes(stockSearch.trim().toLowerCase())) return false;
+    if (minFiveDay !== '' && (item.weeklyChange === undefined || item.weeklyChange < Number(minFiveDay))) return false;
+    if (minVolume !== '' && (item.volumeMultiple === undefined || item.volumeMultiple < Number(minVolume))) return false;
+    if (minToday !== '' && (item.pctToday === undefined || item.pctToday < Number(minToday))) return false;
+    if (breakoutFilter !== 'all') {
+      const days = Number(breakoutFilter);
+      if (!item.breakoutRanges.some(r => r.days === days && r.breakout)) return false;
+    }
+    if (darvasFilter !== 'all') {
+      const box = item.breakoutRanges.find(r => r.days === Number(darvasPeriod));
+      if (!box || !box.enough) return false;
+      const status = box.breakout ? 'breakout' : box.inside ? 'inside' : 'below';
+      if (status !== darvasFilter) return false;
+    }
+    return true;
+  });
+  const resetFilters = () => {
+    setStockSearch(''); setMinFiveDay(''); setMinVolume(''); setMinToday('');
+    setBreakoutFilter('all'); setDarvasFilter('all'); setDarvasPeriod('20');
+  };
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     setLoading(true); setMessage(''); setErrors([]);
@@ -284,11 +312,21 @@ export const SwingScannerView: React.FC = () => {
         <div><h2 className="text-sm font-bold text-white">Weekly Movement & Breakout Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · New entries: EQ/BE +4% and ₹300–₹3,000 · Existing stocks stay listed while price remains ₹300–₹3,000</p></div>
         <button onClick={clearHistory} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear history</button>
       </div>
+      <div className="grid gap-2 border-b border-[#1e2e4f] bg-[#0a1220] p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
+        <label className="text-[10px] text-slate-400">Stock search<input value={stockSearch} onChange={e => setStockSearch(e.target.value)} placeholder="उदा. RELIANCE" className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white placeholder:text-slate-600" /></label>
+        <label className="text-[10px] text-slate-400">Min 5-day move %<input type="number" step="0.5" value={minFiveDay} onChange={e => setMinFiveDay(e.target.value)} placeholder="उदा. 2" className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /></label>
+        <label className="text-[10px] text-slate-400">Min volume vs 1W avg<input type="number" min="0" step="0.1" value={minVolume} onChange={e => setMinVolume(e.target.value)} placeholder="उदा. 1.5x" className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /></label>
+        <label className="text-[10px] text-slate-400">Min today %<input type="number" step="0.5" value={minToday} onChange={e => setMinToday(e.target.value)} placeholder="उदा. 1" className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /></label>
+        <label className="text-[10px] text-slate-400">Range breakout<select value={breakoutFilter} onChange={e => setBreakoutFilter(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white"><option value="all">All</option><option value="5">5-day breakout</option><option value="10">10-day breakout</option><option value="20">20-day breakout</option></select></label>
+        <label className="text-[10px] text-slate-400">Darvas period<select value={darvasPeriod} onChange={e => setDarvasPeriod(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white"><option value="5">5-day</option><option value="10">10-day</option><option value="20">20-day</option></select></label>
+        <label className="text-[10px] text-slate-400">Darvas box status<select value={darvasFilter} onChange={e => setDarvasFilter(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white"><option value="all">All</option><option value="breakout">Box breakout</option><option value="inside">Inside box</option><option value="below">Below box</option></select></label>
+        <div className="flex items-end justify-between gap-2 sm:col-span-2 lg:col-span-3 xl:col-span-6"><p className="text-[10px] text-slate-400">Showing <span className="font-bold text-white">{filteredCandidates.length}</span> of {candidates.length} watchlist stocks</p><button onClick={resetFilters} className="rounded-lg border border-slate-700 px-3 py-2 text-[10px] font-bold text-slate-300 hover:bg-white/5">Reset filters</button></div>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-left text-xs">
           <thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400"><tr>{['Stock','Latest Close','5-Day Move','Volume vs 1W Avg','Range Breakout 5/10/20','Darvas Box 5/10/20','Today %','Report Sources'].map(x => <th key={x} className="px-3 py-3">{x}</th>)}</tr></thead>
           <tbody className="divide-y divide-[#1e2e4f]/60">
-            {candidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
+            {filteredCandidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
               <td className="px-3 py-3 font-black text-white">{item.symbol}</td>
               <td className="px-3 py-3 text-white">{money(item.close)}</td>
               <td className={'px-3 py-3 font-bold ' + ((item.weeklyChange ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{pct(item.weeklyChange)}</td>
@@ -300,7 +338,7 @@ export const SwingScannerView: React.FC = () => {
             </tr>)}
           </tbody>
         </table>
-        {!candidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">NSE reports upload कर</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि Advances CSV मधील वाढणारे stocks शोधण्यासाठी वापरली जाईल. एकदा +4% वरून लिस्टमध्ये आलेला stock पुढे +4% खाली गेला तरी ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहील.</p></div>}
+        {!filteredCandidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">{candidates.length ? 'या filters मध्ये stock सापडला नाही' : 'NSE reports upload कर'}</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि Advances CSV मधील वाढणारे stocks शोधण्यासाठी वापरली जाईल. एकदा +4% वरून लिस्टमध्ये आलेला stock पुढे +4% खाली गेला तरी ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहील.</p></div>}
       </div>
     </div>
     <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><div className="flex items-center gap-2 text-xs font-bold text-cyan-200"><Info className="h-4 w-4" /> Data notes</div>
