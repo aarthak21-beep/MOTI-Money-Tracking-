@@ -184,6 +184,7 @@ export const SwingScannerView: React.FC = () => {
   const [darvas10, setDarvas10] = useState('all');
   const [darvas20, setDarvas20] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'weeklyChange', direction: 'desc' });
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); } catch { setMessage('Browser storage भरले आहे. जुन्या नोंदी clear करा.'); } }, [records]);
 
   const latestDate = useMemo(() => records.reduce((d, r) => r.date > d ? r.date : d, ''), [records]);
@@ -264,6 +265,39 @@ export const SwingScannerView: React.FC = () => {
     if (sourceFilter !== 'all' && !item.sources.includes(sourceFilter)) return false;
     return true;
   });
+  const sortedCandidates = [...filteredCandidates].sort((a, b) => {
+    const direction = sortConfig.direction === 'asc' ? 1 : -1;
+    const rangeScore = (item: typeof candidates[number], mode: 'breakout' | 'darvas') => {
+      const score = (days: number) => {
+        const r = item.breakoutRanges.find(x => x.days === days);
+        if (!r?.enough) return 0;
+        if (mode === 'breakout') return r.breakout ? 2 : 1;
+        return r.breakout ? 3 : r.inside ? 2 : 1;
+      };
+      return score(5) * 100 + score(10) * 10 + score(20);
+    };
+    const value = (item: typeof candidates[number]): string | number => {
+      switch (sortConfig.key) {
+        case 'symbol': return item.symbol;
+        case 'close': return item.close ?? Number.NEGATIVE_INFINITY;
+        case 'weeklyChange': return item.weeklyChange ?? Number.NEGATIVE_INFINITY;
+        case 'volumeMultiple': return item.volumeMultiple ?? Number.NEGATIVE_INFINITY;
+        case 'breakout': return rangeScore(item, 'breakout');
+        case 'darvas': return rangeScore(item, 'darvas');
+        case 'pctToday': return item.pctToday ?? Number.NEGATIVE_INFINITY;
+        case 'sources': return item.sources.join(', ');
+        default: return item.weeklyChange ?? Number.NEGATIVE_INFINITY;
+      }
+    };
+    const av = value(a), bv = value(b);
+    if (typeof av === 'string' && typeof bv === 'string') return direction * av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
+    return direction * ((av as number) - (bv as number));
+  });
+  const toggleSort = (key: string) => setSortConfig(current => ({
+    key,
+    direction: current.key === key ? (current.direction === 'desc' ? 'asc' : 'desc') : key === 'symbol' ? 'asc' : 'desc'
+  }));
+  const sortIndicator = (key: string) => sortConfig.key === key ? (sortConfig.direction === 'asc' ? ' ↑' : ' ↓') : ' ↕';
   const resetFilters = () => {
     setStockSearch(''); setMinClose(''); setMaxClose(''); setMinFiveDay(''); setMaxFiveDay('');
     setMinVolume(''); setMaxVolume(''); setMinToday(''); setMaxToday('');
@@ -337,7 +371,7 @@ export const SwingScannerView: React.FC = () => {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-left text-xs">
           <thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400">
-            <tr>{['Stock','Latest Close','5-Day Move','Volume vs 1W Avg','Range Breakout 5/10/20','Darvas Box 5/10/20','Today %','Report Sources'].map(x => <th key={x} className="px-3 py-3">{x}</th>)}</tr>
+            <tr>{[{label:'Stock',key:'symbol'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
             <tr className="border-t border-[#1e2e4f] bg-[#0a1220] align-top normal-case">
               <th className="px-2 py-2"><input aria-label="Filter stock" value={stockSearch} onChange={e => setStockSearch(e.target.value)} placeholder="Stock" className="w-full min-w-20 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white placeholder:text-slate-500" /></th>
               <th className="px-2 py-2"><div className="flex min-w-32 gap-1"><input aria-label="Minimum latest close" type="number" value={minClose} onChange={e => setMinClose(e.target.value)} placeholder="Min" className="w-1/2 min-w-0 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white" /><input aria-label="Maximum latest close" type="number" value={maxClose} onChange={e => setMaxClose(e.target.value)} placeholder="Max" className="w-1/2 min-w-0 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white" /></div></th>
@@ -350,7 +384,7 @@ export const SwingScannerView: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-[#1e2e4f]/60">
-            {filteredCandidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
+            {sortedCandidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
               <td className="px-3 py-3 font-black text-white">{item.symbol}</td>
               <td className="px-3 py-3 text-white">{money(item.close)}</td>
               <td className={'px-3 py-3 font-bold ' + ((item.weeklyChange ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{pct(item.weeklyChange)}</td>
