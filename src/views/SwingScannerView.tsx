@@ -30,8 +30,7 @@ const num = (v?: string) => {
 };
 const findCol = (headers: string[], ...aliases: string[]) => headers.findIndex(h => aliases.includes(norm(h)));
 const parseReport = (text: string, date: string): { type: ReportType; rows: DailyRow[] } => {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?
-/).filter(line => line.trim());
+  const lines = text.replace(/^\uFEFF/, '').split(String.fromCharCode(10)).filter(line => line.trim());
   let headerAt = -1, headers: string[] = [];
   for (let i = 0; i < Math.min(lines.length, 12); i++) {
     const candidate = splitCsvLine(lines[i]);
