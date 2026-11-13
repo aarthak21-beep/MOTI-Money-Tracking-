@@ -184,8 +184,6 @@ export const SwingScannerView: React.FC = () => {
 
     <div className="grid gap-3 sm:grid-cols-2">
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Stocks tracked</p><p className="mt-1 text-2xl font-black text-white">{latestRows.length}</p></div>
-      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Advances</p><p className="mt-1 text-2xl font-black text-emerald-300">{stats.up}</p></div>
-      
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Saved trading days</p><p className="mt-1 text-2xl font-black text-cyan-300">{new Set(records.map(r => r.date)).size}</p></div>
     </div>
 
