@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, Upload, RefreshCw, FileSpreadsheet, Info, TrendingUp, TrendingDown } from 'lucide-react';
+import { Activity, Upload, RefreshCw, FileSpreadsheet, Info } from 'lucide-react';
 
 type DailyRow = {
   date: string; symbol: string; close?: number; prevClose?: number;
@@ -48,7 +48,7 @@ const parseReport = (text: string, date: string): { type: ReportType; rows: Dail
   const col = (...names: string[]) => findCol(headers, ...names);
   const symbolCol = col('symbol');
   const closeCol = col('ltp', 'lasttradedprice');
-  const pctCol = col('chng', 'change', 'percentchange', 'changepercent');
+  const pctCol = col('%chng', '%change', 'chng', 'change', 'percentchange', 'changepercent');
   const rows: DailyRow[] = [];
   for (const line of lines.slice(headerAt + 1)) {
     const c = splitCsvLine(line);
@@ -113,7 +113,7 @@ export const SwingScannerView: React.FC = () => {
       const latest = history[history.length - 1] || latestRows.find(r => r.symbol === symbol)!;
       const prior5 = history.slice(-6, -1);
       const first = history.length >= 2 ? history[Math.max(0, history.length - 5)] : undefined;
-      const weeklyChange = first?.close ? ((latest.close! / first.close) - 1) * 100 : undefined;
+      const weeklyChange = history.length >= 6 && first?.close ? ((latest.close! / first.close) - 1) * 100 : undefined;
       const highs = prior5.map(r => r.high).filter((v): v is number => v !== undefined);
       const breakout = latest.high !== undefined && highs.length >= 3 && latest.high > Math.max(...highs);
       const latestVolume = latestRows.find(r => r.symbol === symbol && r.volumeMultiple !== undefined);
