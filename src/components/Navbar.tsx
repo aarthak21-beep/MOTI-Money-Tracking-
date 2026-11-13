@@ -5,6 +5,7 @@ import {
   Plus,
   TrendingUp,
   Activity,
+  CandlestickChart,
   Download,
   CheckCircle,
   AlertTriangle,
@@ -241,6 +242,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
             { id: 'stockTrading', label: 'Stocks', icon: TrendingUp },
             { id: 'swingScanner', label: 'Swing Scanner', icon: Activity },
+            { id: 'niftyOptions', label: 'NIFTY Options', icon: CandlestickChart },
             { id: 'weeklyIncome', label: 'Weekly', icon: CalendarDays },
             
           ].map((item) => {
