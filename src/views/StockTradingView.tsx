@@ -91,6 +91,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
 
   // Form State
   const [entryDate, setEntryDate] = useState('');
+  const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY');
   const [stockName, setStockName] = useState('');
   const [entryPrice, setEntryPrice] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -218,6 +219,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
     if (trade) {
       setEditingTrade(trade);
       setEntryDate(trade.entryDate);
+      setTradeType(trade.tradeType || 'BUY');
       setStockName(trade.stockName);
       setEntryPrice(String(trade.entryPrice));
       setQuantity(String(trade.quantity));
@@ -235,6 +237,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       ).padStart(2, '0')}-${today.getFullYear()}`;
       setEditingTrade(null);
       setEntryDate(formatted);
+      setTradeType('BUY');
       setStockName('');
       setEntryPrice('');
       setQuantity('');
@@ -280,6 +283,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           ? {
               ...t,
               entryDate,
+              tradeType,
               stockName: stockName.toUpperCase().trim(),
               entryPrice: ep,
               quantity: qty,
@@ -303,6 +307,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         id: `trade_${Date.now()}`,
         serialNumber: trades.length + 1,
         entryDate,
+        tradeType,
         stockName: stockName.toUpperCase().trim(),
         entryPrice: ep,
         quantity: qty,
@@ -731,179 +736,33 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
             </div>
 
             <form onSubmit={handleSaveTrade} className="mt-4 space-y-3.5">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300">Entry Date (DD-MM-YYYY)</label>
-                  <input
-                    type="date"
-                    required
-                    value={entryDate ? entryDate.split("-").reverse().join("-") : ""}
-                    onChange={(e) => setEntryDate(e.target.value ? e.target.value.split("-").reverse().join("-") : "")}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white [color-scheme:dark] focus:border-emerald-300 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300">Stock Symbol / Name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="RELIANCE, INFY"
-                    value={stockName}
-                    onChange={(e) => setStockName(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs uppercase font-bold text-white focus:border-emerald-300 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300">Entry Buy Price (₹)</label>
-                  <input
-                    type="number"
-                    step="any"
-                    required
-                    value={entryPrice}
-                    onChange={(e) => setEntryPrice(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white focus:border-emerald-300 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300">Quantity (Shares)</label>
-                  <input
-                    type="number"
-                    required
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white focus:border-emerald-300 outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Automatic Total Investment preview */}
-              {entryPrice && quantity && (
-                <div className="rounded-xl border border-cyan-300/20 bg-emerald-300/10 p-2.5 text-xs text-cyan-300 font-semibold flex justify-between">
-                  <span>Calculated Investment:</span>
-                  <span>₹{(Number(entryPrice) * Number(quantity)).toLocaleString('en-IN')}</span>
-                </div>
-              )}
-
-              {/* Status Switch */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300">Position Status</label>
+                <label className="block text-xs font-semibold text-slate-300">Trade Type</label>
                 <div className="mt-1 grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setTradeStatus('OPEN')}
-                    className={`rounded-xl py-2 text-xs font-bold cursor-pointer border ${
-                      tradeStatus === 'OPEN'
-                        ? 'border-amber-400 bg-amber-500/20 text-cyan-300'
-                        : 'border-[#1e2e4f] bg-[#070d18] text-slate-400'
-                    }`}
-                  >
-                    Open Position
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTradeStatus('CLOSED')}
-                    className={`rounded-xl py-2 text-xs font-bold cursor-pointer border ${
-                      tradeStatus === 'CLOSED'
-                        ? 'border-emerald-400 bg-emerald-500/20 text-emerald-300'
-                        : 'border-[#1e2e4f] bg-[#070d18] text-slate-400'
-                    }`}
-                  >
-                    Closed (Realized)
-                  </button>
+                  <button type="button" onClick={() => setTradeType('BUY')} className={`rounded-xl border py-2.5 text-xs font-bold ${tradeType === 'BUY' ? 'border-emerald-400 bg-emerald-500/20 text-emerald-300' : 'border-[#1e2e4f] bg-[#070d18] text-slate-400'}`}>BUY</button>
+                  <button type="button" onClick={() => setTradeType('SELL')} className={`rounded-xl border py-2.5 text-xs font-bold ${tradeType === 'SELL' ? 'border-rose-400 bg-rose-500/20 text-rose-300' : 'border-[#1e2e4f] bg-[#070d18] text-slate-400'}`}>SELL</button>
                 </div>
               </div>
-
-              {/* Open vs Closed conditional fields */}
-              {tradeStatus === 'OPEN' ? (
+              <div>
+                <label className="block text-xs font-semibold text-slate-300">Date</label>
+                <input type="date" required value={entryDate ? entryDate.split("-").reverse().join("-") : ""} onChange={(e) => setEntryDate(e.target.value ? e.target.value.split("-").reverse().join("-") : "")} className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white [color-scheme:dark] focus:border-emerald-300 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300">Stock Name</label>
+                <input type="text" required placeholder="RELIANCE, INFY" value={stockName} onChange={(e) => setStockName(e.target.value)} className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs uppercase font-bold text-white focus:border-emerald-300 outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300">
-                    Current Market Price (CMP) - for Unrealized P&L
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="Enter current price"
-                    value={currentMarketPrice}
-                    onChange={(e) => setCurrentMarketPrice(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-cyan-300 font-bold outline-none"
-                  />
+                  <label className="block text-xs font-semibold text-slate-300">Price (₹)</label>
+                  <input type="number" min="0" step="any" required value={entryPrice} onChange={(e) => setEntryPrice(e.target.value)} className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white focus:border-emerald-300 outline-none" />
                 </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300">Exit Date (DD-MM-YYYY)</label>
-                    <input
-                      type="date"
-                      value={exitDate ? exitDate.split("-").reverse().join("-") : ""}
-                      onChange={(e) => setExitDate(e.target.value ? e.target.value.split("-").reverse().join("-") : "")}
-                      className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white [color-scheme:dark] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300">Exit Sell Price (₹)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      required={tradeStatus === 'CLOSED'}
-                      value={exitPrice}
-                      onChange={(e) => setExitPrice(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-emerald-400 outline-none"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300">Quantity</label>
+                  <input type="number" min="1" step="1" required value={quantity} onChange={(e) => setQuantity(e.target.value)} className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs font-bold text-white focus:border-emerald-300 outline-none" />
                 </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300">Target Profit (₹)</label>
-                <input
-                  type="number"
-                  placeholder="e.g. 5000"
-                  value={targetEarnings}
-                  onChange={(e) => setTargetEarnings(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-1.5 text-xs text-white outline-none"
-                />
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300">Trade Strategy</label>
-                <select
-                  value={strategy}
-                  onChange={(e) => setStrategy(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white outline-none"
-                >
-                  <option value="">Select strategy (optional)</option>
-                  <option value="Breakout">Breakout</option>
-                  <option value="Breakout Pullback">Breakout Pullback</option>
-                  <option value="Support Bounce">Support Bounce</option>
-                  <option value="Resistance Reversal">Resistance Reversal</option>
-                  <option value="Moving Average Bounce">Moving Average Bounce</option>
-                  <option value="Trend Following">Trend Following</option>
-                  <option value="Volume Breakout">Volume Breakout</option>
-                  <option value="News / Event Based">News / Event Based</option>
-                  <option value="Other">Other</option>
-                </select>
-                <p className="mt-1 text-[10px] text-slate-500">Tag each trade to compare which setups perform best. Existing trades stay Unclassified until you edit and tag them.</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300">Trade Setup / Notes</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 200 EMA bounce, Breakout pullback"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2 text-xs text-white outline-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="mt-3 w-full rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 py-3 text-xs font-bold text-slate-950 shadow-lg hover:from-emerald-200 hover:to-cyan-200 transition-all cursor-pointer"
-              >
-                {editingTrade ? 'Update Trade Record' : 'Save & Open Position'}
+              <button type="submit" className="mt-3 w-full rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 py-3 text-xs font-bold text-slate-950 shadow-lg hover:from-emerald-200 hover:to-cyan-200 transition-all cursor-pointer">
+                {editingTrade ? 'Save Trade' : 'Save Trade'}
               </button>
             </form>
           </div>

@@ -42,6 +42,7 @@ export interface StockTrade {
   serialNumber: number;
   entryDate: string; // DD-MM-YYYY
   stockName: string;
+  tradeType?: 'BUY' | 'SELL';
   exchange?: string;
   entryPrice: number;
   quantity: number;
