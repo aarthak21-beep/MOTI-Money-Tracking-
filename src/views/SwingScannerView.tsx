@@ -6,7 +6,7 @@ type DailyRow = {
   high?: number; low?: number; volume?: number; avgWeekVolume?: number;
   volumeMultiple?: number; pctChange?: number; sources: string[];
 };
-type ReportType = 'top20' | 'volume' | 'advance' | 'decline';
+type ReportType = 'top20' | 'volume' | 'advance';
 const STORAGE_KEY = 'moti_nse_daily_reports_v1';
 const todayLocal = () => {
   const d = new Date();
@@ -29,7 +29,7 @@ const num = (v?: string) => {
   return Number.isFinite(n) ? n : undefined;
 };
 const findCol = (headers: string[], ...aliases: string[]) => headers.findIndex(h => aliases.includes(norm(h)));
-const parseReport = (text: string, date: string, fileName: string): { type: ReportType; rows: DailyRow[] } => {
+const parseReport = (text: string, date: string): { type: ReportType; rows: DailyRow[] } => {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?
 /).filter(line => line.trim());
   let headerAt = -1, headers: string[] = [];
@@ -45,8 +45,7 @@ const parseReport = (text: string, date: string, fileName: string): { type: Repo
   const h = headers.map(norm);
   const hasTop = h.includes('prevclose') && h.includes('open') && h.includes('high');
   const hasVolume = h.includes('avgvolume') && h.some(x => x.includes('change'));
-  const isDeclineFile = /declin/i.test(fileName);
-  const type: ReportType = hasTop ? 'top20' : hasVolume ? 'volume' : isDeclineFile ? 'decline' : 'advance';
+  const type: ReportType = hasTop ? 'top20' : hasVolume ? 'volume' : 'advance';
   const col = (...names: string[]) => findCol(headers, ...names);
   const symbolCol = col('symbol');
   const closeCol = col('ltp', 'lasttradedprice');
@@ -104,9 +103,8 @@ export const SwingScannerView: React.FC = () => {
   const latestDate = useMemo(() => records.reduce((d, r) => r.date > d ? r.date : d, ''), [records]);
   const latestRows = useMemo(() => records.filter(r => r.date === latestDate), [records, latestDate]);
   const stats = useMemo(() => {
-    const up = latestRows.filter(r => (r.pctChange ?? 0) > 0).length;
-    const down = latestRows.filter(r => (r.pctChange ?? 0) < 0).length;
-    return { up, down, unchanged: latestRows.length - up - down };
+    const up = new Set(latestRows.filter(r => (r.pctChange ?? 0) > 0).map(r => r.symbol)).size;
+    return { up };
   }, [latestRows]);
   const candidates = useMemo(() => {
     const symbols = Array.from(new Set(latestRows.map(r => r.symbol)));
@@ -120,7 +118,7 @@ export const SwingScannerView: React.FC = () => {
       const breakout = latest.close !== undefined && highs.length >= 3 && latest.close > Math.max(...highs);
       const latestVolume = latestRows.find(r => r.symbol === symbol && r.volumeMultiple !== undefined);
       const volume = latestVolume?.volumeMultiple;
-      const sourceSet = Array.from(new Set(records.filter(r => r.symbol === symbol && r.date === latestDate).flatMap(r => r.sources.map(source => source === 'advance' && (r.pctChange ?? 0) < 0 ? 'decline' : source))));
+      const sourceSet = Array.from(new Set(records.filter(r => r.symbol === symbol && r.date === latestDate).flatMap(r => r.sources)));
       return { symbol, close: latest.close, weeklyChange, volumeMultiple: volume, breakout, rangeDays: highs.length, sources: sourceSet, pctToday: latest.pctChange };
     }).filter(item => (item.pctToday ?? -Infinity) >= 4).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
   }, [records, latestRows, latestDate]);
@@ -132,9 +130,9 @@ export const SwingScannerView: React.FC = () => {
     for (const file of Array.from(files)) {
       if (!file.name.toLowerCase().endsWith('.csv')) { issues.push(file.name + ': फक्त CSV report upload करा.'); continue; }
       try {
-        const parsed = parseReport(await file.text(), reportDate, file.name);
+        const parsed = parseReport(await file.text(), reportDate);
         incoming.push(...parsed.rows);
-        foundTypes.push(parsed.type === 'top20' ? 'Top 20' : parsed.type === 'volume' ? 'Volume Gainers' : parsed.type === 'decline' ? 'Declines' : 'Advances');
+        foundTypes.push(parsed.type === 'top20' ? 'Top 20' : parsed.type === 'volume' ? 'Volume Gainers' : 'Advances');
       } catch (e) { issues.push(file.name + ': ' + (e instanceof Error ? e.message : 'CSV वाचता आला नाही')); }
     }
     if (incoming.length) {
@@ -151,7 +149,7 @@ export const SwingScannerView: React.FC = () => {
     <div className="rounded-2xl border border-emerald-300/20 bg-gradient-to-br from-[#102b2a] via-[#0d1928] to-[#0d1527] p-5 sm:p-7">
       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300"><Activity className="h-4 w-4" /> MOTI Trading Intelligence</div>
       <h1 className="mt-3 text-2xl font-black text-white sm:text-3xl">Weekly Movement Screener</h1>
-      <p className="mt-2 max-w-2xl text-sm text-slate-300">NSE Top 20, Volume Gainers आणि Advances/Declines daily CSV वरून मागील trading days मधील stock movement शोधा. Bhavcopy लागत नाही.</p>
+      <p className="mt-2 max-w-2xl text-sm text-slate-300">NSE Top 20, Volume Gainers आणि Advances daily CSV वरून मागील trading days मधील stock movement शोधा. Bhavcopy लागत नाही.</p>
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
         <label className="text-xs text-slate-300">Report date
           <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="mt-1 block rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-white" />
@@ -161,13 +159,13 @@ export const SwingScannerView: React.FC = () => {
           <input type="file" accept=".csv,text/csv" multiple className="hidden" disabled={loading} onChange={e => { handleFiles(e.target.files); e.currentTarget.value = ''; }} />
         </label>
       </div>
-      <p className="mt-2 text-[10px] text-slate-400">एकाच तारखेचे Top 20, Volume Gainers आणि Advances/Declines CSV एकत्र निवडू शकतोस. प्रत्येक upload आधी report date निवड.</p>
+      <p className="mt-2 text-[10px] text-slate-400">एकाच तारखेचे Top 20, Volume Gainers आणि Advances CSV एकत्र निवडू शकतोस. प्रत्येक upload आधी report date निवड.</p>
     </div>
 
-    <div className="grid gap-3 sm:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-3">
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Stocks tracked</p><p className="mt-1 text-2xl font-black text-white">{latestRows.length}</p></div>
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Advances</p><p className="mt-1 text-2xl font-black text-emerald-300">{stats.up}</p></div>
-      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Declines</p><p className="mt-1 text-2xl font-black text-rose-300">{stats.down}</p></div>
+      
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Saved trading days</p><p className="mt-1 text-2xl font-black text-cyan-300">{new Set(records.map(r => r.date)).size}</p></div>
     </div>
 
@@ -194,7 +192,7 @@ export const SwingScannerView: React.FC = () => {
             </tr>)}
           </tbody>
         </table>
-        {!candidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">NSE reports upload कर</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि स्वतंत्र Advances व Declines CSV market breadth साठी वापरले जातील. Table मध्ये फक्त आजचा बदल +4% किंवा अधिक असलेले stocks दिसतील.</p></div>}
+        {!candidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">NSE reports upload कर</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि Advances CSV मधील वाढणारे stocks शोधण्यासाठी वापरली जाईल. Table मध्ये फक्त आजचा बदल +4% किंवा अधिक असलेले stocks दिसतील.</p></div>}
       </div>
     </div>
     <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><div className="flex items-center gap-2 text-xs font-bold text-cyan-200"><Info className="h-4 w-4" /> Data notes</div>
@@ -204,7 +202,7 @@ export const SwingScannerView: React.FC = () => {
         <li>Volume Gainers report मधील NSE 1-week volume multiple थेट दाखवला जातो.</li>
         <li>Range breakout साठी त्या stock चे किमान 3 आधीचे Top 20 daily observations आवश्यक आहेत; पुरेसा डेटा नसेल तर तसे दाखवले जाईल.</li>
         <li>Top 20 आणि Volume Gainers हे निवडक stocks आहेत; फक्त या reports वरून संपूर्ण NSE universe चे सर्व stocks scan होत नाहीत.</li>
-        <li>Declines CSV चे नाव Decline/Declines असणे आवश्यक; आजचा +4% किंवा अधिक वाढ असलेले stocksच candidates मध्ये दिसतील.</li>
+        <li>या buy-first screener मध्ये Advances वर लक्ष आहे; Declines report वापरला जात नाही. Candidates मध्ये आजचा बदल किमान +4% असलेले stocksच दिसतात.</li>
       </ul>
     </div>
   </div>;
