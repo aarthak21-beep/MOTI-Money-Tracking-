@@ -151,13 +151,8 @@ export const SwingScannerView: React.FC = () => {
       } catch (e) { issues.push(file.name + ': ' + (e instanceof Error ? e.message : 'CSV वाचता आला नाही')); }
     }
     if (incoming.length) {
-      const seriesBySymbol = new Map(incoming.filter(r => r.series).map(r => [r.symbol, r.series!]));
-      const eligible = incoming.filter(r => {
-        const series = r.series || seriesBySymbol.get(r.symbol);
-        return series === 'EQ' || series === 'BE';
-      }).map(r => ({ ...r, series: r.series || seriesBySymbol.get(r.symbol) }));
-      setRecords(old => mergeRows(old, eligible));
-      setMessage(eligible.length + ' EQ/BE stock rows import झाले. Reports: ' + Array.from(new Set(foundTypes)).join(', ') + (eligible.length < incoming.length ? ' · EQ/BE नसलेले किंवा series न मिळालेले rows वगळले.' : ''));
+      setRecords(old => mergeRows(old, incoming));
+      setMessage(incoming.length + ' stock rows import झाले. EQ/BE series ओळखण्यासाठी त्याच तारखेचा Advances CSV सुद्धा upload कर. Reports: ' + Array.from(new Set(foundTypes)).join(', '));
     }
     setErrors(issues); setLoading(false);
   };
@@ -183,7 +178,7 @@ export const SwingScannerView: React.FC = () => {
     </div>
 
     <div className="grid gap-3 sm:grid-cols-2">
-      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Stocks tracked</p><p className="mt-1 text-2xl font-black text-white">{latestRows.length}</p></div>
+      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Stocks tracked</p><p className="mt-1 text-2xl font-black text-white">{new Set(latestRows.filter(r => r.series === 'EQ' || r.series === 'BE').map(r => r.symbol)).size}</p></div>
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Saved trading days</p><p className="mt-1 text-2xl font-black text-cyan-300">{new Set(records.map(r => r.date)).size}</p></div>
     </div>
 
