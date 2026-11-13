@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, TrendingUp, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, CalendarDays, Activity } from 'lucide-react';
 
 interface MobileBottomNavProps {
   currentTab: string;
@@ -10,6 +10,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ currentTab, on
   const tabs = [
     { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
     { id: 'stockTrading', label: 'Equity', icon: TrendingUp },
+    { id: 'swingScanner', label: 'Scanner', icon: Activity },
     { id: 'weeklyIncome', label: 'Weekly', icon: CalendarDays },
   ];
   return <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-[60px] items-center justify-around border-t border-white/[0.09] bg-[#050a12]/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">

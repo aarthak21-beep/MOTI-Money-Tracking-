@@ -16,6 +16,7 @@ import { CalculatorsView } from './views/CalculatorsView';
 import { AnalyticsReportsView } from './views/AnalyticsReportsView';
 import { AiAssistantView } from './views/AiAssistantView';
 import { SettingsView } from './views/SettingsView';
+import { SwingScannerView } from './views/SwingScannerView';
 
 import { StorageService } from './services/storageService';
 import {
@@ -276,6 +277,8 @@ export default function App() {
               onSelectTab={setCurrentTab}
             />
           )}
+
+          {currentTab === 'swingScanner' && <SwingScannerView />}
 
           {currentTab === 'stockTrading' && (
             <StockTradingView
