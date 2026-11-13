@@ -18,7 +18,7 @@ const rsi = (values: number[]) => {
   const avgGain = average(gains), avgLoss = average(losses);
   return avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
 };
-const parseCsv = (text: string): { symbol: string; candle: Candle }[] => {
+const parseCsv = (text: string, csvFilename = ''): { symbol: string; candle: Candle }[] => {
   const lines = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
   if (lines.length < 2) throw new Error('CSV मध्ये data rows नाहीत.');
   const headers = lines[0].split(',').map(value => value.trim().toLowerCase().replaceAll('"', ''));
@@ -47,7 +47,8 @@ const parseCsv = (text: string): { symbol: string; candle: Candle }[] => {
     const cells = line.split(',').map(value => value.trim().replaceAll('"', ''));
     const series = seriesCol >= 0 ? cells[seriesCol]?.toUpperCase() : 'EQ';
     if (series && !['EQ', 'BE'].includes(series)) continue;
-    const symbol = (symbolCol >= 0 ? cells[symbolCol] : '').toUpperCase();
+    const fallbackSymbol = csvFilename.replace(/\.csv$/i, '').replace(/[-_ ]historical.*/i, '').toUpperCase();
+    const symbol = (symbolCol >= 0 ? cells[symbolCol] : fallbackSymbol).toUpperCase();
     const candle = { date: parseDate(cells[dateCol] || ''), open: Number(cells[openCol] || cells[closeCol]), high: Number(cells[highCol]), low: Number(cells[lowCol]), close: Number(cells[closeCol]), volume: Number(cells[volumeCol]) };
     if (!symbol || !candle.date || ![candle.high, candle.low, candle.close, candle.volume].every(Number.isFinite) || candle.close <= 0 || candle.volume < 0) continue;
     rows.push({ symbol, candle });
@@ -140,7 +141,7 @@ export const SwingScannerView: React.FC = () => {
             : [];
         if (!csvFiles.length) throw new Error('फक्त NSE Bhavcopy .zip किंवा .csv फाइल upload करा.');
         for (const csv of csvFiles) {
-          try { allRows.push(...parseCsv(csv.text)); }
+          try { allRows.push(...parseCsv(csv.text, csv.name)); }
           catch (error) { issues.push(csv.name + ': ' + (error instanceof Error ? error.message : 'CSV वाचता आले नाही')); }
         }
       } catch (error) {
