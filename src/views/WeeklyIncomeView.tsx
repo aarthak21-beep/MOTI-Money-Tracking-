@@ -56,13 +56,13 @@ export const WeeklyIncomeView: React.FC<Props> = ({ records, profile, trades, on
       const targetRate = Math.max(0, Number(record.customFields?.targetRate ?? 3) || 0);
       const targetProfit = (base + extra) * targetRate / 100;
       const finalAmount = base + extra + targetProfit;
-      const weekStart = dateKey(record.weekStartDate);
-      const nextWeekStart = ordered[index + 1] ? dateKey(ordered[index + 1].weekStartDate) : Infinity;
-      const closedTradePnl = trades.reduce((sum, trade) => {
-        if (trade.status !== 'CLOSED' || !trade.exitDate) return sum;
-        const exitKey = dateKey(trade.exitDate);
-        return exitKey >= weekStart && exitKey < nextWeekStart ? sum + (Number(trade.actualPnl ?? trade.netPnl) || 0) : sum;
-      }, 0);
+      // Attribute all realized closed-trade P&L to the first capital row,
+      // independent of exit dates. Later rows carry forward actual capital.
+      const closedTradePnl = index === 0
+        ? trades.reduce((sum, trade) => trade.status === 'CLOSED'
+          ? sum + (Number(trade.actualPnl ?? trade.netPnl) || 0)
+          : sum, 0)
+        : 0;
       const actualCapital = actualBase + extra + closedTradePnl;
       const aheadShort = actualCapital - finalAmount;
       runningTarget = finalAmount;
