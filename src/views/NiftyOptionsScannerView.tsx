@@ -8,15 +8,21 @@ type OptionRow = {
 const STORAGE_KEY = 'moti_nifty_options_chain_v1';
 const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
 const number = (v?: string) => {
-  if (!v) return 0;
+  if (!v || v.trim() === '-' || v.trim() === '—') return 0;
   const n = Number(v.replace(/[,₹%\s]/g, '').replace(/[()]/g, ''));
   return Number.isFinite(n) ? n : 0;
 };
 const parseDate = (v: string) => {
   const s = v.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
-  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  const numeric = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (numeric) return `${numeric[3]}-${numeric[2].padStart(2, '0')}-${numeric[1].padStart(2, '0')}`;
+  const named = s.match(/^(\d{1,2})[-/ ]([A-Za-z]{3})[-/ ](\d{4})$/);
+  if (named) {
+    const months: Record<string, string> = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
+    const month = months[named[2].toLowerCase()];
+    if (month) return `${named[3]}-${month}-${named[1].padStart(2, '0')}`;
+  }
   return '';
 };
 const expiryFromFilename = (filename: string) => {
@@ -26,67 +32,75 @@ const expiryFromFilename = (filename: string) => {
   const month = months[match[2].toLowerCase()];
   return month ? `${match[3]}-${month}-${match[1].padStart(2, '0')}` : '';
 };
+const strikeFromFilename = (filename: string) => {
+  const tagged = filename.match(/(?:strike|strk)[-_ ]?(\d{1,3}(?:,\d{3})+|\d{4,6})(?:\.\d+)?/i);
+  const grouped = filename.match(/(\d{1,3},\d{3})(?:\.\d+)?/);
+  const raw = tagged?.[1] || grouped?.[1];
+  return raw ? number(raw) : 0;
+};
 const csvLines = (text: string) => text.replace(/^\uFEFF/, '').replace(/\0/g, '').split(/\r\n|\n|\r/).filter(x => x.trim());
+const splitCsvLine = (line: string) => {
+  const out: string[] = []; let value = '', quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { if (quoted && line[i + 1] === '"') { value += '"'; i++; } else quoted = !quoted; }
+    else if (c === ',' && !quoted) { out.push(value.trim()); value = ''; } else value += c;
+  }
+  out.push(value.trim()); return out;
+};
+const estimateSpot = (samples: Array<{ strike: number; ce: number; pe: number }>) => {
+  const values = samples.filter(x => x.ce > 5 && x.pe > 5).map(x => x.strike + x.ce - x.pe).filter(x => x > 0).sort((a, b) => a - b);
+  if (!values.length) return 0;
+  return values[Math.floor(values.length / 2)];
+};
 const parseNseOptionChain = (text: string, filename: string): OptionRow[] => {
   const lines = csvLines(text);
   if (lines.length < 3) throw new Error('NSE Option Chain CSV मध्ये पुरेशा rows नाहीत.');
-  const split = (line: string) => {
-    const out: string[] = []; let value = '', quoted = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') { if (quoted && line[i + 1] === '"') { value += '"'; i++; } else quoted = !quoted; }
-      else if (c === ',' && !quoted) { out.push(value.trim()); value = ''; } else value += c;
-    }
-    out.push(value.trim()); return out;
-  };
-  const headers = split(lines[1]).map(normalize);
+  const headers = splitCsvLine(lines[1]).map(normalize);
   const strikeIndex = headers.indexOf('strike');
-  if (strikeIndex < 0 || headers.length < 22) throw new Error('हा NSE Option Chain CSV format ओळखता आला नाही.');
-  const expiry = expiryFromFilename(filename);
-  if (!expiry) throw new Error('Expiry date filename मध्ये नाही. उदा. option-chain-ED-NIFTY-17-Nov-2026.csv अशा नावाने CSV ठेवा.');
-  const raw: Array<{ strike: number; ce: number; pe: number; rows: OptionRow[] }> = [];
+  const expiryIndex = headers.findIndex(h => h === 'expirydate' || h === 'expiry');
+  const selectedStrike = strikeFromFilename(filename);
+  const fullChain = strikeIndex >= 0 && headers.length >= 22;
+  const selectedStrikeFile = strikeIndex < 0 && expiryIndex >= 0 && headers.length >= 22 && selectedStrike > 0;
+  if (!fullChain && !selectedStrikeFile) {
+    throw new Error('NSE CSV format ओळखता आला नाही. Full Option Chain CSV upload करा; किंवा एका Strike चा CSV असल्यास फाइलचे नाव NIFTY-Strike-26000.csv अशा प्रकारे ठेवा.');
+  }
+  const defaultExpiry = expiryFromFilename(filename);
+  const raw: Array<{ strike: number; expiry: string; ce: number; pe: number; rows: OptionRow[] }> = [];
   for (const line of lines.slice(2)) {
-    const c = split(line);
-    const strike = number(c[11]);
-    if (!(strike > 0)) continue;
+    const c = splitCsvLine(line);
+    const strike = fullChain ? number(c[strikeIndex]) : selectedStrike;
+    const expiry = fullChain ? defaultExpiry : parseDate(c[expiryIndex]);
+    if (!(strike > 0) || !expiry) continue;
     const ceLtp = number(c[5]);
     const peLtp = number(c[17]);
     const rows: OptionRow[] = [];
     if (ceLtp > 0) rows.push({ expiry, strike, type: 'CE', ltp: ceLtp, oi: number(c[1]), changeOi: number(c[2]), volume: number(c[3]), iv: number(c[4]) || undefined, spot: 0 });
     if (peLtp > 0) rows.push({ expiry, strike, type: 'PE', ltp: peLtp, oi: number(c[21]), changeOi: number(c[20]), volume: number(c[19]), iv: number(c[18]) || undefined, spot: 0 });
-    raw.push({ strike, ce: ceLtp, pe: peLtp, rows });
+    if (rows.length) raw.push({ strike, expiry, ce: ceLtp, pe: peLtp, rows });
   }
-  const paritySpots = raw.filter(x => x.ce > 5 && x.pe > 5).map(x => x.strike + x.ce - x.pe).filter(x => x > 0).sort((a, b) => a - b);
-  if (!paritySpots.length) throw new Error('CE आणि PE दोन्ही LTP असलेले strike सापडले नाहीत.');
-  const spot = paritySpots[Math.floor(paritySpots.length / 2)];
+  if (!raw.length) throw new Error('या NSE CSV मध्ये वाचता येणारे CE/PE rows सापडले नाहीत.');
+  const spot = estimateSpot(raw);
+  if (!spot) throw new Error('CE आणि PE दोन्ही LTP वरून spot अंदाज काढता आला नाही.');
   return raw.flatMap(x => x.rows.map(r => ({ ...r, spot })));
 };
 const parseCsv = (text: string, filename = ''): OptionRow[] => {
   const lines = csvLines(text);
   if (lines.length < 2) throw new Error('CSV मध्ये option rows नाहीत.');
-  const split = (line: string) => {
-    const out: string[] = []; let value = '', quoted = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') { if (quoted && line[i + 1] === '"') { value += '"'; i++; } else quoted = !quoted; }
-      else if (c === ',' && !quoted) { out.push(value.trim()); value = ''; } else value += c;
-    }
-    out.push(value.trim()); return out;
-  };
-  const headers = split(lines[0]).map(normalize);
+  const headers = splitCsvLine(lines[0]).map(normalize);
   const find = (...keys: string[]) => headers.findIndex(h => keys.includes(h));
   const expiry = find('expiry', 'expirydate', 'expdate');
   const strike = find('strike', 'strikeprice', 'strikepr');
   const type = find('optiontype', 'type', 'cepe', 'instrumenttype', 'right');
   const ltp = find('ltp', 'lastprice', 'lasttradedprice', 'close');
   const oi = find('oi', 'openinterest', 'openint');
-  const coi = find('changeoi', 'changeinopeninterest', 'chginoi', 'changein oi');
+  const coi = find('changeoi', 'changeinopeninterest', 'chginoi');
   const volume = find('volume', 'totaltradedvolume', 'tradedvolume', 'vol');
   const iv = find('iv', 'impliedvolatility');
   const spot = find('underlyingvalue', 'underlying', 'spot', 'underlyingprice', 'indexvalue');
   if ([expiry, strike, type, ltp, oi, coi, volume, spot].some(i => i < 0)) return parseNseOptionChain(text, filename);
   return lines.slice(1).flatMap(line => {
-    const c = split(line);
+    const c = splitCsvLine(line);
     const exp = parseDate(c[expiry] || '');
     const rawType = (c[type] || '').trim().toUpperCase();
     const optType = rawType.includes('CE') || rawType === 'CALL' ? 'CE' : rawType.includes('PE') || rawType === 'PUT' ? 'PE' : '';
@@ -110,6 +124,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const [error, setError] = useState('');
   const [stopPct, setStopPct] = useState(20);
   const [targetPct, setTargetPct] = useState(35);
+  const [lotSize, setLotSize] = useState(65);
   const [expiryChoice, setExpiryChoice] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -129,11 +144,24 @@ export const NiftyOptionsScannerView: React.FC = () => {
     const spot = chain.length ? chain[0].spot : 0;
     return { ceOi, peOi, ceChg, peChg, pcr, bias, spot };
   }, [chain]);
+  const rangeRows = useMemo(() => chain.filter(r => r.strike >= summary.spot - 600 && r.strike <= summary.spot + 600), [chain, summary.spot]);
+  const strikeStats = useMemo(() => {
+    const grouped = new Map<number, { strike: number; ceOi: number; peOi: number; ceChange: number; peChange: number; ceVol: number; peVol: number }>();
+    for (const r of rangeRows) {
+      const v = grouped.get(r.strike) || { strike: r.strike, ceOi: 0, peOi: 0, ceChange: 0, peChange: 0, ceVol: 0, peVol: 0 };
+      if (r.type === 'CE') { v.ceOi += r.oi; v.ceChange += r.changeOi; v.ceVol += r.volume; }
+      else { v.peOi += r.oi; v.peChange += r.changeOi; v.peVol += r.volume; }
+      grouped.set(r.strike, v);
+    }
+    return Array.from(grouped.values()).sort((a, b) => a.strike - b.strike);
+  }, [rangeRows]);
+  const maxCe = [...strikeStats].sort((a, b) => b.ceOi - a.ceOi)[0];
+  const maxPe = [...strikeStats].sort((a, b) => b.peOi - a.peOi)[0];
   const candidates = useMemo(() => {
     if (!chain.length || summary.bias === 'WAIT') return [];
     const type = summary.bias === 'CE BIAS' ? 'CE' : 'PE';
-    return chain.filter(r => r.type === type).sort((a, b) => Math.abs(a.strike - summary.spot) - Math.abs(b.strike - summary.spot)).slice(0, 5);
-  }, [chain, summary]);
+    return rangeRows.filter(r => r.type === type).sort((a, b) => b.changeOi - a.changeOi).slice(0, 5);
+  }, [chain, rangeRows, summary]);
   const handleUpload = async (file?: File) => {
     if (!file) return;
     setLoading(true); setError(''); setMessage('');
@@ -143,7 +171,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
       setRows(parsed);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
       setExpiryChoice('');
-      setMessage(`${parsed.length} option rows import झाले. NSE CSV असल्यास spot हा CE-PE premium parity वरून अंदाजे काढला आहे. डेटा या browser मध्ये save केला आहे.`);
+      setMessage(`${parsed.length} option rows import झाले. NSE CSV मधील spot CE-PE premium parity वरून अंदाजे काढला आहे. डेटा या browser मध्ये save केला आहे.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'CSV वाचता आला नाही.'); }
     finally { setLoading(false); }
   };
@@ -161,7 +189,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
     <div className="rounded-2xl border border-cyan-300/20 bg-gradient-to-br from-[#10243b] via-[#0d1928] to-[#0d1527] p-5 sm:p-7">
       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300"><Activity className="h-4 w-4" /> MOTI · Separate Options Module</div>
       <h1 className="mt-3 text-2xl font-black text-white sm:text-3xl">NIFTY Options Positional Scanner</h1>
-      <p className="mt-2 max-w-3xl text-sm text-slate-300">Intraday नाही. किमान 14 दिवस बाकी असलेली expiry निवडून CE / PE positioning तपासा. हा scanner फक्त option-chain CSV मधील OI data वापरतो; तो live signal किंवा guaranteed recommendation नाही.</p>
+      <p className="mt-2 max-w-3xl text-sm text-slate-300">Intraday नाही. किमान 14 दिवस बाकी असलेली expiry निवडून CE / PE positioning तपासा. OI हे positioning data आहे; ते एकटे buy signal नाही.</p>
       <div className="mt-4 flex flex-wrap gap-2">
         <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-xs font-black text-slate-950 hover:bg-cyan-200">
           <Upload className="h-4 w-4" /> {loading ? 'Reading CSV...' : 'Upload NIFTY Option Chain CSV'}
@@ -169,14 +197,14 @@ export const NiftyOptionsScannerView: React.FC = () => {
         </label>
         <button onClick={downloadTemplate} className="inline-flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-3 text-xs font-bold text-slate-200 hover:bg-white/5"><Download className="h-4 w-4" /> CSV Template</button>
       </div>
-      <p className="mt-2 text-[10px] text-slate-400">NSE चा मूळ Option Chain CSV किंवा Template format चालतो. NSE CSV मध्ये Expiry filename मधून घेतली जाते आणि Spot CE-PE premium parity वरून अंदाजे काढला जातो. डेटा local browser मध्येच save होतो; automatic live fetch नाही.</p>
+      <p className="mt-2 text-[10px] text-slate-400">Full Option Chain CSV मध्ये सर्व strikes scan होतात. एका selected Strike चा NSE CSV असल्यास फाइलचे नाव NIFTY-Strike-26000.csv असे ठेवा; त्या फाइलमधून फक्त तोच strike वाचता येईल. डेटा local browser मध्ये save होतो.</p>
     </div>
 
     {message && <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-200">{message}</div>}
     {error && <div className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-3 text-xs text-rose-200">{error}</div>}
 
     <div className="grid gap-3 sm:grid-cols-3">
-      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">NIFTY Spot (CSV)</p><p className="mt-1 text-xl font-black text-white">{summary.spot ? fmt(summary.spot) : '—'}</p></div>
+      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">NIFTY Spot (estimated)</p><p className="mt-1 text-xl font-black text-white">{summary.spot ? fmt(summary.spot) : '—'}</p></div>
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Put / Call OI Ratio</p><p className="mt-1 text-xl font-black text-white">{summary.pcr ? summary.pcr.toFixed(2) : '—'}</p></div>
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Directional read (OI only)</p><p className={'mt-1 text-xl font-black ' + (summary.bias === 'CE BIAS' ? 'text-emerald-300' : summary.bias === 'PE BIAS' ? 'text-rose-300' : 'text-amber-300')}>{summary.bias}</p></div>
     </div>
@@ -192,19 +220,29 @@ export const NiftyOptionsScannerView: React.FC = () => {
         <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">CE OI Change</p><p className="mt-1 text-sm font-bold text-white">{fmt(summary.ceChg)}</p></div>
         <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">PE OI Change</p><p className="mt-1 text-sm font-bold text-white">{fmt(summary.peChg)}</p></div>
         <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Eligible Expiries</p><p className="mt-1 text-sm font-bold text-white">{eligibleExpiries.length}</p></div>
-        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Contracts loaded</p><p className="mt-1 text-sm font-bold text-white">{chain.length}</p></div>
+        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Contracts in selected expiry</p><p className="mt-1 text-sm font-bold text-white">{chain.length}</p></div>
       </div>
     </div>
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
-      <h2 className="text-sm font-bold text-white">Indicative Trade Planning</h2>
-      <p className="mt-1 text-[11px] text-slate-400">Entry = uploaded option LTP. Target / Stop-loss हे premium वरचे editable risk levels आहेत; price forecast नाहीत.</p>
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-white">Strike OI Scanner · Spot ± ₹600</h2><p className="mt-1 text-[11px] text-slate-400">Spot च्या 600 points वर आणि खालील strikes मध्ये OI व Change in OI दाखवले आहेत.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-xs text-slate-300">{summary.spot ? `₹${fmt(summary.spot - 600)} – ₹${fmt(summary.spot + 600)}` : 'Spot unavailable'}</span></div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-rose-300/20 bg-rose-300/5 p-3"><p className="text-[10px] text-rose-200">Highest CE OI · potential resistance</p><p className="mt-1 text-lg font-black text-white">{maxCe ? fmt(maxCe.strike) : '—'}</p><p className="text-[11px] text-slate-400">{maxCe ? `OI ${fmt(maxCe.ceOi)} · Change ${fmt(maxCe.ceChange)}` : 'Range मध्ये data नाही'}</p></div>
+        <div className="rounded-lg border border-emerald-300/20 bg-emerald-300/5 p-3"><p className="text-[10px] text-emerald-200">Highest PE OI · potential support</p><p className="mt-1 text-lg font-black text-white">{maxPe ? fmt(maxPe.strike) : '—'}</p><p className="text-[11px] text-slate-400">{maxPe ? `OI ${fmt(maxPe.peOi)} · Change ${fmt(maxPe.peChange)}` : 'Range मध्ये data नाही'}</p></div>
+      </div>
+      {strikeStats.length ? <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Strike','CE OI','CE Chg OI','CE Volume','PE OI','PE Chg OI','PE Volume'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{strikeStats.map(s => <tr key={s.strike}><td className="px-3 py-2 font-bold text-white">{fmt(s.strike)}</td><td className="px-3 py-2">{fmt(s.ceOi)}</td><td className={'px-3 py-2 ' + (s.ceChange >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{fmt(s.ceChange)}</td><td className="px-3 py-2">{fmt(s.ceVol)}</td><td className="px-3 py-2">{fmt(s.peOi)}</td><td className={'px-3 py-2 ' + (s.peChange >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{fmt(s.peChange)}</td><td className="px-3 py-2">{fmt(s.peVol)}</td></tr>)}</tbody></table></div> : <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs text-amber-100">या expiry साठी Spot ±600 range मधील पुरेसे strike rows नाहीत. पूर्ण Option Chain CSV upload करा; single-strike CSV ने इतर strikes शोधता येत नाहीत.</div>}
+    </div>
+
+    <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
+      <h2 className="text-sm font-bold text-white">Indicative Trade Planning · Risk cap ₹1,000</h2>
+      <p className="mt-1 text-[11px] text-slate-400">Entry = uploaded option LTP. Stop-loss / Target हे editable premium risk levels आहेत; forecast नाहीत. Lot size exchange contract प्रमाणे तपासून भरा.</p>
       <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-300">
+        <label>Lot size <input type="number" min="1" max="10000" value={lotSize} onChange={e => setLotSize(Math.max(1, Number(e.target.value) || 1))} className="ml-2 w-20 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
         <label>Stop-loss % <input type="number" min="1" max="80" value={stopPct} onChange={e => setStopPct(Number(e.target.value))} className="ml-2 w-20 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
         <label>Target % <input type="number" min="1" max="200" value={targetPct} onChange={e => setTargetPct(Number(e.target.value))} className="ml-2 w-20 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
       </div>
-      {candidates.length ? <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[680px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Type','Strike','Expiry','Option LTP / Entry','Stop-loss','Target','OI','Volume','IV'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{candidates.map((r,i) => <tr key={r.expiry + r.strike + r.type}><td className="px-3 py-3 font-black text-emerald-300">{r.type}</td><td className="px-3 py-3 text-white">{fmt(r.strike)}</td><td className="px-3 py-3">{r.expiry}</td><td className="px-3 py-3 text-white">₹{fmt(r.ltp)}</td><td className="px-3 py-3 text-rose-300">₹{fmt(r.ltp * (1 - stopPct / 100))}</td><td className="px-3 py-3 text-emerald-300">₹{fmt(r.ltp * (1 + targetPct / 100))}</td><td className="px-3 py-3">{fmt(r.oi)}</td><td className="px-3 py-3">{fmt(r.volume)}</td><td className="px-3 py-3">{r.iv ? r.iv.toFixed(2) + '%' : '—'}</td></tr>)}</tbody></table></div> : <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs text-amber-100">{rows.length ? 'सध्याच्या OI reading वर स्पष्ट CE / PE bias नाही, किंवा 14+ दिवसांची expiry उपलब्ध नाही. WAIT.' : 'सुरुवात करण्यासाठी option-chain CSV upload कर.'}</div>}
-      <div className="mt-4 flex items-start gap-2 rounded-lg bg-[#080f1b] p-3 text-[11px] leading-5 text-slate-400"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /> Option buying मध्ये premium पूर्ण गमावण्याचा धोका असतो. OI/PCR एकट्याने पुरेसे नाहीत; NIFTY chart trend, volatility, liquidity आणि event risk तपासल्याशिवाय trade घेऊ नकोस. No Trade हा वैध signal आहे.</div>
+      {candidates.length ? <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Type','Strike','Expiry','Entry','Stop-loss','Target','Risk / lot','Max lots'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{candidates.map(r => { const stop = r.ltp * (1 - stopPct / 100); const riskPerLot = (r.ltp - stop) * lotSize; const lots = riskPerLot > 0 ? Math.floor(1000 / riskPerLot) : 0; return <tr key={r.expiry + r.strike + r.type}><td className="px-3 py-3 font-black text-emerald-300">{r.type}</td><td className="px-3 py-3 text-white">{fmt(r.strike)}</td><td className="px-3 py-3">{r.expiry}</td><td className="px-3 py-3 text-white">₹{fmt(r.ltp)}</td><td className="px-3 py-3 text-rose-300">₹{fmt(stop)}</td><td className="px-3 py-3 text-emerald-300">₹{fmt(r.ltp * (1 + targetPct / 100))}</td><td className="px-3 py-3">₹{fmt(riskPerLot)}</td><td className="px-3 py-3 font-bold">{lots > 0 ? lots : 'SKIP'}</td></tr>; })}</tbody></table></div> : <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs text-amber-100">{rows.length ? 'सध्याच्या OI reading वर स्पष्ट directional bias नाही. Support/Resistance आणि OI table वरून निरीक्षण करा; WAIT.' : 'सुरुवात करण्यासाठी option-chain CSV upload कर.'}</div>}
+      <div className="mt-4 flex items-start gap-2 rounded-lg bg-[#080f1b] p-3 text-[11px] leading-5 text-slate-400"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /> Highest CE/PE OI हे फक्त संभाव्य resistance/support आहेत; हमखास स्तर नाहीत. OI/PCR एकट्याने buy signal देत नाहीत. Chart trend, liquidity, bid-ask spread, volatility आणि event risk तपासा. Option buying मध्ये premium पूर्ण गमावण्याचा धोका असतो.</div>
     </div>
     <div className="flex items-center justify-between text-[10px] text-slate-500"><span><CalendarClock className="mr-1 inline h-3 w-3" /> Data saved locally on this browser · CSV upload only</span><button onClick={clearData} className="underline hover:text-white">Clear option data</button></div>
   </div>;
