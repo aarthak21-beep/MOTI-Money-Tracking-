@@ -47,15 +47,8 @@ export const GoogleDriveSyncService = {
     if (passphrase.length < 12) throw new Error('Use the same passphrase (at least 12 characters) used when the backup file was created.');
     const envelope = parseEnvelope(content);
     const decrypted = await decryptEnvelope(envelope, passphrase);
-    const existing = await downloadEnvelope();
-    if (existing) {
-      await decryptEnvelope(existing, passphrase).catch(() => {
-        throw new Error('This Google account already has a backup protected by a different passphrase. Nothing was overwritten.');
-      });
-    }
     activeSalt = decrypted.salt;
     encryptionKey = decrypted.key;
-    await uploadEnvelope(envelope);
     return decrypted.snapshot;
   },
   async restore(passphrase: string): Promise<string> { if (passphrase.length < 12) throw new Error('Use the same passphrase (at least 12 characters) used when the backup was created.'); const envelope = await downloadEnvelope(); if (!envelope) throw new Error('No MOTI encrypted backup was found in this Google account.'); const salt = fromBase64(envelope.salt); const key = await deriveKey(passphrase, salt); try { const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: asBufferSource(fromBase64(envelope.iv)) }, key, asBufferSource(fromBase64(envelope.ciphertext))); encryptionKey = key; activeSalt = salt; return new TextDecoder().decode(decrypted); } catch { throw new Error('Passphrase incorrect or encrypted backup is damaged. Local data was not changed.'); } },
