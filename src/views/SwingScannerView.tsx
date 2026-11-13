@@ -47,7 +47,7 @@ const parseCsv = (text: string, csvFilename = ''): { symbol: string; candle: Can
   const highCol = col('hghpric', 'highprice', 'high');
   const lowCol = col('lwpric', 'lowprice', 'low');
   const closeCol = col('clspric', 'closeprice', 'close');
-  const volumeCol = col('ttltradgvol', 'ttltrdqn ty'.replace(/ /g, ''), 'totaltradedquantity', 'totaltrdquantity', 'volume');
+  const volumeCol = col('ttltradgvol', 'ttltrdqnqty', 'totaltradedquantity', 'totaltrdquantity', 'volume');
   if ([dateCol, highCol, lowCol, closeCol, volumeCol].some(index => index < 0)) throw new Error('CSV columns ओळखता आले नाहीत. NSE Bhavcopy किंवा Security-wise Price Volume CSV वापरा.');
   const parseDate = (value: string) => {
     const raw = value.trim();
