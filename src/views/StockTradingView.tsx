@@ -252,27 +252,93 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
     setIsModalOpen(true);
   };
 
-  // Form Submission with Strict Mathematical Formulas
+  // Save BUY entries as holdings; SELL entries reduce holdings and create a realized trade.
   const handleSaveTrade = (e: React.FormEvent) => {
     e.preventDefault();
     const ep = Number(entryPrice);
     const qty = Number(quantity);
-    if (!stockName || ep <= 0 || qty <= 0) return;
+    const symbol = stockName.trim().toUpperCase();
+
+    if (!symbol || !Number.isFinite(ep) || ep <= 0 || !Number.isInteger(qty) || qty <= 0) {
+      window.alert('Enter a valid stock name, positive price and whole-share quantity.');
+      return;
+    }
+
+    // A saved SELL changes the holding balance. Editing it in place could desync
+    // inventory, so require deleting and re-entering it instead.
+    if (editingTrade && (editingTrade.tradeType === 'SELL' || tradeType === 'SELL')) {
+      window.alert('To change a saved SELL, delete that sell record and enter it again.');
+      return;
+    }
 
     const totalInvestment = ep * qty;
-    const target = targetEarnings ? Number(targetEarnings) : undefined;
     const cmp = currentMarketPrice ? Number(currentMarketPrice) : ep;
 
+    if (!editingTrade && tradeType === 'SELL') {
+      const openPositions = trades.filter(
+        (trade) => trade.status === 'OPEN' && trade.stockName.trim().toUpperCase() === symbol
+      );
+      const availableQty = openPositions.reduce((sum, trade) => sum + trade.quantity, 0);
+
+      if (availableQty <= 0) {
+        window.alert(`No open ${symbol} shares found. Add a BUY trade first.`);
+        return;
+      }
+      if (qty > availableQty) {
+        window.alert(`You have only ${availableQty} ${symbol} shares available to sell.`);
+        return;
+      }
+
+      const totalCost = openPositions.reduce(
+        (sum, trade) => sum + (trade.totalInvestment || trade.entryPrice * trade.quantity), 0
+      );
+      const averageCost = totalCost / availableQty;
+      const remainingQty = availableQty - qty;
+      const sellPnl = (ep - averageCost) * qty;
+      const sellRecord: StockTrade = {
+        id: `trade_${Date.now()}`,
+        serialNumber: trades.length + 1,
+        entryDate,
+        tradeType: 'SELL',
+        stockName: symbol,
+        entryPrice: averageCost,
+        quantity: qty,
+        totalInvestment: averageCost * qty,
+        exitDate: entryDate,
+        exitPrice: ep,
+        actualPnl: sellPnl,
+        netPnl: sellPnl,
+        pnlPercentage: averageCost > 0 ? (sellPnl / (averageCost * qty)) * 100 : 0,
+        status: 'CLOSED',
+        currentMarketPrice: ep,
+      };
+
+      const openIds = new Set(openPositions.map((trade) => trade.id));
+      const retained = trades.filter((trade) => !openIds.has(trade.id));
+      if (remainingQty > 0) {
+        const primary = openPositions[0];
+        retained.push({
+          ...primary,
+          quantity: remainingQty,
+          entryPrice: averageCost,
+          totalInvestment: averageCost * remainingQty,
+          currentMarketPrice: primary.currentMarketPrice || averageCost,
+        });
+      }
+      retained.push(sellRecord);
+      onSaveTrades(retained.map((trade, index) => ({ ...trade, serialNumber: index + 1 })));
+      setIsModalOpen(false);
+      return;
+    }
+
+    const target = targetEarnings ? Number(targetEarnings) : undefined;
     let actualPnl: number | undefined;
     let netPnl: number | undefined;
     let pnlPercentage: number | undefined;
     const isClosed = tradeStatus === 'CLOSED' && Number(exitPrice) > 0;
 
     if (isClosed) {
-      const xp = Number(exitPrice);
-      // Automatic Formulas:
-      // P&L = (Exit Price - Entry Price) * Quantity
-      actualPnl = (xp - ep) * qty;
+      actualPnl = (Number(exitPrice) - ep) * qty;
       netPnl = actualPnl;
       pnlPercentage = totalInvestment > 0 ? (netPnl / totalInvestment) * 100 : 0;
     }
@@ -283,8 +349,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
           ? {
               ...t,
               entryDate,
-              tradeType,
-              stockName: stockName.toUpperCase().trim(),
+              tradeType: 'BUY' as const,
+              stockName: symbol,
               entryPrice: ep,
               quantity: qty,
               totalInvestment,
@@ -307,8 +373,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         id: `trade_${Date.now()}`,
         serialNumber: trades.length + 1,
         entryDate,
-        tradeType,
-        stockName: stockName.toUpperCase().trim(),
+        tradeType: 'BUY',
+        stockName: symbol,
         entryPrice: ep,
         quantity: qty,
         totalInvestment,
@@ -324,9 +390,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
         strategy: strategy || undefined,
       };
       if (newTrade.status === 'OPEN') {
-        const normalizedSymbol = newTrade.stockName.trim().toUpperCase();
         const existingIndex = trades.findIndex(
-          (trade) => trade.status === 'OPEN' && trade.stockName.trim().toUpperCase() === normalizedSymbol
+          (trade) => trade.status === 'OPEN' && trade.stockName.trim().toUpperCase() === symbol
         );
 
         if (existingIndex >= 0) {
