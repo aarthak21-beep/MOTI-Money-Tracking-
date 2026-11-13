@@ -298,7 +298,8 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
       const sellRecord: StockTrade = {
         id: `trade_${Date.now()}`,
         serialNumber: trades.length + 1,
-        entryDate,
+        // Keep the original BUY date on the realized SELL record; exitDate is the SELL date.
+        entryDate: openPositions[0].entryDate,
         tradeType: 'SELL',
         stockName: symbol,
         entryPrice: averageCost,
