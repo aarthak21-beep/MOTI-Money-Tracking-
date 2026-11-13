@@ -117,18 +117,31 @@ export const SwingScannerView: React.FC = () => {
         (r.pctChange ?? -Infinity) >= 4 &&
         r.close !== undefined && r.close >= 300 && r.close <= 3000
       );
-      const prior5 = history.slice(-6, -1);
       const first = history.length >= 6 ? history[history.length - 6] : undefined;
       const weeklyChange = history.length >= 6 && first?.close ? ((latest.close! / first.close) - 1) * 100 : undefined;
-      const highs = prior5.map(r => r.high).filter((v): v is number => v !== undefined);
-      const breakout = latest.close !== undefined && highs.length >= 3 && latest.close > Math.max(...highs);
+      // Top 20 CSVs contain selective symbols, so these are prior Top 20 appearances,
+      // not guaranteed consecutive exchange sessions. Exclude the latest report date.
+      const priorTop20 = symbolRows
+        .filter(r => r.sources.includes('top20') && r.date < latest.date && r.high !== undefined && r.low !== undefined)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const breakoutRanges = [5, 10, 20].map(days => {
+        const sample = priorTop20.slice(-days);
+        const enough = sample.length >= days;
+        const boxHigh = enough ? Math.max(...sample.map(r => r.high!)) : undefined;
+        const boxLow = enough ? Math.min(...sample.map(r => r.low!)) : undefined;
+        return {
+          days, enough, boxHigh, boxLow,
+          breakout: enough && latest.close !== undefined && boxHigh !== undefined && latest.close > boxHigh,
+          inside: enough && latest.close !== undefined && boxHigh !== undefined && boxLow !== undefined && latest.close <= boxHigh && latest.close >= boxLow
+        };
+      });
       const latestVolume = latestRows.find(r => r.symbol === symbol && r.volumeMultiple !== undefined);
       const volume = latestVolume?.volumeMultiple;
       const sourceSet = Array.from(new Set(latestRows.filter(r => r.symbol === symbol).flatMap(r => r.sources)));
       const latestSeries = [...symbolRows].reverse().find(r => r.series)?.series;
       const series = latestRows.find(r => r.symbol === symbol && r.series)?.series || latestSeries;
       const todayRow = latestRows.find(r => r.symbol === symbol && r.pctChange !== undefined);
-      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, breakout, rangeDays: highs.length, sources: sourceSet, pctToday: todayRow?.pctChange ?? latest.pctChange, qualifiedBefore };
+      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, breakoutRanges, sources: sourceSet, pctToday: todayRow?.pctChange ?? latest.pctChange, qualifiedBefore };
     }).filter((item): item is NonNullable<typeof item> =>
       item !== null &&
       item.qualifiedBefore &&
@@ -163,7 +176,7 @@ export const SwingScannerView: React.FC = () => {
     <div className="rounded-2xl border border-emerald-300/20 bg-gradient-to-br from-[#102b2a] via-[#0d1928] to-[#0d1527] p-5 sm:p-7">
       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300"><Activity className="h-4 w-4" /> MOTI Trading Intelligence</div>
       <h1 className="mt-3 text-2xl font-black text-white sm:text-3xl">Weekly Movement Screener</h1>
-      <p className="mt-2 max-w-2xl text-sm text-slate-300">NSE Top 20, Volume Gainers आणि Advances daily CSV वरून मागील trading days मधील stock movement शोधा. Bhavcopy लागत नाही.</p>
+      <p className="mt-2 max-w-2xl text-sm text-slate-300">NSE Top 20, Volume Gainers आणि Advances CSV वरून movement, 5/10/20 Top 20 range breakouts आणि Darvas-style boxes तपासा. Bhavcopy लागत नाही.</p>
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
         <label className="text-xs text-slate-300">Report date
           <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="mt-1 block rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-white" />
@@ -186,19 +199,20 @@ export const SwingScannerView: React.FC = () => {
 
     <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1e2e4f] px-4 py-3">
-        <div><h2 className="text-sm font-bold text-white">Weekly Movement Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · New entries: EQ/BE +4% and ₹300–₹3,000 · Existing stocks stay listed while price remains ₹300–₹3,000</p></div>
+        <div><h2 className="text-sm font-bold text-white">Weekly Movement & Breakout Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · New entries: EQ/BE +4% and ₹300–₹3,000 · Existing stocks stay listed while price remains ₹300–₹3,000</p></div>
         <button onClick={clearHistory} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear history</button>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-left text-xs">
-          <thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400"><tr>{['Stock','Latest Close','5-Day Move','Volume vs 1W Avg','Range Breakout','Today %','Report Sources'].map(x => <th key={x} className="px-3 py-3">{x}</th>)}</tr></thead>
+        <table className="w-full min-w-[1150px] text-left text-xs">
+          <thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400"><tr>{['Stock','Latest Close','5-Day Move','Volume vs 1W Avg','Range Breakout 5/10/20','Darvas Box 5/10/20','Today %','Report Sources'].map(x => <th key={x} className="px-3 py-3">{x}</th>)}</tr></thead>
           <tbody className="divide-y divide-[#1e2e4f]/60">
             {candidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
               <td className="px-3 py-3 font-black text-white">{item.symbol}</td>
               <td className="px-3 py-3 text-white">{money(item.close)}</td>
               <td className={'px-3 py-3 font-bold ' + ((item.weeklyChange ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{pct(item.weeklyChange)}</td>
               <td className="px-3 py-3 text-cyan-200">{item.volumeMultiple === undefined ? '—' : item.volumeMultiple.toFixed(2) + 'x'}</td>
-              <td className="px-3 py-3">{item.breakout ? <span className="text-emerald-300">High breakout</span> : item.rangeDays >= 3 ? <span className="text-slate-300">No high breakout</span> : <span className="text-slate-500">Need more Top 20 days</span>}</td>
+              <td className="px-3 py-3"><div className="space-y-1">{item.breakoutRanges.map(r => <div key={r.days}><span className="text-slate-400">{r.days}D:</span> {r.enough ? r.breakout ? <span className="font-bold text-emerald-300">Breakout</span> : <span className="text-slate-300">No breakout</span> : <span className="text-slate-500">Need {r.days} Top 20 appearances</span>}</div>)}</div></td>
+              <td className="px-3 py-3"><div className="space-y-1">{item.breakoutRanges.map(r => <div key={r.days}><span className="text-slate-400">{r.days}D:</span> {r.enough ? <><span className={r.breakout ? 'font-bold text-emerald-300' : 'text-slate-300'}>{r.breakout ? 'Box breakout' : r.inside ? 'Inside box' : 'Below box'}</span><span className="ml-1 text-[10px] text-slate-500">({money(r.boxLow)}–{money(r.boxHigh)})</span></> : <span className="text-slate-500">Need {r.days} Top 20 appearances</span>}</div>)}</div></td>
               <td className="px-3 py-3 text-slate-200">{pct(item.pctToday)}</td>
               <td className="px-3 py-3 text-[10px] text-slate-400">{item.sources.join(', ')}</td>
             </tr>)}
@@ -212,7 +226,7 @@ export const SwingScannerView: React.FC = () => {
         <li>डेटा फक्त तू upload केलेल्या NSE reports मधून येतो; scanner live NSE prices fetch करत नाही.</li>
         <li>Reports browser च्या local storage मध्ये राहतात; त्याच browser/device वर पुढच्या दिवशी नवीन reports add कर.</li>
         <li>Volume Gainers report मधील NSE 1-week volume multiple थेट दाखवला जातो.</li>
-        <li>Range breakout साठी त्या stock चे किमान 3 आधीचे Top 20 daily observations आवश्यक आहेत; पुरेसा डेटा नसेल तर तसे दाखवले जाईल.</li>
+        <li>5/10/20 Range Breakout आणि Darvas-style Box साठी त्या stock चे अनुक्रमे 5, 10 किंवा 20 आधीचे Top 20 report appearances (High/Low सहित) आवश्यक आहेत. Top 20 हा निवडक report असल्यामुळे या नोंदी सलग exchange sessions असतीलच असे नाही; त्यामुळे हा indicative scanner आहे, पूर्ण daily-candle Darvas calculation नाही.</li>
         <li>Top 20 आणि Volume Gainers हे निवडक stocks आहेत; फक्त या reports वरून संपूर्ण NSE universe चे सर्व stocks scan होत नाहीत.</li>
         <li>नवीन stock लिस्टमध्ये येण्यासाठी EQ/BE series, त्या दिवसाचा बदल किमान +4% आणि किंमत ₹300–₹3,000 आवश्यक आहे. एकदा आलेला stock रोज +4% राहण्याची गरज नाही; तो ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहतो. रेंजच्या बाहेर तात्पुरता लपतो आणि परत रेंजमध्ये आल्यावर पुन्हा दिसतो.</li>
       </ul>
