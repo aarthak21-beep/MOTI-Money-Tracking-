@@ -103,10 +103,20 @@ export const SwingScannerView: React.FC = () => {
   const latestDate = useMemo(() => records.reduce((d, r) => r.date > d ? r.date : d, ''), [records]);
   const latestRows = useMemo(() => records.filter(r => r.date === latestDate), [records, latestDate]);
   const candidates = useMemo(() => {
-    const symbols = Array.from(new Set(latestRows.map(r => r.symbol)));
+    // A symbol enters the watchlist once it meets EQ/BE +4% + price criteria.
+    // After entry, it stays on the list regardless of daily % change, and is
+    // only hidden while its latest known close is outside ₹300–₹3,000.
+    const symbols = Array.from(new Set(records.map(r => r.symbol)));
     return symbols.map(symbol => {
-      const history = records.filter(r => r.symbol === symbol && r.close !== undefined).sort((a, b) => a.date.localeCompare(b.date));
-      const latest = history[history.length - 1] || latestRows.find(r => r.symbol === symbol)!;
+      const symbolRows = records.filter(r => r.symbol === symbol);
+      const history = symbolRows.filter(r => r.close !== undefined).sort((a, b) => a.date.localeCompare(b.date));
+      const latest = history[history.length - 1] || latestRows.find(r => r.symbol === symbol);
+      if (!latest) return null;
+      const qualifiedBefore = symbolRows.some(r =>
+        (r.series === 'EQ' || r.series === 'BE') &&
+        (r.pctChange ?? -Infinity) >= 4 &&
+        r.close !== undefined && r.close >= 300 && r.close <= 3000
+      );
       const prior5 = history.slice(-6, -1);
       const first = history.length >= 6 ? history[history.length - 6] : undefined;
       const weeklyChange = history.length >= 6 && first?.close ? ((latest.close! / first.close) - 1) * 100 : undefined;
@@ -114,10 +124,17 @@ export const SwingScannerView: React.FC = () => {
       const breakout = latest.close !== undefined && highs.length >= 3 && latest.close > Math.max(...highs);
       const latestVolume = latestRows.find(r => r.symbol === symbol && r.volumeMultiple !== undefined);
       const volume = latestVolume?.volumeMultiple;
-      const sourceSet = Array.from(new Set(records.filter(r => r.symbol === symbol && r.date === latestDate).flatMap(r => r.sources)));
-      const series = latestRows.find(r => r.symbol === symbol && r.series)?.series;
-      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, breakout, rangeDays: highs.length, sources: sourceSet, pctToday: latest.pctChange };
-    }).filter(item => (item.series === 'EQ' || item.series === 'BE') && (item.pctToday ?? -Infinity) >= 4 && item.close !== undefined && item.close >= 300 && item.close <= 3000).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
+      const sourceSet = Array.from(new Set(latestRows.filter(r => r.symbol === symbol).flatMap(r => r.sources)));
+      const latestSeries = [...symbolRows].reverse().find(r => r.series)?.series;
+      const series = latestRows.find(r => r.symbol === symbol && r.series)?.series || latestSeries;
+      const todayRow = latestRows.find(r => r.symbol === symbol && r.pctChange !== undefined);
+      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, breakout, rangeDays: highs.length, sources: sourceSet, pctToday: todayRow?.pctChange ?? latest.pctChange, qualifiedBefore };
+    }).filter((item): item is NonNullable<typeof item> =>
+      item !== null &&
+      item.qualifiedBefore &&
+      (item.series === 'EQ' || item.series === 'BE') &&
+      item.close !== undefined && item.close >= 300 && item.close <= 3000
+    ).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
   }, [records, latestRows, latestDate]);
 
   const handleFiles = async (files: FileList | null) => {
@@ -169,7 +186,7 @@ export const SwingScannerView: React.FC = () => {
 
     <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1e2e4f] px-4 py-3">
-        <div><h2 className="text-sm font-bold text-white">Weekly Movement Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · Showing EQ/BE stocks with today's gain of at least +4% and price ₹300–₹3,000 · 5 trading day movement needs repeated daily reports</p></div>
+        <div><h2 className="text-sm font-bold text-white">Weekly Movement Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · New entries: EQ/BE +4% and ₹300–₹3,000 · Existing stocks stay listed while price remains ₹300–₹3,000</p></div>
         <button onClick={clearHistory} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear history</button>
       </div>
       <div className="overflow-x-auto">
@@ -187,7 +204,7 @@ export const SwingScannerView: React.FC = () => {
             </tr>)}
           </tbody>
         </table>
-        {!candidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">NSE reports upload कर</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि Advances CSV मधील वाढणारे stocks शोधण्यासाठी वापरली जाईल. Table मध्ये फक्त आजचा बदल +4% किंवा अधिक असलेले stocks दिसतील.</p></div>}
+        {!candidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">NSE reports upload कर</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि Advances CSV मधील वाढणारे stocks शोधण्यासाठी वापरली जाईल. एकदा +4% वरून लिस्टमध्ये आलेला stock पुढे +4% खाली गेला तरी ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहील.</p></div>}
       </div>
     </div>
     <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><div className="flex items-center gap-2 text-xs font-bold text-cyan-200"><Info className="h-4 w-4" /> Data notes</div>
@@ -197,7 +214,7 @@ export const SwingScannerView: React.FC = () => {
         <li>Volume Gainers report मधील NSE 1-week volume multiple थेट दाखवला जातो.</li>
         <li>Range breakout साठी त्या stock चे किमान 3 आधीचे Top 20 daily observations आवश्यक आहेत; पुरेसा डेटा नसेल तर तसे दाखवले जाईल.</li>
         <li>Top 20 आणि Volume Gainers हे निवडक stocks आहेत; फक्त या reports वरून संपूर्ण NSE universe चे सर्व stocks scan होत नाहीत.</li>
-        <li>या buy-first screener मध्ये Advances वर लक्ष आहे; Declines report वापरला जात नाही. Candidates मध्ये फक्त EQ/BE series, आजचा बदल किमान +4% आणि किंमत ₹300–₹3,000 असलेले stocks दिसतात.</li>
+        <li>नवीन stock लिस्टमध्ये येण्यासाठी EQ/BE series, त्या दिवसाचा बदल किमान +4% आणि किंमत ₹300–₹3,000 आवश्यक आहे. एकदा आलेला stock रोज +4% राहण्याची गरज नाही; तो ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहतो. रेंजच्या बाहेर तात्पुरता लपतो आणि परत रेंजमध्ये आल्यावर पुन्हा दिसतो.</li>
       </ul>
     </div>
   </div>;
