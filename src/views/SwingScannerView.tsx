@@ -112,10 +112,10 @@ export const SwingScannerView: React.FC = () => {
       const history = records.filter(r => r.symbol === symbol && r.close !== undefined).sort((a, b) => a.date.localeCompare(b.date));
       const latest = history[history.length - 1] || latestRows.find(r => r.symbol === symbol)!;
       const prior5 = history.slice(-6, -1);
-      const first = history.length >= 2 ? history[Math.max(0, history.length - 5)] : undefined;
+      const first = history.length >= 6 ? history[history.length - 6] : undefined;
       const weeklyChange = history.length >= 6 && first?.close ? ((latest.close! / first.close) - 1) * 100 : undefined;
       const highs = prior5.map(r => r.high).filter((v): v is number => v !== undefined);
-      const breakout = latest.high !== undefined && highs.length >= 3 && latest.high > Math.max(...highs);
+      const breakout = latest.close !== undefined && highs.length >= 3 && latest.close > Math.max(...highs);
       const latestVolume = latestRows.find(r => r.symbol === symbol && r.volumeMultiple !== undefined);
       const volume = latestVolume?.volumeMultiple;
       const sourceSet = Array.from(new Set(records.filter(r => r.symbol === symbol && r.date === latestDate).flatMap(r => r.sources)));
