@@ -4,6 +4,7 @@ import {
   Lock,
   Plus,
   TrendingUp,
+  Activity,
   Download,
   CheckCircle,
   AlertTriangle,
@@ -239,6 +240,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {[
             { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
             { id: 'stockTrading', label: 'Stocks', icon: TrendingUp },
+            { id: 'swingScanner', label: 'Swing Scanner', icon: Activity },
             { id: 'weeklyIncome', label: 'Weekly', icon: CalendarDays },
             
           ].map((item) => {
