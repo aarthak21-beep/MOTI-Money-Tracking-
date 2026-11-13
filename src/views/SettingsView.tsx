@@ -38,7 +38,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [drivePassphrase, setDrivePassphrase] = useState('');
   const [cloudStatus, setCloudStatus] = useState('');
-  const [cloudBusy, setCloudBusy] = useState(false);\n  const [sharedFolderName, setSharedFolderName] = useState('');\n  const [sharedBackupName, setSharedBackupName] = useState('');
+  const [cloudBusy, setCloudBusy] = useState(false);
 
   const professions: Profession[] = [
     'Stock Trader',
@@ -103,70 +103,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
     };
     reader.readAsText(file);
-  };
-
-  const handleSelectSharedFolder = async () => {
-    setCloudBusy(true);
-    setCloudStatus('Opening Google Picker…');
-    try {
-      await GoogleDriveSyncService.connect();
-      const folder = await GoogleDriveSyncService.selectSharedFolder();
-      setSharedFolderName(folder.name);
-      setCloudStatus('Selected shared folder: ' + folder.name + '. Select it separately on each Gmail account.');
-    } catch (error) {
-      setCloudStatus(error instanceof Error ? error.message : 'Could not select the shared folder.');
-    } finally {
-      setCloudBusy(false);
-    }
-  };
-
-  const handleSelectSharedBackupFile = async () => {
-    setCloudBusy(true);
-    setCloudStatus('Choose the existing encrypted MOTI backup in Google Picker…');
-    try {
-      await GoogleDriveSyncService.connect();
-      const file = await GoogleDriveSyncService.selectSharedBackupFile();
-      setSharedBackupName(file.name);
-      setCloudStatus('Selected encrypted backup: ' + file.name + '. This grants this Gmail account access to that file.');
-    } catch (error) {
-      setCloudStatus(error instanceof Error ? error.message : 'Could not select the encrypted backup file.');
-    } finally {
-      setCloudBusy(false);
-    }
-  };
-
-  const handleSharedFolderBackup = async () => {
-    setCloudBusy(true);
-    setCloudStatus('Encrypting and uploading to the shared folder…');
-    try {
-      const snapshot = StorageService.exportCompleteBackup(profile.id);
-      await GoogleDriveSyncService.backupToSharedFolder(snapshot, drivePassphrase);
-      setCloudStatus('Encrypted backup uploaded to the selected shared folder. A new version was created; older backups were not overwritten.');
-    } catch (error) {
-      setCloudStatus(error instanceof Error ? error.message : 'Shared-folder backup failed.');
-    } finally {
-      setCloudBusy(false);
-    }
-  };
-
-  const handleSharedFolderRestore = async () => {
-    setCloudBusy(true);
-    setCloudStatus('Finding the latest encrypted backup…');
-    try {
-      const snapshot = await GoogleDriveSyncService.restoreFromSharedFolder(drivePassphrase);
-      if (!window.confirm('Restore the latest encrypted backup from the shared folder? This replaces records on this device. Export a local JSON backup first.')) {
-        setCloudStatus('Restore cancelled. Local data was not changed.');
-        return;
-      }
-      const success = StorageService.importCompleteBackup(snapshot, profile.id);
-      if (!success) throw new Error('Backup data is invalid. Local data was not changed.');
-      onRefreshData();
-      setCloudStatus('Encrypted shared-folder backup restored on this device.');
-    } catch (error) {
-      setCloudStatus(error instanceof Error ? error.message : 'Shared-folder restore failed.');
-    } finally {
-      setCloudBusy(false);
-    }
   };
 
   const handleDriveBackup = async () => {
@@ -472,28 +408,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <p className="mt-2 text-[10px] leading-relaxed text-amber-300/80">
               Use the same passphrase on your phone and laptop. It is never sent to Google or saved by MOTI. If you lose it, the backup cannot be recovered.
             </p>
-            <div className="mt-4 rounded-2xl border border-cyan-500/30 bg-cyan-950/20 p-4">
-              <p className="text-xs font-bold text-white">Use your shared “MOTI” Drive folder</p>
-              <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
-                Choose the folder shared by your laptop Gmail. Repeat this folder selection on the phone while signed in to the other Gmail. Backups are encrypted in this browser before upload; each upload creates a new version.
-              </p>
-              <button type="button" disabled={cloudBusy} onClick={handleSelectSharedFolder} className="mt-3 w-full rounded-xl border border-cyan-500/40 bg-cyan-500/10 py-2.5 text-xs font-bold text-cyan-300 disabled:opacity-50">
-                Select shared MOTI folder
-              </button>
-              {sharedFolderName && <p className="mt-2 text-[10px] text-cyan-200">Folder: {sharedFolderName}</p>}
-              <button type="button" disabled={cloudBusy} onClick={handleSelectSharedBackupFile} className="mt-2 w-full rounded-xl border border-cyan-500/40 bg-[#070d18] py-2.5 text-xs font-bold text-cyan-200 disabled:opacity-50">
-                Select existing MOTI backup file (other Gmail)
-              </button>
-              {sharedBackupName && <p className="mt-2 text-[10px] text-cyan-200">Backup file: {sharedBackupName}</p>}
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <button type="button" disabled={cloudBusy || drivePassphrase.length < 12 || (!sharedFolderName && !sharedBackupName)} onClick={handleSharedFolderBackup} className="rounded-xl bg-cyan-500 py-2.5 text-xs font-bold text-slate-950 disabled:opacity-50">
-                  Encrypted folder backup
-                </button>
-                <button type="button" disabled={cloudBusy || drivePassphrase.length < 12 || !sharedBackupName} onClick={handleSharedFolderRestore} className="rounded-xl border border-cyan-500/40 bg-[#070d18] py-2.5 text-xs font-bold text-cyan-200 disabled:opacity-50">
-                  Restore selected backup
-                </button>
-              </div>
-            </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button disabled={cloudBusy || drivePassphrase.length < 12} onClick={handleDriveBackup} className="rounded-xl bg-emerald-500 py-2.5 text-xs font-bold text-slate-950 disabled:opacity-50">
                 Encrypt & Backup
