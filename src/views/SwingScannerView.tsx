@@ -111,7 +111,7 @@ const unzipFirstCsv = async (file: File): Promise<string> => {
   throw new Error('ZIP मध्ये CSV फाईल सापडली नाही.');
 };
 const parseBhavcopy = (text: string, date: string): DailyRow[] => {
-  const lines = text.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(line => line.trim());
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
   if (!lines.length) throw new Error('Bhavcopy CSV रिकामी आहे.');
   const headers = splitCsvLine(lines[0]);
   const h = headers.map(norm);
