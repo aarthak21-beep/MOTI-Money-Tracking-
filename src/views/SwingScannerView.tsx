@@ -18,38 +18,64 @@ const rsi = (values: number[]) => {
   const avgGain = average(gains), avgLoss = average(losses);
   return avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
 };
+const splitCsvLine = (line: string): string[] => {
+  const cells: string[] = [];
+  let value = '', quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (quoted && line[i + 1] === '"') { value += '"'; i++; }
+      else quoted = !quoted;
+    } else if (char === ',' && !quoted) {
+      cells.push(value.trim()); value = '';
+    } else value += char;
+  }
+  cells.push(value.trim());
+  return cells;
+};
 const parseCsv = (text: string, csvFilename = ''): { symbol: string; candle: Candle }[] => {
   const lines = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
   if (lines.length < 2) throw new Error('CSV मध्ये data rows नाहीत.');
-  const headers = lines[0].split(',').map(value => value.trim().toLowerCase().replaceAll('"', ''));
+  const headers = splitCsvLine(lines[0]).map(value => value.trim().toLowerCase().replaceAll('"', ''));
   const col = (...names: string[]) => headers.findIndex(header => names.includes(header));
   const dateCol = col('traddt', 'trad dt', 'date1', 'date', 'timestamp');
   const symbolCol = col('tckrsymb', 'symbol');
   const seriesCol = col('sctysrs', 'series');
-  const openCol = col('opnpric', 'open_price', 'open');
-  const highCol = col('hghpric', 'high_price', 'high');
-  const lowCol = col('lwpric', 'low_price', 'low');
-  const closeCol = col('clspric', 'close_price', 'close');
-  const volumeCol = col('ttltradgvol', 'ttl_trd_qnty', 'total_traded_quantity', 'volume');
-  if ([dateCol, highCol, lowCol, closeCol, volumeCol].some(index => index < 0)) throw new Error('NSE CSV columns ओळखता आले नाहीत. NSE Equity Bhavcopy CSV वापरा.');
+  const openCol = col('opnpric', 'open_price', 'open price', 'open');
+  const highCol = col('hghpric', 'high_price', 'high price', 'high');
+  const lowCol = col('lwpric', 'low_price', 'low price', 'low');
+  const closeCol = col('clspric', 'close_price', 'close price', 'close');
+  const volumeCol = col('ttltradgvol', 'ttl_trd_qnty', 'total_traded_quantity', 'total traded quantity', 'volume');
+  if ([dateCol, highCol, lowCol, closeCol, volumeCol].some(index => index < 0)) throw new Error('NSE CSV columns ओळखता आले नाहीत. NSE Bhavcopy किंवा Security-wise Price Volume CSV वापरा.');
   const parseDate = (value: string) => {
     const raw = value.trim();
-    if (/^\d{2}-[A-Za-z]{3}-\d{4}$/.test(raw)) {
-      const [day, month, year] = raw.split('-');
-      return new Date(day + ' ' + month + ' ' + year).toISOString().slice(0, 10);
+    const named = raw.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+    if (named) {
+      const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+      const month = months.indexOf(named[2].toLowerCase());
+      if (month >= 0) return new Date(Date.UTC(Number(named[3]), month, Number(named[1]))).toISOString().slice(0, 10);
     }
-    if (/^\d{8}$/.test(raw)) return raw.slice(4, 8) + '-' + raw.slice(2, 4) + '-' + raw.slice(0, 2);
+    if (/^\d{8}$/.test(raw)) return raw.slice(0, 4) + '-' + raw.slice(4, 6) + '-' + raw.slice(6, 8);
     const parsed = new Date(raw);
     return Number.isNaN(parsed.getTime()) ? raw : parsed.toISOString().slice(0, 10);
   };
+  const parseNumber = (value: string | undefined) => Number((value || '').replace(/[,\s₹]/g, ''));
+  const fallbackSymbol = csvFilename.replace(/\.csv$/i, '').replace(/[-_ ]historical.*/i, '').toUpperCase();
   const rows: { symbol: string; candle: Candle }[] = [];
   for (const line of lines.slice(1)) {
-    const cells = line.split(',').map(value => value.trim().replaceAll('"', ''));
+    const cells = splitCsvLine(line).map(value => value.replace(/^"|"$/g, '').trim());
     const series = seriesCol >= 0 ? cells[seriesCol]?.toUpperCase() : 'EQ';
     if (series && !['EQ', 'BE'].includes(series)) continue;
-    const fallbackSymbol = csvFilename.replace(/\.csv$/i, '').replace(/[-_ ]historical.*/i, '').toUpperCase();
     const symbol = (symbolCol >= 0 ? cells[symbolCol] : fallbackSymbol).toUpperCase();
-    const candle = { date: parseDate(cells[dateCol] || ''), open: Number(cells[openCol] || cells[closeCol]), high: Number(cells[highCol]), low: Number(cells[lowCol]), close: Number(cells[closeCol]), volume: Number(cells[volumeCol]) };
+    const close = parseNumber(cells[closeCol]);
+    const candle = {
+      date: parseDate(cells[dateCol] || ''),
+      open: openCol >= 0 ? (parseNumber(cells[openCol]) || close) : close,
+      high: parseNumber(cells[highCol]),
+      low: parseNumber(cells[lowCol]),
+      close,
+      volume: parseNumber(cells[volumeCol])
+    };
     if (!symbol || !candle.date || ![candle.high, candle.low, candle.close, candle.volume].every(Number.isFinite) || candle.close <= 0 || candle.volume < 0) continue;
     rows.push({ symbol, candle });
   }
