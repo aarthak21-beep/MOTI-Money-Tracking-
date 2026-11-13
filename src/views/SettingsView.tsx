@@ -112,7 +112,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       await GoogleDriveSyncService.connect();
       const snapshot = StorageService.exportCompleteBackup(profile.id);
       await GoogleDriveSyncService.backup(snapshot, drivePassphrase);
-      setCloudStatus('Encrypted MOTI backup saved to your Google Drive app data. Google cannot read the encrypted backup contents.');
+      const encryptedFile = await GoogleDriveSyncService.exportEncryptedFile(snapshot, drivePassphrase);
+      const blob = new Blob([encryptedFile], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `MOTI_Encrypted_Backup_${new Date().toISOString().slice(0, 10)}.enc`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setCloudStatus('Encrypted backup saved to Google Drive and downloaded to this laptop. Keep the .enc file on a USB drive or another safe location too.');
     } catch (error) {
       setCloudStatus(error instanceof Error ? error.message : 'Encrypted backup failed.');
     } finally {
