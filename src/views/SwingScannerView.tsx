@@ -18,21 +18,45 @@ const rsi = (values: number[]) => {
   const avgGain = average(gains), avgLoss = average(losses);
   return avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
 };
-const parseCsv = (text: string, filename: string): { symbol: string; candles: Candle[] } => {
-  const lines = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
+const parseCsv = (text: string, filename: string): { symbol: string; candles: Candle[] }[] => {
+  const lines = text.replace(/^\\uFEFF/, '').trim().split(/\\r?\\n/);
   if (lines.length < 52) throw new Error('किमान 51 trading-day rows आवश्यक आहेत.');
   const headers = lines[0].split(',').map(value => value.trim().toLowerCase().replaceAll('"', ''));
   const col = (...names: string[]) => headers.findIndex(header => names.includes(header));
-  const dateCol = col('date'), openCol = col('open'), highCol = col('high'), lowCol = col('low'), closeCol = col('close', 'adj close'), volumeCol = col('volume');
-  if ([dateCol, highCol, lowCol, closeCol, volumeCol].some(index => index < 0)) throw new Error('CSV मध्ये Date, High, Low, Close आणि Volume columns असणे आवश्यक आहे.');
-  const candles = lines.slice(1).map(line => {
+  // Supports NSE CM-UDiFF bhavcopy and older NSE equity bhavcopy / security-wise CSV.
+  const dateCol = col('trad dt', 'date1', 'date', 'timestamp');
+  const symbolCol = col('tckrsymb', 'symbol');
+  const seriesCol = col('sctysrs', 'series');
+  const openCol = col('opnpric', 'open_price', 'open');
+  const highCol = col('hghpric', 'high_price', 'high');
+  const lowCol = col('lwpric', 'low_price', 'low');
+  const closeCol = col('clspric', 'close_price', 'close');
+  const volumeCol = col('ttltradgvol', 'ttl_trd_qnty', 'total_traded_quantity', 'volume');
+  if ([dateCol, highCol, lowCol, closeCol, volumeCol].some(index => index < 0)) throw new Error('NSE CSV columns ओळखता आले नाहीत. NSE Equity Bhavcopy CSV वापरा.');
+  const groups = new Map<string, Candle[]>();
+  const parseDate = (value: string) => {
+    const raw = value.trim();
+    if (/^\\d{2}-[A-Za-z]{3}-\\d{4}$/.test(raw)) {
+      const [day, month, year] = raw.split('-');
+      return new Date(`${day} ${month} ${year}`).toISOString().slice(0, 10);
+    }
+    if (/^\\d{8}$/.test(raw)) return `${raw.slice(4, 8)}-${raw.slice(2, 4)}-${raw.slice(0, 2)}`;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? raw : parsed.toISOString().slice(0, 10);
+  };
+  for (const line of lines.slice(1)) {
     const cells = line.split(',').map(value => value.trim().replaceAll('"', ''));
-    return { date: cells[dateCol], open: Number(cells[openCol] || cells[closeCol]), high: Number(cells[highCol]), low: Number(cells[lowCol]), close: Number(cells[closeCol]), volume: Number(cells[volumeCol]) };
-  }).filter(row => row.date && [row.high, row.low, row.close, row.volume].every(Number.isFinite) && row.close > 0 && row.volume >= 0);
-  candles.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  if (candles.length < 51) throw new Error('वैध किमान 51 daily candles मिळाले नाहीत.');
-  const symbol = filename.replace(/\.csv$/i, '').replace(/\.NS$/i, '').replace(/[-_ ]historical.*/i, '').toUpperCase();
-  return { symbol, candles };
+    const series = seriesCol >= 0 ? cells[seriesCol]?.toUpperCase() : 'EQ';
+    if (series && !['EQ', 'BE'].includes(series)) continue;
+    const symbol = (symbolCol >= 0 ? cells[symbolCol] : filename.replace(/\\.csv$/i, '').replace(/[-_ ]historical.*/i, '')).toUpperCase();
+    const candle = { date: parseDate(cells[dateCol] || ''), open: Number(cells[openCol] || cells[closeCol]), high: Number(cells[highCol]), low: Number(cells[lowCol]), close: Number(cells[closeCol]), volume: Number(cells[volumeCol]) };
+    if (!symbol || !candle.date || ![candle.high, candle.low, candle.close, candle.volume].every(Number.isFinite) || candle.close <= 0 || candle.volume < 0) continue;
+    if (!groups.has(symbol)) groups.set(symbol, []);
+    groups.get(symbol)!.push(candle);
+  }
+  const parsed = Array.from(groups.entries()).map(([symbol, candles]) => ({ symbol, candles: candles.sort((a, b) => a.date.localeCompare(b.date)) })).filter(item => item.candles.length >= 51);
+  if (!parsed.length) throw new Error('किमान 51 वैध daily candles असलेला NSE symbol मिळाला नाही. योग्य date range आणि EQ series तपासा.');
+  return parsed;
 };
 const analyse = (symbol: string, candles: Candle[]): Candidate => {
   const closes = candles.map(row => row.close), latest = candles[candles.length - 1];
@@ -64,7 +88,7 @@ export const SwingScannerView: React.FC = () => {
     setLoading(true); setErrors([]);
     const found: Candidate[] = [], issues: string[] = [];
     for (const file of Array.from(files)) {
-      try { const parsed = parseCsv(await file.text(), file.name); found.push(analyse(parsed.symbol, parsed.candles)); }
+      try { const parsed = parseCsv(await file.text(), file.name); found.push(...parsed.map(item => analyse(item.symbol, item.candles))); }
       catch (error) { issues.push(file.name + ': ' + (error instanceof Error ? error.message : 'CSV वाचता आले नाही')); }
     }
     setCandidates(found.sort((a, b) => b.score - a.score)); setErrors(issues); setFileCount(files.length); setLoading(false);
@@ -94,8 +118,8 @@ export const SwingScannerView: React.FC = () => {
     {errors.length > 0 && <div className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-3 text-xs text-rose-200">{errors.map(error => <p key={error}>{error}</p>)}</div>}
     {candidates.length === 0 ? <div className="rounded-2xl border border-dashed border-[#2b3c5b] bg-[#0d1527] p-8 text-center">
       <FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><h2 className="mt-3 text-base font-bold text-white">Import NSE stock daily CSV files</h2>
-      <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-400">Yahoo Finance वरून प्रत्येक NSE stock चा Historical Data CSV डाउनलोड करा (उदा. RELIANCE.NS, INFY.NS), नंतर एक किंवा अनेक CSV files इथे निवडा. किमान 51 trading days आवश्यक आहेत.</p>
-      <a className="mt-3 inline-block text-xs font-semibold text-emerald-300 underline" href="https://finance.yahoo.com/" target="_blank" rel="noreferrer">Open Yahoo Finance</a>
+      <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-400">NSE India च्या Historical Reports मधून Equity Bhavcopy (CM-UDiFF) CSV डाउनलोड करा. एकाच Bhavcopy मध्ये अनेक NSE stocks असू शकतात. जुना NSE Equity Bhavcopy किंवा एखाद्या stock चा historical CSV सुद्धा चालेल. किमान 51 trading days आवश्यक आहेत.</p>
+      <a className="mt-3 inline-block text-xs font-semibold text-emerald-300 underline" href="https://www.nseindia.com/all-reports" target="_blank" rel="noreferrer">Open NSE India – All Reports</a>
     </div> : <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
       <div className="flex items-center justify-between border-b border-[#1e2e4f] px-4 py-3"><h2 className="text-sm font-bold text-white">Swing Candidates</h2><button onClick={() => { setCandidates([]); setErrors([]); setFileCount(0); }} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear</button></div>
       <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400"><tr>{['Stock / Signal','Score','Close','RSI 14','Vol vs 20D','EMA Trend','Entry','Stop Loss','2R Target','Data Date'].map(label => <th key={label} className="px-3 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{filtered.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]"><td className="px-3 py-3"><p className="font-black text-white">{item.symbol}</p><p className="mt-1 text-[10px] text-emerald-300">{item.signal}</p></td><td className="px-3 py-3"><span className={item.score >= 70 ? 'font-black text-emerald-300' : 'font-bold text-amber-300'}>{item.score}/100</span></td><td className="px-3 py-3 text-white">{money(item.close)}</td><td className="px-3 py-3 text-slate-200">{item.rsi.toFixed(1)}</td><td className="px-3 py-3 text-slate-200">{item.volumeRatio.toFixed(2)}x</td><td className="px-3 py-3">{item.ema20 > item.ema50 ? <span className="text-emerald-300">Bullish</span> : <span className="text-rose-300">Weak</span>}</td><td className="px-3 py-3 text-cyan-200">{money(item.entry)}</td><td className="px-3 py-3 text-rose-300">{money(item.stop)}</td><td className="px-3 py-3 text-emerald-300">{money(item.target)}</td><td className="px-3 py-3 text-slate-400">{item.lastDate}</td></tr>)}</tbody></table></div>
