@@ -20,14 +20,14 @@ const parseDate = (v: string) => {
   return '';
 };
 const expiryFromFilename = (filename: string) => {
-  const match = filename.match(/(\\d{1,2})[-_ ]([A-Za-z]{3})[-_ ](\\d{4})/);
+  const match = filename.match(/(\d{1,2})[-_ ]([A-Za-z]{3})[-_ ](\d{4})/);
   if (!match) return '';
   const months: Record<string, string> = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
   const month = months[match[2].toLowerCase()];
   return month ? `${match[3]}-${month}-${match[1].padStart(2, '0')}` : '';
 };
 const parseNseOptionChain = (text: string, filename: string): OptionRow[] => {
-  const lines = text.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(x => x.trim());
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(x => x.trim());
   if (lines.length < 3) throw new Error('NSE Option Chain CSV मध्ये पुरेशा rows नाहीत.');
   const split = (line: string) => {
     const out: string[] = []; let value = '', quoted = false;
