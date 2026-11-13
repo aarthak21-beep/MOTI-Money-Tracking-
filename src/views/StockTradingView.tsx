@@ -711,7 +711,7 @@ export const StockTradingView: React.FC<StockTradingViewProps> = ({
                     <td className="py-3 px-3 text-right font-bold text-cyan-300">₹{formatINR(t.totalInvestment)}</td>
                     <td className="py-3 px-3 whitespace-nowrap text-slate-300">{closed ? (t.exitDate || '-') : '-'}</td>
                     <td className="py-3 px-3 text-right font-bold text-white">{closed ? '₹' + formatINR(exit) : '-'}</td>
-                    <td className="py-3 px-3 text-right text-slate-400">-</td>
+                    <td className="py-3 px-3 text-right text-slate-400">{closed ? "₹" + formatINR(exit * t.quantity) : "-"}</td>
                     <td className="py-3 px-3 text-right text-slate-200">{closed ? '₹' + formatINR(targetEarn) : '-'}</td>
                     <td className={`py-3 px-3 text-right font-bold ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{closed ? (pnl >= 0 ? '+' : '-') + '₹' + formatINR(Math.abs(pnl)) : '-'}</td>
                     <td className="py-3 px-3 text-right font-black text-white">{closed ? '₹' + formatINR(totalPnl) : '-'}</td>
