@@ -125,6 +125,7 @@ export const SwingScannerView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [minScore, setMinScore] = useState(50);
   const [fileCount, setFileCount] = useState(0);
+  const [dataCoverage, setDataCoverage] = useState({ uniqueDays: 0, symbols: 0, bestSymbolDays: 0 });
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     setLoading(true); setErrors([]);
@@ -152,11 +153,20 @@ export const SwingScannerView: React.FC = () => {
       grouped.get(row.symbol)!.push(row.candle);
     }
     const found: Candidate[] = [];
+    let bestSymbolDays = 0;
     for (const [symbol, candles] of grouped) {
       const unique = Array.from(new Map(candles.map(candle => [candle.date, candle])).values()).sort((a, b) => a.date.localeCompare(b.date));
+      bestSymbolDays = Math.max(bestSymbolDays, unique.length);
       if (unique.length >= 51) found.push(analyse(symbol, unique));
     }
-    if (!found.length && !issues.length) issues.push('एकत्रित फाइल्समध्ये किमान 51 trading days असलेला कोणताही NSE EQ/BE stock मिळाला नाही.');
+    const uniqueDays = new Set(allRows.map(row => row.candle.date)).size;
+    setDataCoverage({ uniqueDays, symbols: grouped.size, bestSymbolDays });
+    if (!found.length && !issues.length) {
+      const missing = Math.max(0, 51 - bestSymbolDays);
+      issues.push(bestSymbolDays === 0
+        ? 'फाइलमधून NSE EQ/BE data वाचता आला नाही. NSE CM-UDiFF Equity Bhavcopy ZIP निवडा.'
+        : `तुमच्या upload मध्ये ${uniqueDays} वेगळे trading days आणि ${grouped.size} stocks मिळाले. सर्वाधिक इतिहास असलेल्या stock कडे ${bestSymbolDays} दिवस आहेत; Scanner साठी 51 दिवस आवश्यक आहेत. अजून किमान ${missing} वेगळ्या trading days च्या Bhavcopy ZIP फाइल्स जोडा.`);
+    }
     setCandidates(found.sort((a, b) => b.score - a.score)); setErrors(issues); setFileCount(files.length); setLoading(false);
   };
   const filtered = useMemo(() => candidates.filter(item => item.score >= minScore), [candidates, minScore]);
@@ -181,13 +191,14 @@ export const SwingScannerView: React.FC = () => {
       <div><p className="text-sm font-bold text-white">Signal strength filter</p><p className="mt-1 text-[11px] text-slate-400">Minimum score: {minScore}/100</p></div>
       <input aria-label="Minimum signal score" type="range" min="0" max="90" step="5" value={minScore} onChange={event => setMinScore(Number(event.target.value))} className="w-full accent-emerald-300 sm:max-w-xs" />
     </div>
+    {fileCount > 0 && <div className="grid grid-cols-3 gap-2 rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-3 text-center"><div><p className="text-[10px] text-slate-400">Unique trading days</p><p className="mt-1 text-lg font-black text-white">{dataCoverage.uniqueDays}/51</p></div><div><p className="text-[10px] text-slate-400">Stocks read</p><p className="mt-1 text-lg font-black text-white">{dataCoverage.symbols}</p></div><div><p className="text-[10px] text-slate-400">Best stock history</p><p className="mt-1 text-lg font-black text-white">{dataCoverage.bestSymbolDays}/51</p></div></div>}
     {errors.length > 0 && <div className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-3 text-xs text-rose-200">{errors.map(error => <p key={error}>{error}</p>)}</div>}
     {candidates.length === 0 ? <div className="rounded-2xl border border-dashed border-[#2b3c5b] bg-[#0d1527] p-8 text-center">
       <FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><h2 className="mt-3 text-base font-bold text-white">Import NSE Bhavcopy ZIP / CSV files</h2>
-      <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-400">NSE India च्या Historical Reports मधून CM-UDiFF Bhavcopy ZIP किंवा CSV डाउनलोड करा. अनेक दिवसांच्या ZIP/CSV फाइल्स एकत्र select करा; scanner ZIP मधील CSV उघडून प्रत्येक stock चा 51+ trading days डेटा एकत्र करेल.</p>
+      <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-400">NSE India च्या Historical Reports मधून CM-UDiFF Bhavcopy ZIP डाउनलोड करा. एकापेक्षा जास्त दिवसांच्या ZIP फाइल्स एकाच वेळी निवडा. MOTI स्वतः डेटा एकत्र करेल आणि किती दिवस कमी आहेत ते दाखवेल. 51 वेगळे trading days आवश्यक आहेत.</p>
       <a className="mt-3 inline-block text-xs font-semibold text-emerald-300 underline" href="https://www.nseindia.com/all-reports" target="_blank" rel="noreferrer">Open NSE India – All Reports</a>
     </div> : <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
-      <div className="flex items-center justify-between border-b border-[#1e2e4f] px-4 py-3"><h2 className="text-sm font-bold text-white">Swing Candidates</h2><button onClick={() => { setCandidates([]); setErrors([]); setFileCount(0); }} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear</button></div>
+      <div className="flex items-center justify-between border-b border-[#1e2e4f] px-4 py-3"><h2 className="text-sm font-bold text-white">Swing Candidates</h2><button onClick={() => { setCandidates([]); setErrors([]); setFileCount(0); setDataCoverage({ uniqueDays: 0, symbols: 0, bestSymbolDays: 0 }); }} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear</button></div>
       <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400"><tr>{['Stock / Signal','Score','Close','RSI 14','Vol vs 20D','EMA Trend','Entry','Stop Loss','2R Target','Data Date'].map(label => <th key={label} className="px-3 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]/60">{filtered.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]"><td className="px-3 py-3"><p className="font-black text-white">{item.symbol}</p><p className="mt-1 text-[10px] text-emerald-300">{item.signal}</p></td><td className="px-3 py-3"><span className={item.score >= 70 ? 'font-black text-emerald-300' : 'font-bold text-amber-300'}>{item.score}/100</span></td><td className="px-3 py-3 text-white">{money(item.close)}</td><td className="px-3 py-3 text-slate-200">{item.rsi.toFixed(1)}</td><td className="px-3 py-3 text-slate-200">{item.volumeRatio.toFixed(2)}x</td><td className="px-3 py-3">{item.ema20 > item.ema50 ? <span className="text-emerald-300">Bullish</span> : <span className="text-rose-300">Weak</span>}</td><td className="px-3 py-3 text-cyan-200">{money(item.entry)}</td><td className="px-3 py-3 text-rose-300">{money(item.stop)}</td><td className="px-3 py-3 text-emerald-300">{money(item.target)}</td><td className="px-3 py-3 text-slate-400">{item.lastDate}</td></tr>)}</tbody></table></div>
       {filtered.length === 0 && <p className="p-6 text-center text-xs text-slate-400">या score filter मध्ये stocks सापडले नाहीत.</p>}
       <p className="border-t border-[#1e2e4f] px-4 py-2 text-[10px] text-slate-500">{fileCount} ZIP/CSV file(s) processed. Data is as recent as the uploaded files; scanner does not fetch live prices.</p>
