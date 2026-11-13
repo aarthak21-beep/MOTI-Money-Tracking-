@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, Profession } from '../types';
 import { StorageService } from '../services/storageService';
-import { CloudSyncService } from '../services/cloudSyncService';
+import { GoogleDriveSyncService } from '../services/googleDriveSyncService';
 
 interface SettingsViewProps {
   profile: UserProfile;
@@ -36,7 +36,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [pinEnabled, setPinEnabled] = useState(profile.pinEnabled);
   const [pinCode, setPinCode] = useState(profile.pinCode || '1234');
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [cloudUrl, setCloudUrl] = useState(CloudSyncService.getUrl());
+  const [drivePassphrase, setDrivePassphrase] = useState('');
   const [cloudStatus, setCloudStatus] = useState('');
   const [cloudBusy, setCloudBusy] = useState(false);
 
@@ -105,51 +105,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     reader.readAsText(file);
   };
 
-  const handleSaveCloudUrl = () => {
-    CloudSyncService.setUrl(cloudUrl);
-    setCloudStatus(cloudUrl.trim() ? 'Apps Script URL saved on this device.' : 'Cloud sync disconnected.');
-  };
-
-  const handleCloudUpload = async () => {
-    if (!CloudSyncService.getUrl()) {
-      setCloudStatus('Paste and save your Apps Script Web App URL first.');
-      return;
-    }
+  const handleDriveBackup = async () => {
     setCloudBusy(true);
+    setCloudStatus('Connecting to Google Drive…');
     try {
-      const snapshot = JSON.parse(StorageService.exportCompleteBackup(profile.id)) as Record<string, unknown>;
-      await CloudSyncService.saveSnapshot(snapshot);
-      const tradeCount = Array.isArray(snapshot.stockTrades) ? snapshot.stockTrades.length : 0;
-      const weeklyCount = Array.isArray(snapshot.weeklyIncome) ? snapshot.weeklyIncome.length : 0;
-      setCloudStatus(`Complete MOTI backup sent: ${tradeCount} stock trades, ${weeklyCount} Weekly Capital records, and all saved records.`);
+      await GoogleDriveSyncService.connect();
+      const snapshot = StorageService.exportCompleteBackup(profile.id);
+      await GoogleDriveSyncService.backup(snapshot, drivePassphrase);
+      setCloudStatus('Encrypted MOTI backup saved to your Google Drive app data. Google cannot read the encrypted backup contents.');
     } catch (error) {
-      setCloudStatus(error instanceof Error ? error.message : 'Weekly cloud sync failed.');
+      setCloudStatus(error instanceof Error ? error.message : 'Encrypted backup failed.');
     } finally {
       setCloudBusy(false);
     }
   };
 
-  const handleCloudRestore = async () => {
-    if (!CloudSyncService.getUrl()) {
-      setCloudStatus('Paste and save your Apps Script Web App URL first.');
-      return;
-    }
+  const handleDriveRestore = async () => {
     setCloudBusy(true);
+    setCloudStatus('Connecting to Google Drive…');
     try {
-      const snapshot = await CloudSyncService.loadSnapshot();
-      if (!snapshot) {
-        setCloudStatus('No MOTI cloud backup found. First use Backup all MOTI data on the device that has your existing history.');
-      } else if (window.confirm('Restore the complete MOTI backup from Google Sheets? This replaces the records on this device, including all saved stock trades. Export a JSON backup first if this device has newer data.')) {
-        const success = StorageService.importCompleteBackup(JSON.stringify(snapshot), profile.id);
-        if (!success) throw new Error('The Google Sheet backup format is invalid; local data was not changed.');
-        onRefreshData();
-        const count = Array.isArray(snapshot.stockTrades) ? snapshot.stockTrades.length : 0;
-        setCloudStatus(`Complete MOTI backup restored (${count} stock trade records, plus all saved modules).`);
-      } else {
+      await GoogleDriveSyncService.connect();
+      const snapshot = await GoogleDriveSyncService.restore(drivePassphrase);
+      if (!window.confirm('Restore the encrypted MOTI backup? This replaces records on this device. Export a local JSON backup first if this device has newer data.')) {
         setCloudStatus('Restore cancelled. Local data was not changed.');
+        return;
       }
+      const success = StorageService.importCompleteBackup(snapshot, profile.id);
+      if (!success) throw new Error('Backup data is invalid. Local data was not changed.');
+      onRefreshData();
+      setCloudStatus('Encrypted backup decrypted and restored successfully on this device.');
     } catch (error) {
-      setCloudStatus(error instanceof Error ? error.message : 'Could not restore Weekly Capital.');
+      setCloudStatus(error instanceof Error ? error.message : 'Restore failed.');
     } finally {
       setCloudBusy(false);
     }
@@ -361,33 +347,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="rounded-3xl border border-emerald-500/30 bg-[#0d1527] p-6 shadow-xl">
             <div className="flex items-center space-x-2 border-b border-[#1e2e4f] pb-3">
               <Globe className="h-5 w-5 text-emerald-400" />
-              <h2 className="text-base font-bold text-white">Google Sheets Cloud Sync</h2>
+              <h2 className="text-base font-bold text-white">Encrypted Google Drive Sync</h2>
             </div>
             <p className="mt-3 text-xs text-slate-400 leading-relaxed">
-              Connect your private Google Apps Script Web App. All MOTI records, stock trades, are backed up to Google Sheets.
+              MOTI encrypts your complete backup in this browser with AES-256-GCM before sending it to the private Google Drive app data folder. Google stores ciphertext, not readable financial records.
             </p>
-            <label className="mt-4 block text-xs font-semibold text-slate-300">Apps Script Web App URL</label>
+            <label className="mt-4 block text-xs font-semibold text-slate-300">Encryption passphrase</label>
             <input
-              type="url"
-              value={cloudUrl}
-              onChange={(e) => setCloudUrl(e.target.value)}
-              placeholder="https://script.google.com/macros/s/.../exec"
+              type="password"
+              autoComplete="new-password"
+              value={drivePassphrase}
+              onChange={(e) => setDrivePassphrase(e.target.value)}
+              placeholder="At least 12 characters"
               className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2.5 text-xs text-white outline-none focus:border-emerald-400"
             />
-            <button onClick={handleSaveCloudUrl} className="mt-2 w-full rounded-xl border border-emerald-500/40 bg-emerald-500/10 py-2.5 text-xs font-bold text-emerald-300 hover:bg-emerald-500/20">
-              Save Apps Script URL
-            </button>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <button disabled={cloudBusy} onClick={handleCloudUpload} className="rounded-xl bg-emerald-500 py-2.5 text-xs font-bold text-slate-950 disabled:opacity-50">
-                Sync to Sheet
+            <p className="mt-2 text-[10px] leading-relaxed text-amber-300/80">
+              Use the same passphrase on your phone and laptop. It is never sent to Google or saved by MOTI. If you lose it, the backup cannot be recovered.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button disabled={cloudBusy || drivePassphrase.length < 12} onClick={handleDriveBackup} className="rounded-xl bg-emerald-500 py-2.5 text-xs font-bold text-slate-950 disabled:opacity-50">
+                Encrypt & Backup
               </button>
-              <button disabled={cloudBusy} onClick={handleCloudRestore} className="rounded-xl border border-[#1e2e4f] bg-[#070d18] py-2.5 text-xs font-bold text-slate-200 disabled:opacity-50">
-                Restore full backup
+              <button disabled={cloudBusy || drivePassphrase.length < 12} onClick={handleDriveRestore} className="rounded-xl border border-[#1e2e4f] bg-[#070d18] py-2.5 text-xs font-bold text-slate-200 disabled:opacity-50">
+                Restore backup
               </button>
             </div>
             {cloudStatus && <p className="mt-3 text-[11px] text-emerald-300">{cloudStatus}</p>}
-            <p className="mt-3 text-[10px] leading-relaxed text-amber-300/80">
-              Use the Google account that owns the Sheet. Keep the Sheet private; do not share the Apps Script URL publicly.
+            <p className="mt-3 text-[10px] leading-relaxed text-slate-500">
+              This is a manual encrypted backup/restore step for now. Automatic cross-device sync will be enabled only after conflict-safe syncing is added and tested.
             </p>
           </div>
 
