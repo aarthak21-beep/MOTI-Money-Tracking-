@@ -18,7 +18,6 @@ import { AiAssistantView } from './views/AiAssistantView';
 import { SettingsView } from './views/SettingsView';
 
 import { StorageService } from './services/storageService';
-import { CloudSyncService } from './services/cloudSyncService';
 import {
   UserProfile,
   StockTrade,
@@ -46,9 +45,6 @@ export default function App() {
   const [budgets, setBudgets] = useState<BudgetLimit[]>(() => StorageService.getBudgets(userId));
   const [savings, setSavings] = useState<SavingsGoal[]>(() => StorageService.getSavingsGoals(userId));
   const [notifications, setNotifications] = useState<AppNotification[]>(() => StorageService.getNotifications(userId));
-  const [cloudRevision, setCloudRevision] = useState(0);
-
-  const cloudSyncReady = useRef(false);
 
   // Remove any previously saved browser credentials for the retired Zerodha connector.
   useEffect(() => {
@@ -123,32 +119,7 @@ export default function App() {
     setNotifications(StorageService.getNotifications(userId));
   }, [userId]);
 
-  useEffect(() => {
-    const requestBackup = () => setCloudRevision((revision) => revision + 1);
-    window.addEventListener('moti-cloud-backup-request', requestBackup);
-    return () => window.removeEventListener('moti-cloud-backup-request', requestBackup);
-  }, []);
-
-  // Skip the initial render; after that, back up every saved MOTI module to Google Sheets.
-  // Restores remain user-confirmed from Settings so an empty/new device cannot overwrite cloud history.
-  useEffect(() => {
-    if (!cloudSyncReady.current) {
-      cloudSyncReady.current = true;
-      return;
-    }
-    if (!CloudSyncService.getUrl()) return;
-    const timer = window.setTimeout(() => {
-      try {
-        const snapshot = JSON.parse(StorageService.exportCompleteBackup(userId)) as Record<string, unknown>;
-        void CloudSyncService.saveSnapshot(snapshot).catch((error) =>
-          console.warn('MOTI full cloud backup:', error)
-        );
-      } catch (error) {
-        console.warn('MOTI full cloud backup preparation:', error);
-      }
-    }, 1200);
-    return () => window.clearTimeout(timer);
-  }, [userId, accounts, trades, weekly, daily, invoices, expenses, budgets, savings, notifications, profile, cloudRevision]);
+  // Cloud backup is user-triggered from Settings; no plaintext legacy sync runs in the background.
 
   // Compute live financial summary
   const summary = useMemo(() => {
@@ -164,9 +135,6 @@ export default function App() {
   const handleSaveWeekly = (updatedWeekly: WeeklyIncomeRecord[]) => {
     setWeekly(updatedWeekly);
     StorageService.saveWeeklyIncome(updatedWeekly, userId);
-    if (CloudSyncService.getUrl()) {
-      void CloudSyncService.saveWeekly(updatedWeekly).catch((error) => console.warn('MOTI weekly cloud sync:', error));
-    }
   };
 
   const handleSaveDaily = (updatedDaily: DailyEarningsRecord[]) => {
