@@ -119,7 +119,7 @@ export const SwingScannerView: React.FC = () => {
       const volume = latestVolume?.volumeMultiple;
       const sourceSet = Array.from(new Set(records.filter(r => r.symbol === symbol && r.date === latestDate).flatMap(r => r.sources)));
       return { symbol, close: latest.close, weeklyChange, volumeMultiple: volume, breakout, rangeDays: highs.length, sources: sourceSet, pctToday: latest.pctChange };
-    }).filter(item => (item.pctToday ?? -Infinity) >= 4).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
+    }).filter(item => (item.pctToday ?? -Infinity) >= 4 && item.close !== undefined && item.close >= 300 && item.close <= 3000).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
   }, [records, latestRows, latestDate]);
 
   const handleFiles = async (files: FileList | null) => {
