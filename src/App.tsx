@@ -50,6 +50,12 @@ export default function App() {
 
   const cloudSyncReady = useRef(false);
 
+  // Remove any previously saved browser credentials for the retired Zerodha connector.
+  useEffect(() => {
+    localStorage.removeItem('moti_kite_worker_url_v1');
+    sessionStorage.removeItem('moti_kite_worker_password_session');
+  }, []);
+
   // Navigation State
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
