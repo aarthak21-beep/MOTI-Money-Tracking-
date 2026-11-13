@@ -6,7 +6,7 @@ type DailyRow = {
   high?: number; low?: number; volume?: number; avgWeekVolume?: number;
   volumeMultiple?: number; pctChange?: number; sources: string[];
 };
-type ReportType = 'top20' | 'volume' | 'advance';
+type ReportType = 'top20' | 'volume' | 'advance' | 'bhavcopy';
 const STORAGE_KEY = 'moti_nse_daily_reports_v1';
 const todayLocal = () => {
   const d = new Date();
@@ -75,6 +75,68 @@ const parseReport = (text: string, date: string): { type: ReportType; rows: Dail
   if (!rows.length) throw new Error('या report मध्ये वाचता येतील अशा stock rows नाहीत.');
   return { type, rows };
 };
+
+const unzipFirstCsv = async (file: File): Promise<string> => {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const view = new DataView(bytes.buffer);
+  let end = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { end = i; break; }
+  }
+  if (end < 0) throw new Error('ZIP directory सापडली नाही.');
+  const count = view.getUint16(end + 10, true);
+  let offset = view.getUint32(end + 16, true);
+  for (let n = 0; n < count; n++) {
+    if (view.getUint32(offset, true) !== 0x02014b50) break;
+    const method = view.getUint16(offset + 10, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const localOffset = view.getUint32(offset + 42, true);
+    const name = new TextDecoder().decode(bytes.slice(offset + 46, offset + 46 + nameLength));
+    if (name.toLowerCase().endsWith('.csv')) {
+      const dataOffset = localOffset + 30 + view.getUint16(localOffset + 26, true) + view.getUint16(localOffset + 28, true);
+      const compressed = bytes.slice(dataOffset, dataOffset + compressedSize);
+      let output: Uint8Array;
+      if (method === 0) output = compressed;
+      else if (method === 8) {
+        const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        output = new Uint8Array(await new Response(stream).arrayBuffer());
+      } else throw new Error('ZIP compression format समर्थित नाही: ' + method);
+      return new TextDecoder('utf-8').decode(output);
+    }
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  throw new Error('ZIP मध्ये CSV फाईल सापडली नाही.');
+};
+const parseBhavcopy = (text: string, date: string): DailyRow[] => {
+  const lines = text.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(line => line.trim());
+  if (!lines.length) throw new Error('Bhavcopy CSV रिकामी आहे.');
+  const headers = splitCsvLine(lines[0]);
+  const h = headers.map(norm);
+  const idx = (...names: string[]) => h.findIndex(x => names.includes(x));
+  const symbolCol = idx('tckrsymb', 'symbol');
+  const seriesCol = idx('sctysrs', 'series');
+  const openCol = idx('opnpric', 'open');
+  const highCol = idx('hghpric', 'high');
+  const lowCol = idx('lwpric', 'low');
+  const closeCol = idx('clspric', 'close');
+  const prevCol = idx('prvsclsgpric', 'prevclose');
+  const volumeCol = idx('ttltradgvol', 'tottrdqty', 'volume');
+  if ([symbolCol, seriesCol, highCol, lowCol, closeCol, prevCol, volumeCol].some(x => x < 0))
+    throw new Error('हा NSE CM UDiFF Bhavcopy format नाही. आवश्यक Symbol/Series/OHLC/Prev Close/Volume कॉलम सापडले नाहीत.');
+  return lines.slice(1).flatMap(line => {
+    const c = splitCsvLine(line);
+    const symbol = (c[symbolCol] || '').trim().toUpperCase();
+    const series = (c[seriesCol] || '').trim().toUpperCase();
+    if (!/^[A-Z0-9&.-]{1,30}$/.test(symbol) || !['EQ', 'BE'].includes(series)) return [];
+    const close = num(c[closeCol]), prevClose = num(c[prevCol]);
+    const pctChange = close !== undefined && prevClose ? ((close / prevClose) - 1) * 100 : undefined;
+    return [{ date, symbol, series, close, prevClose, high: num(c[highCol]), low: num(c[lowCol]), volume: num(c[volumeCol]), pctChange, sources: ['bhavcopy'] }];
+  }).filter(r => r.close !== undefined && r.high !== undefined && r.low !== undefined);
+};
+
 const mergeRows = (oldRows: DailyRow[], newRows: DailyRow[]) => {
   const map = new Map<string, DailyRow>();
   [...oldRows, ...newRows].forEach(row => {
@@ -176,17 +238,17 @@ export const SwingScannerView: React.FC = () => {
     <div className="rounded-2xl border border-emerald-300/20 bg-gradient-to-br from-[#102b2a] via-[#0d1928] to-[#0d1527] p-5 sm:p-7">
       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300"><Activity className="h-4 w-4" /> MOTI Trading Intelligence</div>
       <h1 className="mt-3 text-2xl font-black text-white sm:text-3xl">Weekly Movement Screener</h1>
-      <p className="mt-2 max-w-2xl text-sm text-slate-300">NSE Top 20, Volume Gainers आणि Advances CSV वरून movement, 5/10/20 Top 20 range breakouts आणि Darvas-style boxes तपासा. Bhavcopy लागत नाही.</p>
+      <p className="mt-2 max-w-2xl text-sm text-slate-300">NSE Cash Market Bhavcopy ZIP किंवा जुने Top 20, Volume Gainers आणि Advances CSV वापरून movement व 5/10/20 breakouts तपासा. Bhavcopy upload स्वतंत्र टेस्ट आहे; जुने reports कायम आहेत.</p>
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
         <label className="text-xs text-slate-300">Report date
           <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="mt-1 block rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-white" />
         </label>
         <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-300 px-4 py-3 text-xs font-black text-slate-950 hover:bg-emerald-200">
-          <Upload className="h-4 w-4" /> {loading ? 'Reading reports...' : 'Upload NSE report CSVs'}
-          <input type="file" accept=".csv,text/csv" multiple className="hidden" disabled={loading} onChange={e => { handleFiles(e.target.files); e.currentTarget.value = ''; }} />
+          <Upload className="h-4 w-4" /> {loading ? 'Reading reports...' : 'Upload NSE CSV / Bhavcopy ZIP'}
+          <input type="file" accept=".csv,.zip,text/csv,application/zip" multiple className="hidden" disabled={loading} onChange={e => { handleFiles(e.target.files); e.currentTarget.value = ''; }} />
         </label>
       </div>
-      <p className="mt-2 text-[10px] text-slate-400">एकाच तारखेचे Top 20, Volume Gainers आणि Advances CSV एकत्र निवडू शकतोस. प्रत्येक upload आधी report date निवड.</p>
+      <p className="mt-2 text-[10px] text-slate-400">एकाच तारखेचे जुने CSV किंवा NSE Cash Market Bhavcopy ZIP upload करू शकतोस. ZIP मधील EQ/BE rows स्वतंत्र bhavcopy source म्हणून साठतात. प्रत्येक upload आधी report date निवड.</p>
     </div>
 
     <div className="grid gap-3 sm:grid-cols-2">
@@ -211,8 +273,8 @@ export const SwingScannerView: React.FC = () => {
               <td className="px-3 py-3 text-white">{money(item.close)}</td>
               <td className={'px-3 py-3 font-bold ' + ((item.weeklyChange ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{pct(item.weeklyChange)}</td>
               <td className="px-3 py-3 text-cyan-200">{item.volumeMultiple === undefined ? '—' : item.volumeMultiple.toFixed(2) + 'x'}</td>
-              <td className="px-3 py-3"><div className="space-y-1">{item.breakoutRanges.map(r => <div key={r.days}><span className="text-slate-400">{r.days}D:</span> {r.enough ? r.breakout ? <span className="font-bold text-emerald-300">Breakout</span> : <span className="text-slate-300">No breakout</span> : <span className="text-slate-500">Need {r.days} Top 20 appearances</span>}</div>)}</div></td>
-              <td className="px-3 py-3"><div className="space-y-1">{item.breakoutRanges.map(r => <div key={r.days}><span className="text-slate-400">{r.days}D:</span> {r.enough ? <><span className={r.breakout ? 'font-bold text-emerald-300' : 'text-slate-300'}>{r.breakout ? 'Box breakout' : r.inside ? 'Inside box' : 'Below box'}</span><span className="ml-1 text-[10px] text-slate-500">({money(r.boxLow)}–{money(r.boxHigh)})</span></> : <span className="text-slate-500">Need {r.days} Top 20 appearances</span>}</div>)}</div></td>
+              <td className="px-3 py-3"><div className="space-y-1">{item.breakoutRanges.map(r => <div key={r.days}><span className="text-slate-400">{r.days}D:</span> {r.enough ? r.breakout ? <span className="font-bold text-emerald-300">Breakout</span> : <span className="text-slate-300">No breakout</span> : <span className="text-slate-500">Need {r.days} daily records</span>}</div>)}</div></td>
+              <td className="px-3 py-3"><div className="space-y-1">{item.breakoutRanges.map(r => <div key={r.days}><span className="text-slate-400">{r.days}D:</span> {r.enough ? <><span className={r.breakout ? 'font-bold text-emerald-300' : 'text-slate-300'}>{r.breakout ? 'Box breakout' : r.inside ? 'Inside box' : 'Below box'}</span><span className="ml-1 text-[10px] text-slate-500">({money(r.boxLow)}–{money(r.boxHigh)})</span></> : <span className="text-slate-500">Need {r.days} daily records</span>}</div>)}</div></td>
               <td className="px-3 py-3 text-slate-200">{pct(item.pctToday)}</td>
               <td className="px-3 py-3 text-[10px] text-slate-400">{item.sources.join(', ')}</td>
             </tr>)}
@@ -226,8 +288,8 @@ export const SwingScannerView: React.FC = () => {
         <li>डेटा फक्त तू upload केलेल्या NSE reports मधून येतो; scanner live NSE prices fetch करत नाही.</li>
         <li>Reports browser च्या local storage मध्ये राहतात; त्याच browser/device वर पुढच्या दिवशी नवीन reports add कर.</li>
         <li>Volume Gainers report मधील NSE 1-week volume multiple थेट दाखवला जातो.</li>
-        <li>5/10/20 Range Breakout आणि Darvas-style Box साठी त्या stock चे अनुक्रमे 5, 10 किंवा 20 आधीचे Top 20 report appearances (High/Low सहित) आवश्यक आहेत. Top 20 हा निवडक report असल्यामुळे या नोंदी सलग exchange sessions असतीलच असे नाही; त्यामुळे हा indicative scanner आहे, पूर्ण daily-candle Darvas calculation नाही.</li>
-        <li>Top 20 आणि Volume Gainers हे निवडक stocks आहेत; फक्त या reports वरून संपूर्ण NSE universe चे सर्व stocks scan होत नाहीत.</li>
+        <li>Bhavcopy ZIP मधील रोजचे EQ/BE OHLCV रेकॉर्ड 5/10/20 Range Breakout आणि Darvas-style Box साठी वापरले जातात. जुन्या CSV-only डेटासाठी Top 20 appearances हा fallback आहे; त्या नोंदी सलग exchange sessions असतीलच असे नाही.</li>
+        <li>NSE Cash Market Bhavcopy ZIP पूर्ण Cash Market universe मधील उपलब्ध EQ/BE records साठवण्यासाठी आहे. जुने Top 20/Volume Gainers/Advances reports स्वतंत्रपणे काम करत राहतात.</li>
         <li>नवीन stock लिस्टमध्ये येण्यासाठी EQ/BE series, त्या दिवसाचा बदल किमान +4% आणि किंमत ₹300–₹3,000 आवश्यक आहे. एकदा आलेला stock रोज +4% राहण्याची गरज नाही; तो ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहतो. रेंजच्या बाहेर तात्पुरता लपतो आणि परत रेंजमध्ये आल्यावर पुन्हा दिसतो.</li>
       </ul>
     </div>
