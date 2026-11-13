@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, Upload, RefreshCw, FileSpreadsheet, Info } from 'lucide-react';
 
 type DailyRow = {
-  date: string; symbol: string; close?: number; prevClose?: number;
+  date: string; symbol: string; series?: string; close?: number; prevClose?: number;
   high?: number; low?: number; volume?: number; avgWeekVolume?: number;
   volumeMultiple?: number; pctChange?: number; sources: string[];
 };
@@ -48,6 +48,7 @@ const parseReport = (text: string, date: string): { type: ReportType; rows: Dail
   const col = (...names: string[]) => findCol(headers, ...names);
   const symbolCol = col('symbol');
   const closeCol = col('ltp', 'lasttradedprice');
+  const seriesCol = col('series');
   const pctCol = col('%chng', '%change', 'chng', 'change', 'percentchange', 'changepercent');
   const rows: DailyRow[] = [];
   for (const line of lines.slice(headerAt + 1)) {
@@ -56,7 +57,7 @@ const parseReport = (text: string, date: string): { type: ReportType; rows: Dail
     if (!/^[A-Z0-9&.-]{1,30}$/.test(symbol)) continue;
     const close = num(c[closeCol]);
     const pctChange = num(c[pctCol]);
-    let row: DailyRow = { date, symbol, close, pctChange, sources: [type] };
+    let row: DailyRow = { date, symbol, series: seriesCol >= 0 ? (c[seriesCol] || '').trim().toUpperCase() : undefined, close, pctChange, sources: [type] };
     if (type === 'top20') {
       row = { ...row, high: num(c[col('high')]), low: num(c[col('low')]), prevClose: num(c[col('prevclose')]), volume: num(c[col('volume')]) };
     } else if (type === 'volume') {
@@ -101,10 +102,6 @@ export const SwingScannerView: React.FC = () => {
 
   const latestDate = useMemo(() => records.reduce((d, r) => r.date > d ? r.date : d, ''), [records]);
   const latestRows = useMemo(() => records.filter(r => r.date === latestDate), [records, latestDate]);
-  const stats = useMemo(() => {
-    const up = new Set(latestRows.filter(r => (r.pctChange ?? 0) > 0).map(r => r.symbol)).size;
-    return { up };
-  }, [latestRows]);
   const candidates = useMemo(() => {
     const symbols = Array.from(new Set(latestRows.map(r => r.symbol)));
     return symbols.map(symbol => {
@@ -118,8 +115,9 @@ export const SwingScannerView: React.FC = () => {
       const latestVolume = latestRows.find(r => r.symbol === symbol && r.volumeMultiple !== undefined);
       const volume = latestVolume?.volumeMultiple;
       const sourceSet = Array.from(new Set(records.filter(r => r.symbol === symbol && r.date === latestDate).flatMap(r => r.sources)));
-      return { symbol, close: latest.close, weeklyChange, volumeMultiple: volume, breakout, rangeDays: highs.length, sources: sourceSet, pctToday: latest.pctChange };
-    }).filter(item => (item.pctToday ?? -Infinity) >= 4 && item.close !== undefined && item.close >= 300 && item.close <= 3000).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
+      const series = latestRows.find(r => r.symbol === symbol && r.series)?.series;
+      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, breakout, rangeDays: highs.length, sources: sourceSet, pctToday: latest.pctChange };
+    }).filter(item => (item.series === 'EQ' || item.series === 'BE') && (item.pctToday ?? -Infinity) >= 4 && item.close !== undefined && item.close >= 300 && item.close <= 3000).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
   }, [records, latestRows, latestDate]);
 
   const handleFiles = async (files: FileList | null) => {
@@ -161,10 +159,8 @@ export const SwingScannerView: React.FC = () => {
       <p className="mt-2 text-[10px] text-slate-400">एकाच तारखेचे Top 20, Volume Gainers आणि Advances CSV एकत्र निवडू शकतोस. प्रत्येक upload आधी report date निवड.</p>
     </div>
 
-    <div className="grid gap-3 sm:grid-cols-3">
-      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Stocks tracked</p><p className="mt-1 text-2xl font-black text-white">{latestRows.length}</p></div>
-      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Advances</p><p className="mt-1 text-2xl font-black text-emerald-300">{stats.up}</p></div>
-      
+    <div className="grid gap-3 sm:grid-cols-2">
+      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Filtered stocks (EQ/BE · +4% · ₹300–₹3,000)</p><p className="mt-1 text-2xl font-black text-white">{candidates.length}</p></div>
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Saved trading days</p><p className="mt-1 text-2xl font-black text-cyan-300">{new Set(records.map(r => r.date)).size}</p></div>
     </div>
 
@@ -173,7 +169,7 @@ export const SwingScannerView: React.FC = () => {
 
     <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1e2e4f] px-4 py-3">
-        <div><h2 className="text-sm font-bold text-white">Weekly Movement Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · Showing stocks with today's gain of at least +4% · 5 trading day movement needs repeated daily reports</p></div>
+        <div><h2 className="text-sm font-bold text-white">Weekly Movement Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · Showing EQ/BE stocks with today's gain of at least +4% and price ₹300–₹3,000 · 5 trading day movement needs repeated daily reports</p></div>
         <button onClick={clearHistory} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear history</button>
       </div>
       <div className="overflow-x-auto">
@@ -201,7 +197,7 @@ export const SwingScannerView: React.FC = () => {
         <li>Volume Gainers report मधील NSE 1-week volume multiple थेट दाखवला जातो.</li>
         <li>Range breakout साठी त्या stock चे किमान 3 आधीचे Top 20 daily observations आवश्यक आहेत; पुरेसा डेटा नसेल तर तसे दाखवले जाईल.</li>
         <li>Top 20 आणि Volume Gainers हे निवडक stocks आहेत; फक्त या reports वरून संपूर्ण NSE universe चे सर्व stocks scan होत नाहीत.</li>
-        <li>या buy-first screener मध्ये Advances वर लक्ष आहे; Declines report वापरला जात नाही. Candidates मध्ये आजचा बदल किमान +4% असलेले stocksच दिसतात.</li>
+        <li>या buy-first screener मध्ये Advances वर लक्ष आहे; Declines report वापरला जात नाही. Candidates मध्ये फक्त EQ/BE series, आजचा बदल किमान +4% आणि किंमत ₹300–₹3,000 असलेले stocks दिसतात.</li>
       </ul>
     </div>
   </div>;
