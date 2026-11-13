@@ -184,7 +184,7 @@ export const SwingScannerView: React.FC = () => {
       // Top 20 CSVs contain selective symbols, so these are prior Top 20 appearances,
       // not guaranteed consecutive exchange sessions. Exclude the latest report date.
       const priorTop20 = symbolRows
-        .filter(r => r.sources.includes('top20') && r.date < latest.date && r.high !== undefined && r.low !== undefined)
+        .filter(r => (r.sources.includes('bhavcopy') || r.sources.includes('top20')) && r.date < latest.date && r.high !== undefined && r.low !== undefined)
         .sort((a, b) => a.date.localeCompare(b.date));
       const breakoutRanges = [5, 10, 20].map(days => {
         const sample = priorTop20.slice(-days);
@@ -217,11 +217,21 @@ export const SwingScannerView: React.FC = () => {
     setLoading(true); setMessage(''); setErrors([]);
     const incoming: DailyRow[] = [], foundTypes: string[] = [], issues: string[] = [];
     for (const file of Array.from(files)) {
-      if (!file.name.toLowerCase().endsWith('.csv')) { issues.push(file.name + ': फक्त CSV report upload करा.'); continue; }
+      const lowerName = file.name.toLowerCase();
+      const isZip = lowerName.endsWith('.zip');
+      const isCsv = lowerName.endsWith('.csv');
+      if (!isCsv && !isZip) { issues.push(file.name + ': फक्त CSV report किंवा NSE Bhavcopy ZIP upload करा.'); continue; }
       try {
-        const parsed = parseReport(await file.text(), reportDate);
-        incoming.push(...parsed.rows);
-        foundTypes.push(parsed.type === 'top20' ? 'Top 20' : parsed.type === 'volume' ? 'Volume Gainers' : 'Advances');
+        if (isZip) {
+          const csvText = await unzipFirstCsv(file);
+          const rows = parseBhavcopy(csvText, reportDate);
+          incoming.push(...rows);
+          foundTypes.push('NSE Cash Market Bhavcopy');
+        } else {
+          const parsed = parseReport(await file.text(), reportDate);
+          incoming.push(...parsed.rows);
+          foundTypes.push(parsed.type === 'top20' ? 'Top 20' : parsed.type === 'volume' ? 'Volume Gainers' : 'Advances');
+        }
       } catch (e) { issues.push(file.name + ': ' + (e instanceof Error ? e.message : 'CSV वाचता आला नाही')); }
     }
     if (incoming.length) {
