@@ -169,12 +169,21 @@ export const SwingScannerView: React.FC = () => {
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [stockSearch, setStockSearch] = useState('');
+  const [minClose, setMinClose] = useState('');
+  const [maxClose, setMaxClose] = useState('');
   const [minFiveDay, setMinFiveDay] = useState('');
+  const [maxFiveDay, setMaxFiveDay] = useState('');
   const [minVolume, setMinVolume] = useState('');
+  const [maxVolume, setMaxVolume] = useState('');
   const [minToday, setMinToday] = useState('');
-  const [breakoutFilter, setBreakoutFilter] = useState('all');
-  const [darvasFilter, setDarvasFilter] = useState('all');
-  const [darvasPeriod, setDarvasPeriod] = useState('20');
+  const [maxToday, setMaxToday] = useState('');
+  const [breakout5, setBreakout5] = useState('all');
+  const [breakout10, setBreakout10] = useState('all');
+  const [breakout20, setBreakout20] = useState('all');
+  const [darvas5, setDarvas5] = useState('all');
+  const [darvas10, setDarvas10] = useState('all');
+  const [darvas20, setDarvas20] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); } catch { setMessage('Browser storage भरले आहे. जुन्या नोंदी clear करा.'); } }, [records]);
 
   const latestDate = useMemo(() => records.reduce((d, r) => r.date > d ? r.date : d, ''), [records]);
@@ -229,24 +238,37 @@ export const SwingScannerView: React.FC = () => {
 
   const filteredCandidates = candidates.filter(item => {
     if (stockSearch && !item.symbol.toLowerCase().includes(stockSearch.trim().toLowerCase())) return false;
+    if (minClose !== '' && (item.close === undefined || item.close < Number(minClose))) return false;
+    if (maxClose !== '' && (item.close === undefined || item.close > Number(maxClose))) return false;
     if (minFiveDay !== '' && (item.weeklyChange === undefined || item.weeklyChange < Number(minFiveDay))) return false;
+    if (maxFiveDay !== '' && (item.weeklyChange === undefined || item.weeklyChange > Number(maxFiveDay))) return false;
     if (minVolume !== '' && (item.volumeMultiple === undefined || item.volumeMultiple < Number(minVolume))) return false;
+    if (maxVolume !== '' && (item.volumeMultiple === undefined || item.volumeMultiple > Number(maxVolume))) return false;
     if (minToday !== '' && (item.pctToday === undefined || item.pctToday < Number(minToday))) return false;
-    if (breakoutFilter !== 'all') {
-      const days = Number(breakoutFilter);
-      if (!item.breakoutRanges.some(r => r.days === days && r.breakout)) return false;
-    }
-    if (darvasFilter !== 'all') {
-      const box = item.breakoutRanges.find(r => r.days === Number(darvasPeriod));
-      if (!box || !box.enough) return false;
+    if (maxToday !== '' && (item.pctToday === undefined || item.pctToday > Number(maxToday))) return false;
+    const checkBreakout = (value: string, days: number) => {
+      if (value === 'all') return true;
+      const range = item.breakoutRanges.find(r => r.days === days);
+      if (!range || !range.enough) return value === 'need';
+      return value === 'yes' ? range.breakout : value === 'no' ? !range.breakout : false;
+    };
+    if (!checkBreakout(breakout5, 5) || !checkBreakout(breakout10, 10) || !checkBreakout(breakout20, 20)) return false;
+    const checkDarvas = (value: string, days: number) => {
+      if (value === 'all') return true;
+      const box = item.breakoutRanges.find(r => r.days === days);
+      if (!box || !box.enough) return value === 'need';
       const status = box.breakout ? 'breakout' : box.inside ? 'inside' : 'below';
-      if (status !== darvasFilter) return false;
-    }
+      return status === value;
+    };
+    if (!checkDarvas(darvas5, 5) || !checkDarvas(darvas10, 10) || !checkDarvas(darvas20, 20)) return false;
+    if (sourceFilter !== 'all' && !item.sources.includes(sourceFilter)) return false;
     return true;
   });
   const resetFilters = () => {
-    setStockSearch(''); setMinFiveDay(''); setMinVolume(''); setMinToday('');
-    setBreakoutFilter('all'); setDarvasFilter('all'); setDarvasPeriod('20');
+    setStockSearch(''); setMinClose(''); setMaxClose(''); setMinFiveDay(''); setMaxFiveDay('');
+    setMinVolume(''); setMaxVolume(''); setMinToday(''); setMaxToday('');
+    setBreakout5('all'); setBreakout10('all'); setBreakout20('all');
+    setDarvas5('all'); setDarvas10('all'); setDarvas20('all'); setSourceFilter('all');
   };
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -312,15 +334,16 @@ export const SwingScannerView: React.FC = () => {
         <div><h2 className="text-sm font-bold text-white">Weekly Movement & Breakout Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · New entries: EQ/BE +4% and ₹300–₹3,000 · Existing stocks stay listed while price remains ₹300–₹3,000</p></div>
         <button onClick={clearHistory} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear history</button>
       </div>
-      <div className="grid gap-2 border-b border-[#1e2e4f] bg-[#0a1220] p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
-        <label className="text-[10px] text-slate-400">Stock search<input value={stockSearch} onChange={e => setStockSearch(e.target.value)} placeholder="उदा. RELIANCE" className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white placeholder:text-slate-600" /></label>
-        <label className="text-[10px] text-slate-400">Min 5-day move %<input type="number" step="0.5" value={minFiveDay} onChange={e => setMinFiveDay(e.target.value)} placeholder="उदा. 2" className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /></label>
-        <label className="text-[10px] text-slate-400">Min volume vs 1W avg<input type="number" min="0" step="0.1" value={minVolume} onChange={e => setMinVolume(e.target.value)} placeholder="उदा. 1.5x" className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /></label>
-        <label className="text-[10px] text-slate-400">Min today %<input type="number" step="0.5" value={minToday} onChange={e => setMinToday(e.target.value)} placeholder="उदा. 1" className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /></label>
-        <label className="text-[10px] text-slate-400">Range breakout<select value={breakoutFilter} onChange={e => setBreakoutFilter(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white"><option value="all">All</option><option value="5">5-day breakout</option><option value="10">10-day breakout</option><option value="20">20-day breakout</option></select></label>
-        <label className="text-[10px] text-slate-400">Darvas period<select value={darvasPeriod} onChange={e => setDarvasPeriod(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white"><option value="5">5-day</option><option value="10">10-day</option><option value="20">20-day</option></select></label>
-        <label className="text-[10px] text-slate-400">Darvas box status<select value={darvasFilter} onChange={e => setDarvasFilter(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white"><option value="all">All</option><option value="breakout">Box breakout</option><option value="inside">Inside box</option><option value="below">Below box</option></select></label>
-        <div className="flex items-end justify-between gap-2 sm:col-span-2 lg:col-span-3 xl:col-span-6"><p className="text-[10px] text-slate-400">Showing <span className="font-bold text-white">{filteredCandidates.length}</span> of {candidates.length} watchlist stocks</p><button onClick={resetFilters} className="rounded-lg border border-slate-700 px-3 py-2 text-[10px] font-bold text-slate-300 hover:bg-white/5">Reset filters</button></div>
+      <div className="grid gap-2 border-b border-[#1e2e4f] bg-[#0a1220] p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <label className="text-[10px] text-slate-400">Stock<input value={stockSearch} onChange={e => setStockSearch(e.target.value)} placeholder="उदा. RELIANCE" className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white placeholder:text-slate-600" /></label>
+        <div className="text-[10px] text-slate-400">Latest close (₹)<div className="mt-1 flex gap-1"><input aria-label="Minimum latest close" type="number" value={minClose} onChange={e => setMinClose(e.target.value)} placeholder="Min" className="w-1/2 min-w-0 rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /><input aria-label="Maximum latest close" type="number" value={maxClose} onChange={e => setMaxClose(e.target.value)} placeholder="Max" className="w-1/2 min-w-0 rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /></div></div>
+        <div className="text-[10px] text-slate-400">5-day move (%)<div className="mt-1 flex gap-1"><input aria-label="Minimum 5-day move" type="number" step="0.5" value={minFiveDay} onChange={e => setMinFiveDay(e.target.value)} placeholder="Min" className="w-1/2 min-w-0 rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /><input aria-label="Maximum 5-day move" type="number" step="0.5" value={maxFiveDay} onChange={e => setMaxFiveDay(e.target.value)} placeholder="Max" className="w-1/2 min-w-0 rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /></div></div>
+        <div className="text-[10px] text-slate-400">Volume vs 1W avg (x)<div className="mt-1 flex gap-1"><input aria-label="Minimum volume multiple" type="number" min="0" step="0.1" value={minVolume} onChange={e => setMinVolume(e.target.value)} placeholder="Min" className="w-1/2 min-w-0 rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /><input aria-label="Maximum volume multiple" type="number" min="0" step="0.1" value={maxVolume} onChange={e => setMaxVolume(e.target.value)} placeholder="Max" className="w-1/2 min-w-0 rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /></div></div>
+        {[[5,breakout5,setBreakout5],[10,breakout10,setBreakout10],[20,breakout20,setBreakout20]].map(([days,value,setter]) => <label key={'range'+days} className="text-[10px] text-slate-400">Range breakout {days}D<select value={value} onChange={e => setter(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white"><option value="all">All</option><option value="yes">Breakout</option><option value="no">No breakout</option><option value="need">Insufficient data</option></select></label>)}
+        {[[5,darvas5,setDarvas5],[10,darvas10,setDarvas10],[20,darvas20,setDarvas20]].map(([days,value,setter]) => <label key={'darvas'+days} className="text-[10px] text-slate-400">Darvas box {days}D<select value={value} onChange={e => setter(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white"><option value="all">All</option><option value="breakout">Box breakout</option><option value="inside">Inside box</option><option value="below">Below box</option><option value="need">Insufficient data</option></select></label>)}
+        <div className="text-[10px] text-slate-400">Today (%)<div className="mt-1 flex gap-1"><input aria-label="Minimum today percent" type="number" step="0.5" value={minToday} onChange={e => setMinToday(e.target.value)} placeholder="Min" className="w-1/2 min-w-0 rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /><input aria-label="Maximum today percent" type="number" step="0.5" value={maxToday} onChange={e => setMaxToday(e.target.value)} placeholder="Max" className="w-1/2 min-w-0 rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white" /></div></div>
+        <label className="text-[10px] text-slate-400">Report source<select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#0d1527] px-2 py-2 text-xs text-white"><option value="all">All sources</option><option value="bhavcopy">Bhavcopy</option><option value="top20">Top 20</option><option value="volume">Volume Gainers</option><option value="advance">Advances</option></select></label>
+        <div className="flex items-end justify-between gap-2 sm:col-span-2 lg:col-span-3 xl:col-span-4"><p className="text-[10px] text-slate-400">Showing <span className="font-bold text-white">{filteredCandidates.length}</span> of {candidates.length} watchlist stocks</p><button onClick={resetFilters} className="rounded-lg border border-slate-700 px-3 py-2 text-[10px] font-bold text-slate-300 hover:bg-white/5">Reset all filters</button></div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-left text-xs">
