@@ -176,7 +176,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const success = StorageService.importCompleteBackup(snapshot, profile.id);
       if (!success) throw new Error('Backup data is invalid. Check the source file; local records may not have been changed.');
       onRefreshData();
-      setCloudStatus('Encrypted backup imported. It is now saved in this Google account’s private Drive app data.');
+      await GoogleDriveSyncService.backup(snapshot, drivePassphrase);
+      setCloudStatus('Encrypted backup imported and copied to this Google account’s private Drive app data.');
     } catch (error) {
       setCloudStatus(error instanceof Error ? error.message : 'Encrypted transfer import failed.');
     } finally {
