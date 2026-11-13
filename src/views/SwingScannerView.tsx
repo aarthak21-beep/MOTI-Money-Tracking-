@@ -150,7 +150,7 @@ export const SwingScannerView: React.FC = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [minScore, setMinScore] = useState(50);
+  const [minScore, setMinScore] = useState(0);
   const [fileCount, setFileCount] = useState(0);
   const [importedStocks, setImportedStocks] = useState(0);
   const [dataCoverage, setDataCoverage] = useState({ uniqueDays: 0, symbols: 0, bestSymbolDays: 0 });
@@ -209,7 +209,7 @@ export const SwingScannerView: React.FC = () => {
     <div className="rounded-2xl border border-emerald-300/20 bg-gradient-to-br from-[#102b2a] via-[#0d1928] to-[#0d1527] p-5 sm:p-7">
       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300"><Activity className="h-4 w-4" /> MOTI Trading Intelligence</div>
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div><h1 className="text-2xl font-black text-white sm:text-3xl">Swing Movement Scanner</h1><p className="mt-2 max-w-2xl text-sm text-slate-300">Daily OHLCV data मधून breakout, volume surge आणि मजबूत uptrend शोधा. हा scanner 2–10 दिवसांच्या swing setup साठी आहे.</p></div>
+        <div><h1 className="text-2xl font-black text-white sm:text-3xl">Swing Movement Scanner</h1><p className="mt-2 max-w-2xl text-sm text-slate-300">Daily OHLCV data मधून breakout, volume surge आणि मजबूत uptrend शोधा. सर्व imported stocks default ने दाखवले जातील; score filter वापरून shortlist करा. हा scanner 2–10 दिवसांच्या swing setup साठी आहे.</p></div>
         <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-300 px-4 py-3 text-xs font-black text-slate-950 hover:bg-emerald-200">
           <Upload className="h-4 w-4" /> {loading ? 'Scanning...' : 'Import NSE ZIP / CSV'}
           <input type="file" accept=".csv,.zip,text/csv,application/zip" multiple className="hidden" disabled={loading} onChange={event => { handleFiles(event.target.files); event.currentTarget.value = ''; }} />
@@ -222,7 +222,7 @@ export const SwingScannerView: React.FC = () => {
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Showing Candidates</p><p className="mt-1 text-2xl font-black text-cyan-300">{filtered.length}</p></div>
     </div>
     <div className="flex flex-col gap-3 rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div><p className="text-sm font-bold text-white">Signal strength filter</p><p className="mt-1 text-[11px] text-slate-400">Minimum score: {minScore}/100</p></div>
+      <div><p className="text-sm font-bold text-white">Signal strength filter</p><p className="mt-1 text-[11px] text-slate-400">All stocks view · Minimum score: {minScore}/100</p></div>
       <input aria-label="Minimum signal score" type="range" min="0" max="90" step="5" value={minScore} onChange={event => setMinScore(Number(event.target.value))} className="w-full accent-emerald-300 sm:max-w-xs" />
     </div>
     {fileCount > 0 && <div className="grid grid-cols-3 gap-2 rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-3 text-center"><div><p className="text-[10px] text-slate-400">Unique trading days</p><p className="mt-1 text-lg font-black text-white">{dataCoverage.uniqueDays}/51</p></div><div><p className="text-[10px] text-slate-400">Stocks read</p><p className="mt-1 text-lg font-black text-white">{dataCoverage.symbols}</p></div><div><p className="text-[10px] text-slate-400">Best stock history</p><p className="mt-1 text-lg font-black text-white">{dataCoverage.bestSymbolDays}/51</p></div></div>}
