@@ -17,10 +17,47 @@ const findBackup = async (): Promise<string | null> => { const response = await 
 const downloadEnvelope = async (): Promise<EncryptedBackup | null> => { const id = await findBackup(); if (!id) return null; const response = await driveRequest('https://www.googleapis.com/drive/v3/files/' + id + '?alt=media'); const envelope = await response.json() as EncryptedBackup; if (envelope.format !== 'MOTI-ENC-1' || envelope.kdf !== 'PBKDF2-SHA256') throw new Error('This Google Drive backup format is not supported.'); return envelope; };
 const encryptSnapshot = async (snapshot: string, passphrase: string): Promise<EncryptedBackup> => { const salt = activeSalt || crypto.getRandomValues(new Uint8Array(16)); const iv = crypto.getRandomValues(new Uint8Array(12)); const key = await deriveKey(passphrase, salt); const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: asBufferSource(iv) }, key, new TextEncoder().encode(snapshot)); encryptionKey = key; activeSalt = salt; return { format: 'MOTI-ENC-1', kdf: 'PBKDF2-SHA256', iterations: PBKDF2_ITERATIONS, salt: toBase64(salt), iv: toBase64(iv), ciphertext: toBase64(new Uint8Array(encrypted)), updatedAt: new Date().toISOString() }; };
 const uploadEnvelope = async (envelope: EncryptedBackup): Promise<void> => { const metadata = { name: BACKUP_NAME, mimeType: 'application/json', ...(fileId ? {} : { parents: ['appDataFolder'] }) }; const boundary = 'moti_drive_boundary'; const body = ['--' + boundary, 'Content-Type: application/json; charset=UTF-8', '', JSON.stringify(metadata), '--' + boundary, 'Content-Type: application/json', '', JSON.stringify(envelope), '--' + boundary + '--', ''].join('\r\n'); const endpoint = fileId ? 'https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=multipart' : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart'; const response = await driveRequest(endpoint, { method: fileId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body }); const result = await response.json() as { id?: string }; if (result.id) fileId = result.id; };
+const parseEnvelope = (content: string): EncryptedBackup => {
+  const envelope = JSON.parse(content) as EncryptedBackup;
+  if (envelope.format !== 'MOTI-ENC-1' || envelope.kdf !== 'PBKDF2-SHA256' || !envelope.salt || !envelope.iv || !envelope.ciphertext) {
+    throw new Error('This is not a supported MOTI encrypted backup file.');
+  }
+  return envelope;
+};
+const decryptEnvelope = async (envelope: EncryptedBackup, passphrase: string): Promise<{ snapshot: string; key: CryptoKey; salt: Uint8Array }> => {
+  const salt = fromBase64(envelope.salt);
+  const key = await deriveKey(passphrase, salt);
+  try {
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: asBufferSource(fromBase64(envelope.iv)) }, key, asBufferSource(fromBase64(envelope.ciphertext)));
+    return { snapshot: new TextDecoder().decode(decrypted), key, salt };
+  } catch {
+    throw new Error('Passphrase incorrect or encrypted backup file is damaged. Local data was not changed.');
+  }
+};
 export const GoogleDriveSyncService = {
   isUnlocked: () => Boolean(encryptionKey),
   async connect(): Promise<void> { await getToken(); },
   async backup(snapshot: string, passphrase: string): Promise<void> { if (passphrase.length < 12) throw new Error('Use a passphrase of at least 12 characters.'); const existing = await downloadEnvelope(); if (existing) { const salt = fromBase64(existing.salt); const oldKey = await deriveKey(passphrase, salt); try { await crypto.subtle.decrypt({ name: 'AES-GCM', iv: asBufferSource(fromBase64(existing.iv)) }, oldKey, asBufferSource(fromBase64(existing.ciphertext))); } catch { throw new Error('That passphrase does not unlock the existing Drive backup. Nothing was overwritten.'); } activeSalt = salt; } const envelope = await encryptSnapshot(snapshot, passphrase); await uploadEnvelope(envelope); },
+  async exportEncryptedFile(snapshot: string, passphrase: string): Promise<string> {
+    if (passphrase.length < 12) throw new Error('Use a passphrase of at least 12 characters.');
+    const envelope = await encryptSnapshot(snapshot, passphrase);
+    return JSON.stringify(envelope, null, 2);
+  },
+  async importEncryptedFile(content: string, passphrase: string): Promise<string> {
+    if (passphrase.length < 12) throw new Error('Use the same passphrase (at least 12 characters) used when the backup file was created.');
+    const envelope = parseEnvelope(content);
+    const decrypted = await decryptEnvelope(envelope, passphrase);
+    const existing = await downloadEnvelope();
+    if (existing) {
+      await decryptEnvelope(existing, passphrase).catch(() => {
+        throw new Error('This Google account already has a backup protected by a different passphrase. Nothing was overwritten.');
+      });
+    }
+    activeSalt = decrypted.salt;
+    encryptionKey = decrypted.key;
+    await uploadEnvelope(envelope);
+    return decrypted.snapshot;
+  },
   async restore(passphrase: string): Promise<string> { if (passphrase.length < 12) throw new Error('Use the same passphrase (at least 12 characters) used when the backup was created.'); const envelope = await downloadEnvelope(); if (!envelope) throw new Error('No MOTI encrypted backup was found in this Google account.'); const salt = fromBase64(envelope.salt); const key = await deriveKey(passphrase, salt); try { const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: asBufferSource(fromBase64(envelope.iv)) }, key, asBufferSource(fromBase64(envelope.ciphertext))); encryptionKey = key; activeSalt = salt; return new TextDecoder().decode(decrypted); } catch { throw new Error('Passphrase incorrect or encrypted backup is damaged. Local data was not changed.'); } },
   lock(): void { encryptionKey = null; activeSalt = null; },
 };
