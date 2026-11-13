@@ -8,6 +8,14 @@ type DailyRow = {
 };
 type ReportType = 'top20' | 'volume' | 'advance' | 'bhavcopy';
 const STORAGE_KEY = 'moti_nse_daily_reports_v1';
+const bhavcopyDateFromFilename = (name: string): string | undefined => {
+  const match = name.match(/BhavCopy_NSE_CM_0_0_0_(\\d{4})(\\d{2})(\\d{2})_F_/i);
+  if (!match) return undefined;
+  const [, year, month, day] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day)) return undefined;
+  return `${year}-${month}-${day}`;
+};
 const todayLocal = () => {
   const d = new Date();
   return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
@@ -224,9 +232,11 @@ export const SwingScannerView: React.FC = () => {
       try {
         if (isZip) {
           const csvText = await unzipFirstCsv(file);
-          const rows = parseBhavcopy(csvText, reportDate);
+          const fileDate = bhavcopyDateFromFilename(file.name) || reportDate;
+          const rows = parseBhavcopy(csvText, fileDate);
           incoming.push(...rows);
-          foundTypes.push('NSE Cash Market Bhavcopy');
+          if (fileDate !== reportDate) setReportDate(fileDate);
+          foundTypes.push('NSE Cash Market Bhavcopy (' + fileDate + ')');
         } else {
           const parsed = parseReport(await file.text(), reportDate);
           incoming.push(...parsed.rows);
