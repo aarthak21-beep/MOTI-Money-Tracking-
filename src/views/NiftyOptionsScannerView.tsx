@@ -55,7 +55,7 @@ const parseNseOptionChain = (text: string, filename: string): OptionRow[] => {
     if (peLtp > 0) rows.push({ expiry, strike, type: 'PE', ltp: peLtp, oi: number(c[21]), changeOi: number(c[20]), volume: number(c[19]), iv: number(c[18]) || undefined, spot: 0 });
     raw.push({ strike, ce: ceLtp, pe: peLtp, rows });
   }
-  const paritySpots = raw.filter(x => x.ce > 0 && x.pe > 0).map(x => x.strike + x.ce - x.pe).filter(x => x > 0).sort((a, b) => a - b);
+  const paritySpots = raw.filter(x => x.ce > 5 && x.pe > 5).map(x => x.strike + x.ce - x.pe).filter(x => x > 0).sort((a, b) => a - b);
   if (!paritySpots.length) throw new Error('CE आणि PE दोन्ही LTP असलेले strike सापडले नाहीत.');
   const spot = paritySpots[Math.floor(paritySpots.length / 2)];
   return raw.flatMap(x => x.rows.map(r => ({ ...r, spot })));
@@ -84,9 +84,6 @@ const parseCsv = (text: string, filename = ''): OptionRow[] => {
   const iv = find('iv', 'impliedvolatility');
   const spot = find('underlyingvalue', 'underlying', 'spot', 'underlyingprice', 'indexvalue');
   if ([expiry, strike, type, ltp, oi, coi, volume, spot].some(i => i < 0)) return parseNseOptionChain(text, filename);
-  if ([expiry, strike, type, ltp, oi, coi, volume, spot].some(i => i < 0)) {
-    throw new Error('CSV मध्ये Expiry, Strike, Option Type, LTP, OI, Change in OI, Volume आणि Underlying Value हे columns आवश्यक आहेत. Download Template वापर.');
-  }
   return lines.slice(1).flatMap(line => {
     const c = split(line);
     const exp = parseDate(c[expiry] || '');
