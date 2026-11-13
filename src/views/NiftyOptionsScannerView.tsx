@@ -19,7 +19,48 @@ const parseDate = (v: string) => {
   if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   return '';
 };
-const parseCsv = (text: string): OptionRow[] => {
+const expiryFromFilename = (filename: string) => {
+  const match = filename.match(/(\\d{1,2})[-_ ]([A-Za-z]{3})[-_ ](\\d{4})/);
+  if (!match) return '';
+  const months: Record<string, string> = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
+  const month = months[match[2].toLowerCase()];
+  return month ? `${match[3]}-${month}-${match[1].padStart(2, '0')}` : '';
+};
+const parseNseOptionChain = (text: string, filename: string): OptionRow[] => {
+  const lines = text.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(x => x.trim());
+  if (lines.length < 3) throw new Error('NSE Option Chain CSV मध्ये पुरेशा rows नाहीत.');
+  const split = (line: string) => {
+    const out: string[] = []; let value = '', quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { if (quoted && line[i + 1] === '"') { value += '"'; i++; } else quoted = !quoted; }
+      else if (c === ',' && !quoted) { out.push(value.trim()); value = ''; } else value += c;
+    }
+    out.push(value.trim()); return out;
+  };
+  const headers = split(lines[1]).map(normalize);
+  const strikeIndex = headers.indexOf('strike');
+  if (strikeIndex < 0 || headers.length < 22) throw new Error('हा NSE Option Chain CSV format ओळखता आला नाही.');
+  const expiry = expiryFromFilename(filename);
+  if (!expiry) throw new Error('Expiry date filename मध्ये नाही. उदा. option-chain-ED-NIFTY-17-Nov-2026.csv अशा नावाने CSV ठेवा.');
+  const raw: Array<{ strike: number; ce: number; pe: number; rows: OptionRow[] }> = [];
+  for (const line of lines.slice(2)) {
+    const c = split(line);
+    const strike = number(c[11]);
+    if (!(strike > 0)) continue;
+    const ceLtp = number(c[5]);
+    const peLtp = number(c[17]);
+    const rows: OptionRow[] = [];
+    if (ceLtp > 0) rows.push({ expiry, strike, type: 'CE', ltp: ceLtp, oi: number(c[1]), changeOi: number(c[2]), volume: number(c[3]), iv: number(c[4]) || undefined, spot: 0 });
+    if (peLtp > 0) rows.push({ expiry, strike, type: 'PE', ltp: peLtp, oi: number(c[21]), changeOi: number(c[20]), volume: number(c[19]), iv: number(c[18]) || undefined, spot: 0 });
+    raw.push({ strike, ce: ceLtp, pe: peLtp, rows });
+  }
+  const paritySpots = raw.filter(x => x.ce > 0 && x.pe > 0).map(x => x.strike + x.ce - x.pe).filter(x => x > 0).sort((a, b) => a - b);
+  if (!paritySpots.length) throw new Error('CE आणि PE दोन्ही LTP असलेले strike सापडले नाहीत.');
+  const spot = paritySpots[Math.floor(paritySpots.length / 2)];
+  return raw.flatMap(x => x.rows.map(r => ({ ...r, spot })));
+};
+const parseCsv = (text: string, filename = ''): OptionRow[] => {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(x => x.trim());
   if (lines.length < 2) throw new Error('CSV मध्ये option rows नाहीत.');
   const split = (line: string) => {
@@ -42,6 +83,7 @@ const parseCsv = (text: string): OptionRow[] => {
   const volume = find('volume', 'totaltradedvolume', 'tradedvolume', 'vol');
   const iv = find('iv', 'impliedvolatility');
   const spot = find('underlyingvalue', 'underlying', 'spot', 'underlyingprice', 'indexvalue');
+  if ([expiry, strike, type, ltp, oi, coi, volume, spot].some(i => i < 0)) return parseNseOptionChain(text, filename);
   if ([expiry, strike, type, ltp, oi, coi, volume, spot].some(i => i < 0)) {
     throw new Error('CSV मध्ये Expiry, Strike, Option Type, LTP, OI, Change in OI, Volume आणि Underlying Value हे columns आवश्यक आहेत. Download Template वापर.');
   }
@@ -98,12 +140,12 @@ export const NiftyOptionsScannerView: React.FC = () => {
     if (!file) return;
     setLoading(true); setError(''); setMessage('');
     try {
-      const parsed = parseCsv(await file.text());
+      const parsed = parseCsv(await file.text(), file.name);
       if (!parsed.length) throw new Error('वाचता येणाऱ्या NIFTY option rows सापडल्या नाहीत.');
       setRows(parsed);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
       setExpiryChoice('');
-      setMessage(`${parsed.length} option rows import झाले. डेटा या browser मध्ये save केला आहे.`);
+      setMessage(`${parsed.length} option rows import झाले. NSE CSV असल्यास spot हा CE-PE premium parity वरून अंदाजे काढला आहे. डेटा या browser मध्ये save केला आहे.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'CSV वाचता आला नाही.'); }
     finally { setLoading(false); }
   };
@@ -129,7 +171,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
         </label>
         <button onClick={downloadTemplate} className="inline-flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-3 text-xs font-bold text-slate-200 hover:bg-white/5"><Download className="h-4 w-4" /> CSV Template</button>
       </div>
-      <p className="mt-2 text-[10px] text-slate-400">CSV मध्ये Expiry, Strike, OptionType (CE/PE), LTP, OI, ChangeOI, Volume, UnderlyingValue columns असावेत. डेटा local browser मध्येच save होतो; automatic live fetch नाही.</p>
+      <p className="mt-2 text-[10px] text-slate-400">NSE चा मूळ Option Chain CSV किंवा Template format चालतो. NSE CSV मध्ये Expiry filename मधून घेतली जाते आणि Spot CE-PE premium parity वरून अंदाजे काढला जातो. डेटा local browser मध्येच save होतो; automatic live fetch नाही.</p>
     </div>
 
     {message && <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-200">{message}</div>}
