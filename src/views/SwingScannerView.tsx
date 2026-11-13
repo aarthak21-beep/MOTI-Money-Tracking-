@@ -24,7 +24,7 @@ const parseCsv = (text: string, filename: string): { symbol: string; candles: Ca
   const headers = lines[0].split(',').map(value => value.trim().toLowerCase().replaceAll('"', ''));
   const col = (...names: string[]) => headers.findIndex(header => names.includes(header));
   // Supports NSE CM-UDiFF bhavcopy and older NSE equity bhavcopy / security-wise CSV.
-  const dateCol = col('trad dt', 'date1', 'date', 'timestamp');
+  const dateCol = col('traddt', 'trad dt', 'date1', 'date', 'timestamp');
   const symbolCol = col('tckrsymb', 'symbol');
   const seriesCol = col('sctysrs', 'series');
   const openCol = col('opnpric', 'open_price', 'open');
