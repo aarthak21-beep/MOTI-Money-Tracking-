@@ -26,8 +26,9 @@ const expiryFromFilename = (filename: string) => {
   const month = months[match[2].toLowerCase()];
   return month ? `${match[3]}-${month}-${match[1].padStart(2, '0')}` : '';
 };
+const csvLines = (text: string) => text.replace(/^\uFEFF/, '').replace(/\0/g, '').split(/\r\n|\n|\r/).filter(x => x.trim());
 const parseNseOptionChain = (text: string, filename: string): OptionRow[] => {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(x => x.trim());
+  const lines = csvLines(text);
   if (lines.length < 3) throw new Error('NSE Option Chain CSV मध्ये पुरेशा rows नाहीत.');
   const split = (line: string) => {
     const out: string[] = []; let value = '', quoted = false;
@@ -61,7 +62,7 @@ const parseNseOptionChain = (text: string, filename: string): OptionRow[] => {
   return raw.flatMap(x => x.rows.map(r => ({ ...r, spot })));
 };
 const parseCsv = (text: string, filename = ''): OptionRow[] => {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(x => x.trim());
+  const lines = csvLines(text);
   if (lines.length < 2) throw new Error('CSV मध्ये option rows नाहीत.');
   const split = (line: string) => {
     const out: string[] = []; let value = '', quoted = false;
