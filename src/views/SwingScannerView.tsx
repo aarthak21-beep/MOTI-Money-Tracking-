@@ -6,7 +6,7 @@ type DailyRow = {
   high?: number; low?: number; volume?: number; avgWeekVolume?: number;
   volumeMultiple?: number; pctChange?: number; sources: string[];
 };
-type ReportType = 'top20' | 'volume' | 'advance';
+type ReportType = 'top20' | 'volume' | 'advance' | 'decline';
 const STORAGE_KEY = 'moti_nse_daily_reports_v1';
 const todayLocal = () => {
   const d = new Date();
@@ -29,7 +29,7 @@ const num = (v?: string) => {
   return Number.isFinite(n) ? n : undefined;
 };
 const findCol = (headers: string[], ...aliases: string[]) => headers.findIndex(h => aliases.includes(norm(h)));
-const parseReport = (text: string, date: string): { type: ReportType; rows: DailyRow[] } => {
+const parseReport = (text: string, date: string, fileName: string): { type: ReportType; rows: DailyRow[] } => {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
   let headerAt = -1, headers: string[] = [];
   for (let i = 0; i < Math.min(lines.length, 12); i++) {
@@ -44,7 +44,7 @@ const parseReport = (text: string, date: string): { type: ReportType; rows: Dail
   const h = headers.map(norm);
   const hasTop = h.includes('prevclose') && h.includes('open') && h.includes('high');
   const hasVolume = h.includes('avgvolume') && h.some(x => x.includes('change'));
-  const type: ReportType = hasTop ? 'top20' : hasVolume ? 'volume' : 'advance';
+  const isDeclineFile = /declin/i.test(fileName);\n  const type: ReportType = hasTop ? 'top20' : hasVolume ? 'volume' : isDeclineFile ? 'decline' : 'advance';
   const col = (...names: string[]) => findCol(headers, ...names);
   const symbolCol = col('symbol');
   const closeCol = col('ltp', 'lasttradedprice');
@@ -118,9 +118,9 @@ export const SwingScannerView: React.FC = () => {
       const breakout = latest.close !== undefined && highs.length >= 3 && latest.close > Math.max(...highs);
       const latestVolume = latestRows.find(r => r.symbol === symbol && r.volumeMultiple !== undefined);
       const volume = latestVolume?.volumeMultiple;
-      const sourceSet = Array.from(new Set(records.filter(r => r.symbol === symbol && r.date === latestDate).flatMap(r => r.sources)));
+      const sourceSet = Array.from(new Set(records.filter(r => r.symbol === symbol && r.date === latestDate).flatMap(r => r.sources.map(source => source === 'advance' && (r.pctChange ?? 0) < 0 ? 'decline' : source))));
       return { symbol, close: latest.close, weeklyChange, volumeMultiple: volume, breakout, rangeDays: highs.length, sources: sourceSet, pctToday: latest.pctChange };
-    }).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
+    }).filter(item => (item.pctToday ?? -Infinity) >= 4).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
   }, [records, latestRows, latestDate]);
 
   const handleFiles = async (files: FileList | null) => {
@@ -130,9 +130,9 @@ export const SwingScannerView: React.FC = () => {
     for (const file of Array.from(files)) {
       if (!file.name.toLowerCase().endsWith('.csv')) { issues.push(file.name + ': फक्त CSV report upload करा.'); continue; }
       try {
-        const parsed = parseReport(await file.text(), reportDate);
+        const parsed = parseReport(await file.text(), reportDate, file.name);
         incoming.push(...parsed.rows);
-        foundTypes.push(parsed.type === 'top20' ? 'Top 20' : parsed.type === 'volume' ? 'Volume Gainers' : 'Advances/Declines');
+        foundTypes.push(parsed.type === 'top20' ? 'Top 20' : parsed.type === 'volume' ? 'Volume Gainers' : parsed.type === 'decline' ? 'Declines' : 'Advances');
       } catch (e) { issues.push(file.name + ': ' + (e instanceof Error ? e.message : 'CSV वाचता आला नाही')); }
     }
     if (incoming.length) {
@@ -174,7 +174,7 @@ export const SwingScannerView: React.FC = () => {
 
     <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1e2e4f] px-4 py-3">
-        <div><h2 className="text-sm font-bold text-white">Weekly Movement Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · 5 trading day movement needs repeated daily reports</p></div>
+        <div><h2 className="text-sm font-bold text-white">Weekly Movement Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · Showing stocks with today's gain of at least +4% · 5 trading day movement needs repeated daily reports</p></div>
         <button onClick={clearHistory} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear history</button>
       </div>
       <div className="overflow-x-auto">
@@ -192,7 +192,7 @@ export const SwingScannerView: React.FC = () => {
             </tr>)}
           </tbody>
         </table>
-        {!candidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">NSE reports upload कर</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि Advances/Declines CSV market breadth साठी वापरला जाईल.</p></div>}
+        {!candidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">NSE reports upload कर</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि स्वतंत्र Advances व Declines CSV market breadth साठी वापरले जातील. Table मध्ये फक्त आजचा बदल +4% किंवा अधिक असलेले stocks दिसतील.</p></div>}
       </div>
     </div>
     <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><div className="flex items-center gap-2 text-xs font-bold text-cyan-200"><Info className="h-4 w-4" /> Data notes</div>
@@ -201,7 +201,7 @@ export const SwingScannerView: React.FC = () => {
         <li>Reports browser च्या local storage मध्ये राहतात; त्याच browser/device वर पुढच्या दिवशी नवीन reports add कर.</li>
         <li>Volume Gainers report मधील NSE 1-week volume multiple थेट दाखवला जातो.</li>
         <li>Range breakout साठी त्या stock चे किमान 3 आधीचे Top 20 daily observations आवश्यक आहेत; पुरेसा डेटा नसेल तर तसे दाखवले जाईल.</li>
-        <li>Top 20 आणि Volume Gainers हे निवडक stocks आहेत; फक्त या reports वरून संपूर्ण NSE universe चे सर्व stocks scan होत नाहीत.</li>
+        <li>Top 20 आणि Volume Gainers हे निवडक stocks आहेत; फक्त या reports वरून संपूर्ण NSE universe चे सर्व stocks scan होत नाहीत.</li>\n        <li>Declines CSV चे नाव Decline/Declines असणे आवश्यक; आजचा +4% किंवा अधिक वाढ असलेले stocksच candidates मध्ये दिसतील.</li>
       </ul>
     </div>
   </div>;
