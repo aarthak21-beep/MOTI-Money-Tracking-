@@ -144,7 +144,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
     const ceChg = ce.reduce((s, r) => s + r.changeOi, 0);
     const peChg = pe.reduce((s, r) => s + r.changeOi, 0);
     const pcr = ceOi ? peOi / ceOi : 0;
-    const bias = pcr >= 1.1 && peChg > ceChg ? 'CE BIAS' : pcr <= 0.9 && ceChg > peChg ? 'PE BIAS' : 'WAIT';
+    const bias = pcr >= 1.1 && peChg > ceChg ? 'BULLISH' : pcr <= 0.9 && ceChg > peChg ? 'BEARISH' : 'WAIT';
     const spot = chain.length ? chain[0].spot : 0;
     return { ceOi, peOi, ceChg, peChg, pcr, bias, spot };
   }, [chain]);
@@ -159,11 +159,12 @@ export const NiftyOptionsScannerView: React.FC = () => {
     }
     return Array.from(grouped.values()).sort((a, b) => a.strike - b.strike);
   }, [rangeRows]);
+  const classifiedStrikes = strikeStats.map(s => ({ ...s, signal: s.peChange > 0 && s.ceChange < 0 ? 'BULLISH · PE OI वाढ / CE OI कमी' : s.ceChange > 0 && s.peChange < 0 ? 'BEARISH · CE OI वाढ / PE OI कमी' : s.ceChange > 0 && s.peChange > 0 ? 'MIXED · दोन्ही OI वाढ' : s.ceChange < 0 && s.peChange < 0 ? 'UNWINDING · दोन्ही OI कमी' : 'NEUTRAL · स्पष्ट संकेत नाही', signalType: s.peChange > 0 && s.ceChange < 0 ? 'bullish' : s.ceChange > 0 && s.peChange < 0 ? 'bearish' : 'neutral' }));
   const maxCe = [...strikeStats].sort((a, b) => b.ceOi - a.ceOi)[0];
   const maxPe = [...strikeStats].sort((a, b) => b.peOi - a.peOi)[0];
   const candidates = useMemo(() => {
     if (!chain.length || summary.bias === 'WAIT') return [];
-    const type = summary.bias === 'CE BIAS' ? 'CE' : 'PE';
+    const type = summary.bias === 'BULLISH' ? 'CE' : 'PE';
     return rangeRows.filter(r => r.type === type).sort((a, b) => b.changeOi - a.changeOi).slice(0, 5);
   }, [chain, rangeRows, summary]);
   const handleUpload = async (file?: File) => {
@@ -210,7 +211,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
     <div className="grid gap-3 sm:grid-cols-3">
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">NIFTY Spot (estimated)</p><p className="mt-1 text-xl font-black text-white">{summary.spot ? fmt(summary.spot) : '—'}</p></div>
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Put / Call OI Ratio</p><p className="mt-1 text-xl font-black text-white">{summary.pcr ? summary.pcr.toFixed(2) : '—'}</p></div>
-      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Directional read (OI only)</p><p className={'mt-1 text-xl font-black ' + (summary.bias === 'CE BIAS' ? 'text-emerald-300' : summary.bias === 'PE BIAS' ? 'text-rose-300' : 'text-amber-300')}>{summary.bias}</p></div>
+      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Directional read (OI only)</p><p className={'mt-1 text-xl font-black ' + (summary.bias === 'BULLISH' ? 'text-emerald-300' : summary.bias === 'BEARISH' ? 'text-rose-300' : 'text-amber-300')}>{summary.bias}</p></div>
     </div>
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
@@ -232,12 +233,13 @@ export const NiftyOptionsScannerView: React.FC = () => {
     </div>
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
+      <div className="mb-4 rounded-xl border border-[#263958] bg-[#080f1b] p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-bold text-white">OI Positioning Signal</span><span className={'rounded-md px-2 py-1 text-[10px] font-black ' + (summary.bias === 'BULLISH' ? 'bg-emerald-300/15 text-emerald-200' : summary.bias === 'BEARISH' ? 'bg-rose-300/15 text-rose-200' : 'bg-amber-300/15 text-amber-200')}>{summary.bias}</span></div><p className="mt-2 text-[11px] leading-5 text-slate-300">{summary.bias === 'BULLISH' ? 'PCR 1.10 किंवा अधिक आणि PE OI Change हा CE पेक्षा जास्त: bullish positioning चा संकेत. CE खरेदीचा आदेश नाही.' : summary.bias === 'BEARISH' ? 'PCR 0.90 किंवा कमी आणि CE OI Change हा PE पेक्षा जास्त: bearish positioning चा संकेत. PE खरेदीचा आदेश नाही.' : 'PCR आणि OI Change मध्ये स्पष्ट एकतर्फी संकेत नाही. WAIT; चार्ट आणि किंमतीची पुष्टी पाहा.'}</p><p className="mt-1 text-[10px] text-slate-500">CE OI वाढ = संभाव्य resistance pressure · PE OI वाढ = संभाव्य support positioning. OI कमी होणे म्हणजे positions unwind होत असू शकतात.</p></div>
       <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-white">Strike OI Scanner · Spot ± ₹600</h2><p className="mt-1 text-[11px] text-slate-400">Spot च्या 600 points वर आणि खालील strikes मध्ये OI व Change in OI दाखवले आहेत.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-xs text-slate-300">{summary.spot ? `₹${fmt(summary.spot - 600)} – ₹${fmt(summary.spot + 600)}` : 'Spot unavailable'}</span></div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-rose-300/20 bg-rose-300/5 p-3"><p className="text-[10px] text-rose-200">Highest CE OI · potential resistance</p><p className="mt-1 text-lg font-black text-white">{maxCe ? fmt(maxCe.strike) : '—'}</p><p className="text-[11px] text-slate-400">{maxCe ? `OI ${fmt(maxCe.ceOi)} · Change ${fmt(maxCe.ceChange)}` : 'Range मध्ये data नाही'}</p></div>
         <div className="rounded-lg border border-emerald-300/20 bg-emerald-300/5 p-3"><p className="text-[10px] text-emerald-200">Highest PE OI · potential support</p><p className="mt-1 text-lg font-black text-white">{maxPe ? fmt(maxPe.strike) : '—'}</p><p className="text-[11px] text-slate-400">{maxPe ? `OI ${fmt(maxPe.peOi)} · Change ${fmt(maxPe.peChange)}` : 'Range मध्ये data नाही'}</p></div>
       </div>
-      {strikeStats.length ? <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Strike','CE OI','CE Chg OI','CE Volume','PE OI','PE Chg OI','PE Volume'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{strikeStats.map(s => <tr key={s.strike}><td className="px-3 py-2 font-bold text-white">{fmt(s.strike)}</td><td className="px-3 py-2">{fmt(s.ceOi)}</td><td className={'px-3 py-2 ' + (s.ceChange >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{fmt(s.ceChange)}</td><td className="px-3 py-2">{fmt(s.ceVol)}</td><td className="px-3 py-2">{fmt(s.peOi)}</td><td className={'px-3 py-2 ' + (s.peChange >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{fmt(s.peChange)}</td><td className="px-3 py-2">{fmt(s.peVol)}</td></tr>)}</tbody></table></div> : <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs text-amber-100">या expiry साठी Spot ±600 range मधील पुरेसे strike rows नाहीत. पूर्ण Option Chain CSV upload करा; single-strike CSV ने इतर strikes शोधता येत नाहीत.</div>}
+      {strikeStats.length ? <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Strike','CE OI','CE Chg OI','CE Volume','PE OI','PE Chg OI','PE Volume','OI Signal'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{classifiedStrikes.map(s => <tr key={s.strike}><td className="px-3 py-2 font-bold text-white">{fmt(s.strike)}</td><td className="px-3 py-2">{fmt(s.ceOi)}</td><td className={'px-3 py-2 ' + (s.ceChange > 0 ? 'text-rose-300' : s.ceChange < 0 ? 'text-emerald-300' : 'text-slate-400')}>{fmt(s.ceChange)}</td><td className="px-3 py-2">{fmt(s.ceVol)}</td><td className="px-3 py-2">{fmt(s.peOi)}</td><td className={'px-3 py-2 ' + (s.peChange > 0 ? 'text-emerald-300' : s.peChange < 0 ? 'text-rose-300' : 'text-slate-400')}>{fmt(s.peChange)}</td><td className="px-3 py-2">{fmt(s.peVol)}</td><td className={'px-3 py-2 text-[10px] font-bold ' + (s.signalType === 'bullish' ? 'text-emerald-300' : s.signalType === 'bearish' ? 'text-rose-300' : 'text-amber-200')}>{s.signal}</td></tr>)}</tbody></table></div> : <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs text-amber-100">या expiry साठी Spot ±600 range मधील पुरेसे strike rows नाहीत. पूर्ण Option Chain CSV upload करा; single-strike CSV ने इतर strikes शोधता येत नाहीत.</div>}
     </div>
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
