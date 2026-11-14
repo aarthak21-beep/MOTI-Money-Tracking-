@@ -36,8 +36,9 @@ import {
   AppNotification
 } from './types';
 import { Sparkles } from 'lucide-react';
+import { AppwriteLoginGate } from './components/AppwriteLoginGate';
 
-export default function App() {
+function AuthenticatedApp() {
   const [userId] = useState('usr_default');
   const [profile, setProfile] = useState<UserProfile>(() => StorageService.getProfile(userId));
   const [accounts, setAccounts] = useState<AccountRecord[]>(() => StorageService.getAccounts(userId));
@@ -455,5 +456,14 @@ export default function App() {
         onTransfer={handleQuickTransfer}
       />
     </div>
+  );
+}
+
+
+export default function App() {
+  return (
+    <AppwriteLoginGate>
+      <AuthenticatedApp />
+    </AppwriteLoginGate>
   );
 }
