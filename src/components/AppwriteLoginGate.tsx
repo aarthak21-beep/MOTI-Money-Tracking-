@@ -1,5 +1,5 @@
 import React, { FormEvent, ReactNode, useEffect, useState } from 'react';
-import { appwriteAccount, getCurrentFinovaUser, FinovaUser } from '../services/appwriteAuth';
+import { appwriteAccount, getCurrentFinovaUser, getAppwriteJwt, CLOUD_WORKER_URL, FinovaUser } from '../services/appwriteAuth';
 import { LockKeyhole, LogOut, ShieldCheck } from 'lucide-react';
 
 interface Props { children: ReactNode; }
@@ -13,11 +13,26 @@ export const AppwriteLoginGate: React.FC<Props> = ({ children }) => {
   const [error, setError] = useState('');
 
   const refreshSession = async () => {
+    let current: FinovaUser;
     try {
-      const current = await getCurrentFinovaUser();
-      setUser(current);
+      current = await getCurrentFinovaUser();
     } catch {
       setUser(null);
+      setChecking(false);
+      return;
+    }
+    try {
+      const jwt = await getAppwriteJwt();
+      const response = await fetch(`${CLOUD_WORKER_URL}/api/auth/check`, {
+        headers: { authorization: `Bearer ${jwt}` },
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('This Appwrite account is not approved for MOTI Finova access.');
+      setUser(current);
+      setError('');
+    } catch (err) {
+      setUser(null);
+      setError(err instanceof Error ? err.message : 'Could not verify Finova access.');
     } finally {
       setChecking(false);
     }
