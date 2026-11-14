@@ -16,14 +16,14 @@ const parseCsv = (raw: string): StockRow[] => {
   const headers = split(lines[0]).map(normalize);
   const col = (...names: string[]) => headers.findIndex(h => names.includes(h));
   const idx = {
-    date: col('date','tradedate','date1'), symbol: col('symbol','tradingsymbol'), close: col('close','closeprice','ltp','lastprice'),
+    date: col('date','tradedate','date1'), symbol: col('symbol','tradingsymbol'), series: col('series'), close: col('close','closeprice','ltp','lastprice'),
     prev: col('prevclose','previousclose'), volume: col('volume','tottrdqty','ttltrdqty','ttltrdqnty','totaltradedquantity','totalvolume'),
     avg: col('avgvolume','averagevolume'), delivery: col('deliveryqty','delivqty','deliverablequantity'),
     deliveryPct: col('deliverypct','delivper','deliverypercentage'), high: col('high','highprice'), low: col('low','lowprice')
   };
   if(idx.symbol<0 || idx.close<0 || idx.volume<0) throw new Error('Symbol, Close/LTP आणि Volume columns आवश्यक आहेत.');
   const rows: StockRow[]=[];
-  for(const line of lines.slice(1)){const c=split(line); const symbol=(c[idx.symbol]||'').trim().toUpperCase(); const close=number(c[idx.close]); const volume=number(c[idx.volume]); if(!/^[A-Z0-9&.-]{1,30}$/.test(symbol)||close===undefined||volume===undefined) continue;
+  for(const line of lines.slice(1)){const c=split(line); const symbol=(c[idx.symbol]||'').trim().toUpperCase(); const series=idx.series>=0?(c[idx.series]||'').trim().toUpperCase():''; const close=number(c[idx.close]); const volume=number(c[idx.volume]); if(idx.series>=0&&series!=='EQ') continue; if(!/^[A-Z0-9&.-]{1,30}$/.test(symbol)||close===undefined||volume===undefined) continue;
     rows.push({date:idx.date>=0?c[idx.date]:'',symbol,close,prevClose:idx.prev>=0?number(c[idx.prev]):undefined,volume,avgVolume:idx.avg>=0?number(c[idx.avg]):undefined,deliveryQty:idx.delivery>=0?number(c[idx.delivery]):undefined,deliveryPct:idx.deliveryPct>=0?number(c[idx.deliveryPct]):undefined,high:idx.high>=0?number(c[idx.high]):undefined,low:idx.low>=0?number(c[idx.low]):undefined});
   }
   if(!rows.length) throw new Error('योग्य stock rows सापडल्या नाहीत. Template डाउनलोड करून columns तपासा.');
@@ -44,7 +44,7 @@ export const SmartMoneyScreenerView: React.FC = () => {
     return {...r,volumeRatio,change,accumulation,distribution,breakout,signal,score:best};
   }).sort((a,b)=>b.score-a.score),[rows]);
   const visible=enriched.filter(r=>r.symbol.includes(query.trim().toUpperCase())&&(filter==='ALL'||r.signal===filter));
-  const upload=async(file?:File)=>{if(!file)return;setError('');setMessage('');try{const parsed=parseCsv(await file.text());setRows(parsed);localStorage.setItem(KEY,JSON.stringify(parsed));setMessage(`${parsed.length} rows import झाले आणि या browser मध्ये save झाले.`);}catch(e){setError(e instanceof Error?e.message:'CSV वाचता आला नाही.');}};
+  const upload=async(file?:File)=>{if(!file)return;setError('');setMessage('');try{const parsed=parseCsv(await file.text());setRows(parsed);try{localStorage.setItem(KEY,JSON.stringify(parsed));setMessage(`${parsed.length} EQ rows import झाले आणि या browser मध्ये save झाले.`);}catch{setMessage(`${parsed.length} EQ rows import झाले; पण browser storage full असल्यामुळे refresh नंतर data राहणार नाही.`);}}catch(e){setError(e instanceof Error?e.message:'CSV वाचता आला नाही.');}};
   const download=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvTemplate],{type:'text/csv;charset=utf-8'}));a.download='moti-smart-money-template.csv';a.click();URL.revokeObjectURL(a.href);};
   const clear=()=>{if(window.confirm('Smart Money Screener चा saved CSV data delete करायचा?')){setRows([]);localStorage.removeItem(KEY);setMessage('Saved data clear केला.');}};
   return <div className="space-y-5">
