@@ -160,7 +160,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const priorByContract = useMemo(() => new Map(previousRows.map(r => [`${r.strike}-${r.type}`, r])), [previousRows]);
   const priceOiSignals = useMemo(() => chain.filter(r => r.type === 'CE' || r.type === 'PE').map(r => {
     const old = priorByContract.get(`${r.strike}-${r.type}`);
-    if (!old) return { ...r, signal: 'NEW / NO PRIOR DATA', signalType: 'neutral' };
+    if (!old) return { ...r, signal: 'NEW / NO PRIOR DATA', signalType: 'neutral', oldLtp: undefined as number | undefined, oldOi: undefined as number | undefined };
     const priceUp = r.ltp > old.ltp; const priceDown = r.ltp < old.ltp;
     const oiUp = r.oi > old.oi; const oiDown = r.oi < old.oi;
     const signal = priceUp && oiUp ? 'LONG BUILDUP' : priceDown && oiUp ? 'SHORT BUILDUP' : priceUp && oiDown ? 'SHORT COVERING' : priceDown && oiDown ? 'LONG UNWINDING' : 'NO CLEAR CHANGE';
