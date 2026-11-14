@@ -18,6 +18,7 @@ import { AiAssistantView } from './views/AiAssistantView';
 import { SettingsView } from './views/SettingsView';
 import { SwingScannerView } from './views/SwingScannerView';
 import { NiftyOptionsScannerView } from './views/NiftyOptionsScannerView';
+import { SmartMoneyScreenerView } from './views/SmartMoneyScreenerView';
 
 import { StorageService } from './services/storageService';
 import {
@@ -281,6 +282,7 @@ export default function App() {
 
           {currentTab === 'swingScanner' && <SwingScannerView />}
           {currentTab === 'niftyOptions' && <NiftyOptionsScannerView />}
+          {currentTab === 'smartMoney' && <SmartMoneyScreenerView />}
 
           {currentTab === 'stockTrading' && (
             <StockTradingView
