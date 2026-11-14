@@ -17,7 +17,7 @@ const parseCsv = (raw: string): StockRow[] => {
   const col = (...names: string[]) => headers.findIndex(h => names.includes(h));
   const idx = {
     date: col('date','tradedate','date1'), symbol: col('symbol','tradingsymbol'), close: col('close','closeprice','ltp','lastprice'),
-    prev: col('prevclose','previousclose'), volume: col('volume','tottrdqty','ttltrdqty','totaltradedquantity','totalvolume'),
+    prev: col('prevclose','previousclose'), volume: col('volume','tottrdqty','ttltrdqty','ttltrdqnty','totaltradedquantity','totalvolume'),
     avg: col('avgvolume','averagevolume'), delivery: col('deliveryqty','delivqty','deliverablequantity'),
     deliveryPct: col('deliverypct','delivper','deliverypercentage'), high: col('high','highprice'), low: col('low','lowprice')
   };
