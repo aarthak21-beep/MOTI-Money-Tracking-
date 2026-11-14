@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, Upload, Download, Trash2, Search, ShieldAlert, FileSpreadsheet, Info } from 'lucide-react';
 
 type StockRow = {
@@ -6,6 +6,44 @@ type StockRow = {
   avgVolume?: number; deliveryQty?: number; deliveryPct?: number; high?: number; low?: number;
 };
 const KEY = 'moti_smart_money_screener_v1';
+const DB_NAME = 'moti_smart_money_db';
+const STORE_NAME = 'datasets';
+const openDataDb = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
+  if (!('indexedDB' in window)) { reject(new Error('या browser मध्ये IndexedDB उपलब्ध नाही.')); return; }
+  const request = indexedDB.open(DB_NAME, 1);
+  request.onupgradeneeded = () => {
+    if (!request.result.objectStoreNames.contains(STORE_NAME)) request.result.createObjectStore(STORE_NAME);
+  };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error || new Error('IndexedDB उघडता आले नाही.'));
+});
+const readSavedRows = async (): Promise<StockRow[]> => {
+  const db = await openDataDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(KEY);
+    request.onsuccess = () => { db.close(); resolve(Array.isArray(request.result) ? request.result as StockRow[] : []); };
+    request.onerror = () => { db.close(); reject(request.error); };
+  });
+};
+const saveRowsToDb = async (rows: StockRow[]): Promise<void> => {
+  const db = await openDataDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).put(rows, KEY);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error || new Error('डेटा save झाला नाही.')); };
+    tx.onabort = () => { db.close(); reject(tx.error || new Error('डेटा save रद्द झाला.')); };
+  });
+};
+const deleteSavedRows = async (): Promise<void> => {
+  const db = await openDataDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).delete(KEY);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error || new Error('डेटा delete झाला नाही.')); };
+  });
+};
 const csvTemplate = 'date,symbol,close,prevClose,volume,avgVolume,deliveryQty,deliveryPct,high,low\n2026-11-13,RELIANCE,1450,1438,2500000,1200000,1550000,62,1462,1432\n';
 const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
 const number = (v?: string) => { if (!v?.trim()) return undefined; const n = Number(v.replace(/[,₹%\s]/g, '')); return Number.isFinite(n) ? n : undefined; };
@@ -31,7 +69,31 @@ const parseCsv = (raw: string): StockRow[] => {
 };
 const pct = (n?: number) => n===undefined ? '—' : `${n.toFixed(1)}%`;
 export const SmartMoneyScreenerView: React.FC = () => {
-  const [rows,setRows]=useState<StockRow[]>(()=>{try{return JSON.parse(localStorage.getItem(KEY)||'[]');}catch{return [];}});
+  const [rows,setRows]=useState<StockRow[]>([]);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        let saved = await readSavedRows();
+        if (!saved.length) {
+          const legacy = localStorage.getItem(KEY);
+          if (legacy) {
+            const parsed = JSON.parse(legacy) as StockRow[];
+            if (Array.isArray(parsed) && parsed.length) {
+              await saveRowsToDb(parsed);
+              localStorage.removeItem(KEY);
+              saved = parsed;
+              if (active) setMessage('जुना CSV डेटा IndexedDB मध्ये सुरक्षितपणे हलवला.');
+            }
+          }
+        }
+        if (active) setRows(saved);
+      } catch {
+        if (active) setError('Saved data load/migrate करता आला नाही. CSV पुन्हा import करून पाहा.');
+      }
+    })();
+    return () => { active = false; };
+  }, []);
   const [query,setQuery]=useState(''); const [filter,setFilter]=useState('ALL'); const [error,setError]=useState(''); const [message,setMessage]=useState('');
   const enriched=useMemo(()=>rows.map(r=>{
     const volumeRatio=r.avgVolume&&r.avgVolume>0?r.volume/r.avgVolume:undefined;
@@ -44,9 +106,9 @@ export const SmartMoneyScreenerView: React.FC = () => {
     return {...r,volumeRatio,change,accumulation,distribution,breakout,signal,score:best};
   }).sort((a,b)=>b.score-a.score),[rows]);
   const visible=enriched.filter(r=>r.symbol.includes(query.trim().toUpperCase())&&(filter==='ALL'||r.signal===filter));
-  const upload=async(file?:File)=>{if(!file)return;setError('');setMessage('');try{const parsed=parseCsv(await file.text());setRows(parsed);try{localStorage.setItem(KEY,JSON.stringify(parsed));setMessage(`${parsed.length} EQ rows import झाले आणि या browser मध्ये save झाले.`);}catch{setMessage(`${parsed.length} EQ rows import झाले; पण browser storage full असल्यामुळे refresh नंतर data राहणार नाही.`);}}catch(e){setError(e instanceof Error?e.message:'CSV वाचता आला नाही.');}};
+  const upload=async(file?:File)=>{if(!file)return;setError('');setMessage('');try{const parsed=parseCsv(await file.text());await saveRowsToDb(parsed);setRows(parsed);setMessage(`${parsed.length} EQ rows IndexedDB मध्ये save झाले.`);}catch(e){setError(e instanceof Error?e.message:'CSV import/save करता आला नाही.');}};
   const download=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvTemplate],{type:'text/csv;charset=utf-8'}));a.download='moti-smart-money-template.csv';a.click();URL.revokeObjectURL(a.href);};
-  const clear=()=>{if(window.confirm('Smart Money Screener चा saved CSV data delete करायचा?')){setRows([]);localStorage.removeItem(KEY);setMessage('Saved data clear केला.');}};
+  const clear=async()=>{if(window.confirm('Smart Money Screener चा saved CSV data delete करायचा?')){try{await deleteSavedRows();localStorage.removeItem(KEY);setRows([]);setMessage('Saved data delete केला.');}catch{setError('Saved data delete करता आला नाही.');}}};
   return <div className="space-y-5">
     <section className="rounded-2xl border border-emerald-300/20 bg-gradient-to-br from-[#10251f] via-[#0b1724] to-[#101827] p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2 text-emerald-300"><Activity className="h-5 w-5"/><span className="text-xs font-bold uppercase tracking-[.18em]">MOTI · Swing / Positional</span></div><h1 className="mt-2 text-2xl font-black text-white sm:text-3xl">Smart Money Screener</h1><p className="mt-2 max-w-2xl text-sm text-slate-300">Accumulation, Distribution आणि Volume Breakout चे संभाव्य संकेत शोधा. हा intraday scanner नाही.</p></div><span className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-3 py-1.5 text-xs font-semibold text-emerald-200">CSV based · Beta</span></div>
