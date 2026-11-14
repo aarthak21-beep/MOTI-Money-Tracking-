@@ -407,7 +407,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <h2 className="text-base font-bold text-white">Cloudflare D1 Scanner Sync</h2>
             </div>
             <p className="mt-3 text-xs leading-relaxed text-slate-400">
-              Enter the Worker API key created in Cloudflare. It is saved only in this browser's local storage and is not embedded in the public app bundle. Enter it separately on each device.
+              Enter the Worker API key created in Cloudflare. It is saved only in this browser's local storage and is not embedded in the public app bundle. Enter it separately on each device. The same key now enables automatic full-app sync for saved trades, accounts, income, expenses, invoices, budgets, savings, profile preferences, notifications, and scanner data across devices. Device PIN credentials stay local.
             </p>
             <label className="mt-4 block text-xs font-semibold text-slate-300">Worker API Key</label>
             <input type="password" autoComplete="off" value={scannerApiKey} onChange={e => { setScannerApiKey(e.target.value); setScannerKeySaved(false); }} placeholder="Paste MOTI_API_KEY" className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2.5 text-xs text-white outline-none focus:border-cyan-400" />
@@ -459,7 +459,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </label>
             </div>
             <p className="mt-3 text-[10px] leading-relaxed text-slate-500">
-              This is a manual encrypted backup/restore step for now. Automatic cross-device sync will be enabled only after conflict-safe syncing is added and tested.
+              Google Drive remains an encrypted manual backup/restore option. Automatic cross-device app sync is handled separately through Cloudflare D1 when the Worker API key is saved on each device.
             </p>
           </div>
 
