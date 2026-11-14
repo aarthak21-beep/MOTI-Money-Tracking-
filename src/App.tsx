@@ -67,7 +67,8 @@ export default function App() {
   // Auto-lock after 2 minutes without activity. Background time counts too.
   // The last-activity timestamp is checked again when the app becomes visible,
   // because mobile browsers may throttle timers while the app is in the background.
-  const lastActivityAt = useRef(Date.now());
+  const activityStorageKey = `moti_last_activity_v1_${userId}`;
+  const lastActivityAt = useRef(Number(localStorage.getItem(activityStorageKey)) || Date.now());
   useEffect(() => {
     if (!profile.pinEnabled || !profile.pinCode || isLocked) return;
 
@@ -92,6 +93,7 @@ export default function App() {
     const recordActivity = () => {
       if (document.visibilityState !== 'visible') return;
       lastActivityAt.current = Date.now();
+      localStorage.setItem(activityStorageKey, String(lastActivityAt.current));
       lockIfExpiredOrSchedule();
     };
 
@@ -112,8 +114,11 @@ export default function App() {
     );
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Start the inactivity window when the lock feature is enabled.
-    lastActivityAt.current = Date.now();
+    // Restore the last activity time so a closed/reopened app also locks after 2 minutes.
+    if (!localStorage.getItem(activityStorageKey)) {
+      lastActivityAt.current = Date.now();
+      localStorage.setItem(activityStorageKey, String(lastActivityAt.current));
+    }
     lockIfExpiredOrSchedule();
 
     return () => {
@@ -340,7 +345,11 @@ export default function App() {
       {isLocked && profile.pinCode && (
         <PinLockModal
           correctPin={profile.pinCode}
-          onUnlock={() => setIsLocked(false)}
+          onUnlock={() => {
+            lastActivityAt.current = Date.now();
+            localStorage.setItem(activityStorageKey, String(lastActivityAt.current));
+            setIsLocked(false);
+          }}
           userName={profile.name}
         />
       )}
