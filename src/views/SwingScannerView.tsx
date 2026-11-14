@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, Upload, RefreshCw, FileSpreadsheet, Info } from 'lucide-react';
+import { Activity, Upload, RefreshCw, FileSpreadsheet, Info, Download } from 'lucide-react';
 import { loadScannerData, saveScannerData } from '../services/cloudScannerStorage';
 
 type DailyRow = {
@@ -337,6 +337,43 @@ export const SwingScannerView: React.FC = () => {
     }
     setErrors(issues); setLoading(false);
   };
+  const exportCsv = () => {
+    if (!sortedCandidates.length) return;
+    const headers = [
+      'Symbol', 'Series', 'Latest Close', '5-Day Move %', 'Volume vs 1W Avg',
+      '5D Breakout', '5D Box Low', '5D Box High',
+      '10D Breakout', '10D Box Low', '10D Box High',
+      '20D Breakout', '20D Box Low', '20D Box High',
+      'Today %', 'Report Sources'
+    ];
+    const csvCell = (value: string | number | undefined) => {
+      const text = value === undefined ? '' : String(value);
+      return '"' + text.replace(/"/g, '""') + '"';
+    };
+    const rows = sortedCandidates.map(item => {
+      const range = (days: number) => item.breakoutRanges.find(r => r.days === days);
+      const status = (days: number) => {
+        const r = range(days);
+        return !r?.enough ? 'Insufficient data' : r.breakout ? 'Breakout' : 'No breakout';
+      };
+      return [
+        item.symbol, item.series, item.close, item.weeklyChange, item.volumeMultiple,
+        status(5), range(5)?.boxLow, range(5)?.boxHigh,
+        status(10), range(10)?.boxLow, range(10)?.boxHigh,
+        status(20), range(20)?.boxLow, range(20)?.boxHigh,
+        item.pctToday, item.sources.join(', ')
+      ].map(csvCell).join(',');
+    });
+    const csv = '\\uFEFF' + [headers.map(csvCell).join(','), ...rows].join('\\r\\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'swing-scanner-' + (latestDate || todayLocal()) + '.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
   const clearHistory = () => {
     if (window.confirm('जतन केलेला NSE report history clear करायचा?')) { setRecords([]); setMessage('Saved report history clear झाला.'); }
   };
@@ -369,7 +406,7 @@ export const SwingScannerView: React.FC = () => {
     <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1e2e4f] px-4 py-3">
         <div><h2 className="text-sm font-bold text-white">Weekly Movement & Breakout Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · New entries: EQ/BE +4% and ₹300–₹3,000 · Existing stocks stay listed while price remains ₹300–₹3,000</p></div>
-        <button onClick={clearHistory} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear history</button>
+        <div className="flex items-center gap-3"><button type="button" onClick={exportCsv} disabled={!sortedCandidates.length} className="inline-flex items-center gap-1 rounded-lg bg-emerald-300 px-3 py-2 text-[11px] font-bold text-slate-950 hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-40"><Download className="h-3 w-3" /> Export CSV</button><button onClick={clearHistory} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear history</button></div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-left text-xs">
