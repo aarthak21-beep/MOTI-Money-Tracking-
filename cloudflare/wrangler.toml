@@ -1,0 +1,8 @@
+name = "moti-cloud-storage"
+main = "worker.ts"
+compatibility_date = "2026-11-14"
+
+[[d1_databases]]
+binding = "MOTI_DB"
+database_name = "moti-data"
+database_id = "REPLACE_WITH_DATABASE_ID"
