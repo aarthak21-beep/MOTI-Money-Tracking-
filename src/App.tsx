@@ -21,6 +21,8 @@ import { NiftyOptionsScannerView } from './views/NiftyOptionsScannerView';
 import { SmartMoneyScreenerView } from './views/SmartMoneyScreenerView';
 
 import { StorageService } from './services/storageService';
+import { CloudAppSyncService } from './services/cloudAppSyncService';
+import { getCloudApiKey } from './services/cloudScannerStorage';
 import {
   UserProfile,
   StockTrade,
@@ -120,9 +122,48 @@ export default function App() {
     setBudgets(StorageService.getBudgets(userId));
     setSavings(StorageService.getSavingsGoals(userId));
     setNotifications(StorageService.getNotifications(userId));
+    CloudAppSyncService.schedule(userId);
   }, [userId]);
 
-  // Cloud backup is user-triggered from Settings; no plaintext legacy sync runs in the background.
+  // Full-app Cloudflare sync: restore the latest revision on startup and poll for
+  // changes made on other devices. Existing local backup and Google Drive flows remain intact.
+  useEffect(() => {
+    let cancelled = false;
+    let pollHandle: ReturnType<typeof setInterval> | undefined;
+    let starting = false;
+    const onRemoteApplied = () => {
+      if (!cancelled) reloadAllData();
+    };
+    window.addEventListener('moti-cloud-sync-applied', onRemoteApplied);
+    const start = async () => {
+      if (starting || pollHandle || !getCloudApiKey()) return;
+      starting = true;
+      try {
+        await CloudAppSyncService.initialize(userId, onRemoteApplied);
+        if (cancelled) return;
+        pollHandle = setInterval(() => {
+          CloudAppSyncService.poll(userId, onRemoteApplied).catch((error) => {
+            console.warn('MOTI cloud sync poll failed:', error);
+          });
+        }, 10000);
+      } catch (error) {
+        console.warn('MOTI full-app cloud sync could not start:', error);
+      } finally {
+        starting = false;
+      }
+    };
+    window.addEventListener('moti-cloud-key-updated', start);
+    start();
+    return () => {
+      cancelled = true;
+      window.removeEventListener('moti-cloud-sync-applied', onRemoteApplied);
+      window.removeEventListener('moti-cloud-key-updated', start);
+      if (pollHandle) clearInterval(pollHandle);
+      CloudAppSyncService.stop();
+    };
+  }, [userId, reloadAllData]);
+
+  // Cloud backup is user-triggered from Settings; the encrypted Google Drive workflow is unchanged.
 
   // Compute live financial summary
   const summary = useMemo(() => {
@@ -133,52 +174,62 @@ export default function App() {
   const handleSaveTrades = (updatedTrades: StockTrade[]) => {
     setTrades(updatedTrades);
     StorageService.saveStockTrades(updatedTrades, userId);
+    CloudAppSyncService.schedule(userId);
   };
 
   const handleSaveWeekly = (updatedWeekly: WeeklyIncomeRecord[]) => {
     setWeekly(updatedWeekly);
     StorageService.saveWeeklyIncome(updatedWeekly, userId);
+    CloudAppSyncService.schedule(userId);
   };
 
   const handleSaveDaily = (updatedDaily: DailyEarningsRecord[]) => {
     setDaily(updatedDaily);
     StorageService.saveDailyEarnings(updatedDaily, userId);
+    CloudAppSyncService.schedule(userId);
   };
 
   const handleSaveInvoices = (updatedInvoices: BusinessInvoice[]) => {
     setInvoices(updatedInvoices);
     StorageService.saveInvoices(updatedInvoices, userId);
+    CloudAppSyncService.schedule(userId);
   };
 
   const handleSaveExpenses = (updatedExpenses: ExpenseRecord[]) => {
     setExpenses(updatedExpenses);
     StorageService.saveExpenses(updatedExpenses, userId);
+    CloudAppSyncService.schedule(userId);
   };
 
   const handleSaveBudgets = (updatedBudgets: BudgetLimit[]) => {
     setBudgets(updatedBudgets);
     StorageService.saveBudgets(updatedBudgets, userId);
+    CloudAppSyncService.schedule(userId);
   };
 
   const handleSaveAccounts = (updatedAccounts: AccountRecord[]) => {
     setAccounts(updatedAccounts);
     StorageService.saveAccounts(updatedAccounts, userId);
+    CloudAppSyncService.schedule(userId);
   };
 
   const handleSaveSavings = (updatedSavings: SavingsGoal[]) => {
     setSavings(updatedSavings);
     StorageService.saveSavingsGoals(updatedSavings, userId);
+    CloudAppSyncService.schedule(userId);
   };
 
   const handleUpdateProfile = (updatedProfile: UserProfile) => {
     setProfile(updatedProfile);
     StorageService.saveProfile(updatedProfile);
+    CloudAppSyncService.schedule(userId);
   };
 
   const handleMarkNotificationRead = (notifId: string) => {
     const updated = notifications.map((n) => (n.id === notifId ? { ...n, read: true } : n));
     setNotifications(updated);
     StorageService.saveNotifications(updated, userId);
+    CloudAppSyncService.schedule(userId);
   };
 
   // Quick Add Action Dispatchers
