@@ -121,6 +121,7 @@ export default function App() {
     setBudgets(StorageService.getBudgets(userId));
     setSavings(StorageService.getSavingsGoals(userId));
     setNotifications(StorageService.getNotifications(userId));
+    CloudAppSyncService.schedule(userId);
   }, [userId]);
 
   // Full-app Cloudflare sync: restore the latest revision on startup and poll for
