@@ -126,11 +126,15 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const [targetPct, setTargetPct] = useState(35);
   const [lotSize, setLotSize] = useState(65);
   const [expiryChoice, setExpiryChoice] = useState('');
+  const [expiryGroup, setExpiryGroup] = useState<'0-6' | '7-13' | '14+'>('14+');
   const [loading, setLoading] = useState(false);
 
   const expiries = useMemo(() => Array.from(new Set(rows.map(r => r.expiry))).sort(), [rows]);
-  const eligibleExpiries = useMemo(() => expiries.filter(e => (new Date(e + 'T00:00:00').getTime() - today().getTime()) / 86400000 >= 14), [expiries]);
-  const selectedExpiry = eligibleExpiries.includes(expiryChoice) ? expiryChoice : eligibleExpiries[0] || '';
+  const groupExpiries = useMemo(() => expiries.filter(e => {
+    const days = Math.floor((new Date(e + 'T00:00:00').getTime() - today().getTime()) / 86400000);
+    return days >= 0 && (expiryGroup === '0-6' ? days <= 6 : expiryGroup === '7-13' ? days >= 7 && days <= 13 : days >= 14);
+  }), [expiries, expiryGroup]);
+  const selectedExpiry = groupExpiries.includes(expiryChoice) ? expiryChoice : groupExpiries[0] || '';
   const chain = useMemo(() => rows.filter(r => r.expiry === selectedExpiry), [rows, selectedExpiry]);
   const summary = useMemo(() => {
     const ce = chain.filter(r => r.type === 'CE');
@@ -211,15 +215,18 @@ export const NiftyOptionsScannerView: React.FC = () => {
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h2 className="text-sm font-bold text-white">Expiry Selection</h2><p className="mt-1 text-[11px] text-slate-400">आजपासून किमान 14 दिवस पुढची expiryच दाखवली जाते.</p></div>
-        <select value={selectedExpiry} onChange={e => setExpiryChoice(e.target.value)} className="rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm text-white">
-          {eligibleExpiries.length ? eligibleExpiries.map(e => <option key={e} value={e}>{e}</option>) : <option value="">14+ दिवसांची expiry उपलब्ध नाही</option>}
-        </select>
+        <div><h2 className="text-sm font-bold text-white">Expiry Selection</h2><p className="mt-1 text-[11px] text-slate-400">गट निवडा; त्या गटातील उपलब्ध expiry खाली दिसतील.</p></div>
+        <div className="flex flex-wrap gap-2">
+          {([{ id: '0-6', label: '0–6 दिवस' }, { id: '7-13', label: '7–13 दिवस' }, { id: '14+', label: '14+ दिवस' }] as const).map(g => <button key={g.id} onClick={() => { setExpiryGroup(g.id); setExpiryChoice(''); }} className={'rounded-lg border px-3 py-2 text-xs font-bold ' + (expiryGroup === g.id ? 'border-cyan-300 bg-cyan-300 text-slate-950' : 'border-slate-600 text-slate-200 hover:bg-white/5')}>{g.label}</button>)}
+          <select value={selectedExpiry} onChange={e => setExpiryChoice(e.target.value)} className="rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm text-white">
+            {groupExpiries.length ? groupExpiries.map(e => <option key={e} value={e}>{e}</option>) : <option value="">या गटात expiry उपलब्ध नाही</option>}
+          </select>
+        </div>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-4">
         <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">CE OI Change</p><p className="mt-1 text-sm font-bold text-white">{fmt(summary.ceChg)}</p></div>
         <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">PE OI Change</p><p className="mt-1 text-sm font-bold text-white">{fmt(summary.peChg)}</p></div>
-        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Eligible Expiries</p><p className="mt-1 text-sm font-bold text-white">{eligibleExpiries.length}</p></div>
+        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Eligible Expiries</p><p className="mt-1 text-sm font-bold text-white">{groupExpiries.length}</p></div>
         <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Contracts in selected expiry</p><p className="mt-1 text-sm font-bold text-white">{chain.length}</p></div>
       </div>
     </div>
