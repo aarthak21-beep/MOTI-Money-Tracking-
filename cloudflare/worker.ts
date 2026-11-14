@@ -110,6 +110,10 @@ export default {
       return response({ error: 'Sign in with an approved MOTI Finova account to continue.' }, 401, origin);
     }
 
+    if (url.pathname === '/api/auth/check' && request.method === 'GET') {
+      return response({ authorized: true }, 200, origin);
+    }
+
     if (url.pathname === '/api/app-backup') {
       await env.MOTI_DB.prepare(`
         CREATE TABLE IF NOT EXISTS moti_app_backup (
