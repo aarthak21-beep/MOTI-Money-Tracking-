@@ -10,7 +10,7 @@ interface MotiD1Database {
 
 export interface Env {
   MOTI_DB: MotiD1Database;
-  MOTI_API_KEY: string;
+  APPWRITE_API_KEY: string;
   ALLOWED_ORIGIN?: string;
 }
 
@@ -29,6 +29,45 @@ function response(body: unknown, status: number, origin: string): Response {
       'vary': 'Origin',
     },
   });
+}
+
+const APPWRITE_ENDPOINT = 'https://sgp.cloud.appwrite.io/v1';
+const APPWRITE_PROJECT_ID = '6aedba7500289424a374';
+const APPWRITE_DATABASE_ID = '6aedbc350031fd28e31a';
+const FINOVA_ACCESS_TABLE_ID = '6af861370019508c91e1';
+
+async function authorizeFinovaUser(request: Request, env: Env): Promise<boolean> {
+  const authorization = request.headers.get('Authorization') || '';
+  const jwt = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+  if (!jwt || !env.APPWRITE_API_KEY) return false;
+
+  try {
+    const accountResponse = await fetch(`${APPWRITE_ENDPOINT}/account`, {
+      headers: {
+        'X-Appwrite-Project': APPWRITE_PROJECT_ID,
+        'X-Appwrite-JWT': jwt,
+      },
+    });
+    if (!accountResponse.ok) return false;
+    const account = await accountResponse.json() as { $id?: string };
+    if (!account.$id) return false;
+
+    const query = JSON.stringify({ method: 'equal', attribute: 'user_id', values: [account.$id] });
+    const rowsUrl = new URL(`${APPWRITE_ENDPOINT}/tablesdb/${APPWRITE_DATABASE_ID}/tables/${FINOVA_ACCESS_TABLE_ID}/rows`);
+    rowsUrl.searchParams.append('queries[]', query);
+    rowsUrl.searchParams.set('total', 'false');
+    const rowsResponse = await fetch(rowsUrl, {
+      headers: {
+        'X-Appwrite-Project': APPWRITE_PROJECT_ID,
+        'X-Appwrite-Key': env.APPWRITE_API_KEY,
+      },
+    });
+    if (!rowsResponse.ok) return false;
+    const result = await rowsResponse.json() as { rows?: Array<{ user_id?: string; is_active?: boolean }> };
+    return (result.rows || []).some(row => row.user_id === account.$id && row.is_active === true);
+  } catch {
+    return false;
+  }
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -67,10 +106,8 @@ export default {
       return response({ status: 'ok', service: 'MOTI Cloud Storage' }, 200, origin);
     }
 
-    const auth = request.headers.get('Authorization') || '';
-    const suppliedKey = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-    if (!env.MOTI_API_KEY || !safeEqual(suppliedKey, env.MOTI_API_KEY)) {
-      return response({ error: 'Unauthorized' }, 401, origin);
+    if (!(await authorizeFinovaUser(request, env))) {
+      return response({ error: 'Sign in with an approved MOTI Finova account to continue.' }, 401, origin);
     }
 
     if (url.pathname === '/api/app-backup') {
