@@ -1,25 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="title desc">
+  <title id="title">MOTI Finova</title>
+  <desc id="desc">A premium emerald and gold monogram combining an M, rising financial bars and an upward arrow.</desc>
   <defs>
-    <linearGradient id="bg" x1="54" y1="30" x2="458" y2="482" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#14243A"/><stop offset="1" stop-color="#050A14"/>
+    <linearGradient id="bg" x1="48" y1="28" x2="464" y2="484" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#14283b"/>
+      <stop offset="1" stop-color="#050b14"/>
     </linearGradient>
-    <linearGradient id="mint" x1="100" y1="340" x2="270" y2="130" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#059669"/><stop offset=".55" stop-color="#34D399"/><stop offset="1" stop-color="#A7F3D0"/>
+    <linearGradient id="emerald" x1="112" y1="374" x2="350" y2="128" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#059669"/>
+      <stop offset=".52" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#bbf7d0"/>
     </linearGradient>
-    <linearGradient id="gold" x1="260" y1="390" x2="410" y2="105" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#B45309"/><stop offset=".48" stop-color="#F59E0B"/><stop offset="1" stop-color="#FDE68A"/>
+    <linearGradient id="gold" x1="280" y1="360" x2="408" y2="110" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d97706"/>
+      <stop offset=".5" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#fef3c7"/>
     </linearGradient>
-    <filter id="shadow" x="45" y="45" width="422" height="422" color-interpolation-filters="sRGB">
-      <feGaussianBlur stdDeviation="13"/>
+    <filter id="glow" x="65" y="80" width="390" height="370" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="15"/>
     </filter>
   </defs>
   <rect width="512" height="512" rx="116" fill="url(#bg)"/>
-  <rect x="5" y="5" width="502" height="502" rx="111" fill="none" stroke="#D1FAE5" stroke-opacity=".12" stroke-width="3"/>
-  <circle cx="256" cy="256" r="181" fill="none" stroke="#94A3B8" stroke-opacity=".12" stroke-width="2"/>
-  <circle cx="256" cy="256" r="151" fill="none" stroke="#94A3B8" stroke-opacity=".08" stroke-width="2" stroke-dasharray="3 13"/>
-  <path d="M111 365 111 184Q111 160 135 160H160L256 280 352 160H377Q401 160 401 184V365H339V250L256 352 173 250V365Z" fill="#10B981" opacity=".16" filter="url(#shadow)"/>
-  <path d="M111 365V184Q111 160 135 160H160L256 280 352 160H377Q401 160 401 184V365H339V250L256 352 173 250V365Z" fill="none" stroke="url(#mint)" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M256 102 306 152H276V213H236V152H206Z" fill="url(#gold)"/>
-  <path d="M324 390H388" stroke="url(#gold)" stroke-width="13" stroke-linecap="round"/>
-  <circle cx="388" cy="390" r="10" fill="#FDE68A"/>
+  <rect x="5" y="5" width="502" height="502" rx="111" fill="none" stroke="#d1fae5" stroke-opacity=".16" stroke-width="3"/>
+  <circle cx="256" cy="256" r="188" fill="none" stroke="#94a3b8" stroke-opacity=".12" stroke-width="2"/>
+  <circle cx="256" cy="256" r="162" fill="none" stroke="#94a3b8" stroke-opacity=".09" stroke-width="2" stroke-dasharray="3 13"/>
+  <path d="M105 374V192c0-19 15-34 34-34h26l91 112 91-112h26c19 0 34 15 34 34v182h-66V257l-85 99-85-99v117z" fill="#10b981" opacity=".22" filter="url(#glow)"/>
+  <path d="M105 374V192c0-19 15-34 34-34h26l91 112 91-112h26c19 0 34 15 34 34v182h-66V257l-85 99-85-99v117z" fill="none" stroke="url(#emerald)" stroke-width="25" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M260 112l76 1-1 76-24-24-62 62-29-29 62-62z" fill="url(#gold)" stroke="#fff7d6" stroke-opacity=".22" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M352 405h47" stroke="url(#gold)" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="399" cy="405" r="9" fill="#fef3c7"/>
 </svg>
