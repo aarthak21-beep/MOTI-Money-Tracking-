@@ -36,15 +36,7 @@ const saveRowsToDb = async (rows: StockRow[]): Promise<void> => {
     tx.onabort = () => { db.close(); reject(tx.error || new Error('डेटा save रद्द झाला.')); };
   });
 };
-const deleteSavedRows = async (): Promise<void> => {
-  const db = await openDataDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).delete(KEY);
-    tx.oncomplete = () => { db.close(); resolve(); };
-    tx.onerror = () => { db.close(); reject(tx.error || new Error('डेटा delete झाला नाही.')); };
-  });
-};
+
 const csvTemplate = 'date,symbol,close,prevClose,volume,avgVolume,deliveryQty,deliveryPct,high,low\n2026-11-13,RELIANCE,1450,1438,2500000,1200000,1550000,62,1462,1432\n';
 const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
 const number = (v?: string) => { if (!v?.trim()) return undefined; const n = Number(v.replace(/[,₹%\s]/g, '')); return Number.isFinite(n) ? n : undefined; };
@@ -77,7 +69,6 @@ export const SmartMoneyScreenerView: React.FC = () => {
       try {
         const cloudSaved = await loadScannerData<StockRow[]>('smart-money');
         let saved = cloudSaved || await readSavedRows();
-        if (!cloudSaved && saved.length) await saveScannerData('smart-money', saved);
         if (!saved.length) {
           const legacy = localStorage.getItem(KEY);
           if (legacy) {
@@ -90,6 +81,7 @@ export const SmartMoneyScreenerView: React.FC = () => {
             }
           }
         }
+        if (!cloudSaved && saved.length) await saveScannerData('smart-money', saved);
         if (active) setRows(saved);
       } catch {
         if (active) setError('Saved data load/migrate करता आला नाही. CSV पुन्हा import करून पाहा.');
