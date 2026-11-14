@@ -412,6 +412,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </p>
           </div>
 
+          <div className="rounded-3xl border border-emerald-500/30 bg-[#0d1527] p-6 shadow-xl">
+            <div className="flex items-center space-x-2 border-b border-[#1e2e4f] pb-3">
+              <Globe className="h-5 w-5 text-emerald-400" />
+              <h2 className="text-base font-bold text-white">Encrypted Google Drive Sync</h2>
+            </div>
             <p className="mt-3 text-xs text-slate-400 leading-relaxed">
               MOTI encrypts your complete backup in this browser with AES-256-GCM before sending it to the private Google Drive app data folder. Google stores ciphertext, not readable financial records.
             </p>
@@ -450,7 +455,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </label>
             </div>
             <p className="mt-3 text-[10px] leading-relaxed text-slate-500">
-              Google Drive remains an encrypted manual backup/restore option. Automatic cross-device app sync is handled separately through Cloudflare D1 when the Worker API key is saved on each device.
+              Google Drive remains an encrypted manual backup/restore option. Automatic cross-device app sync is protected by your Appwrite sign-in and handled through Cloudflare D1.
             </p>
           </div>
 
