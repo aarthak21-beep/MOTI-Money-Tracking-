@@ -1,19 +1,11 @@
 const API_URL = 'https://moti-cloud-storage.motidiagnostics.workers.dev';
-const API_KEY_STORAGE = 'moti_cloud_api_key_v1';
-
-export const getCloudApiKey = (): string => localStorage.getItem(API_KEY_STORAGE) || '';
-export const saveCloudApiKey = (key: string): void => {
-  const value = key.trim();
-  if (value) localStorage.setItem(API_KEY_STORAGE, value);
-  else localStorage.removeItem(API_KEY_STORAGE);
-};
+import { getAppwriteJwt } from './appwriteAuth';
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const key = getCloudApiKey();
-  if (!key) throw new Error('Settings मध्ये Cloud API Key आधी save करा.');
+  const jwt = await getAppwriteJwt();
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${key}`, ...(init.headers || {}) },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${jwt}`, ...(init.headers || {}) },
     cache: 'no-store',
   });
   const body = await response.json().catch(() => ({})) as T & { error?: string };
