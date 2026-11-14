@@ -1,11 +1,21 @@
+interface MotiD1Result { success: boolean; meta?: Record<string, unknown>; }
+interface MotiD1Statement {
+  bind(...values: unknown[]): MotiD1Statement;
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+  run(): Promise<MotiD1Result>;
+}
+interface MotiD1Database {
+  prepare(query: string): MotiD1Statement;
+}
+
 export interface Env {
-  MOTI_DB: D1Database;
+  MOTI_DB: MotiD1Database;
   MOTI_API_KEY: string;
   ALLOWED_ORIGIN?: string;
 }
 
 const SCANNERS = new Set(['swing', 'nifty-options', 'smart-money']);
-const DEFAULT_ORIGIN = 'https://aarthak21-beep.github.io';
+const ALLOWED_ORIGINS = new Set(['https://moti-money-tracking.pages.dev', 'https://aarthak21-beep.github.io']);
 
 function response(body: unknown, status: number, origin: string): Response {
   return new Response(JSON.stringify(body), {
@@ -32,10 +42,11 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const requestOrigin = request.headers.get('Origin') || '';
-    const allowedOrigin = env.ALLOWED_ORIGIN || DEFAULT_ORIGIN;
-    const origin = requestOrigin === allowedOrigin ? allowedOrigin : allowedOrigin;
+    const allowedOrigins = new Set([...(ALLOWED_ORIGINS), ...(env.ALLOWED_ORIGIN ? [env.ALLOWED_ORIGIN] : [])]);
+    const origin = requestOrigin && allowedOrigins.has(requestOrigin) ? requestOrigin : 'https://moti-money-tracking.pages.dev';
 
     if (request.method === 'OPTIONS') {
+      if (requestOrigin && !allowedOrigins.has(requestOrigin)) return new Response(null, { status: 403 });
       return new Response(null, {
         status: 204,
         headers: {
@@ -48,7 +59,7 @@ export default {
       });
     }
 
-    if (requestOrigin && requestOrigin !== allowedOrigin) {
+    if (requestOrigin && !allowedOrigins.has(requestOrigin)) {
       return response({ error: 'Origin not allowed' }, 403, origin);
     }
 
