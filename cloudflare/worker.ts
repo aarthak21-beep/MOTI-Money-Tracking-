@@ -15,7 +15,7 @@ export interface Env {
 }
 
 const SCANNERS = new Set(['swing', 'nifty-options', 'smart-money']);
-const ALLOWED_ORIGINS = new Set(['https://moti-money-tracking.pages.dev', 'https://aarthak21-beep.github.io']);
+const ALLOWED_ORIGINS = new Set(['https://moti-money-tracking.pages.dev', 'https://finova.themotigroup.co.in', 'https://aarthak21-beep.github.io']);
 
 function response(body: unknown, status: number, origin: string): Response {
   return new Response(JSON.stringify(body), {
