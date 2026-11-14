@@ -132,6 +132,7 @@ export default function App() {
     const onRemoteApplied = () => {
       if (!cancelled) reloadAllData();
     };
+    window.addEventListener('moti-cloud-sync-applied', onRemoteApplied);
     const start = async () => {
       try {
         await CloudAppSyncService.initialize(userId, onRemoteApplied);
@@ -148,6 +149,7 @@ export default function App() {
     start();
     return () => {
       cancelled = true;
+      window.removeEventListener('moti-cloud-sync-applied', onRemoteApplied);
       if (pollHandle) clearInterval(pollHandle);
       CloudAppSyncService.stop();
     };
