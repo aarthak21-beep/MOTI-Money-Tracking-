@@ -16,6 +16,7 @@ import {
 import { UserProfile, Profession } from '../types';
 import { StorageService } from '../services/storageService';
 import { GoogleDriveSyncService } from '../services/googleDriveSyncService';
+import { getCloudApiKey, saveCloudApiKey } from '../services/cloudScannerStorage';
 
 interface SettingsViewProps {
   profile: UserProfile;
@@ -39,6 +40,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [drivePassphrase, setDrivePassphrase] = useState('');
   const [cloudStatus, setCloudStatus] = useState('');
   const [cloudBusy, setCloudBusy] = useState(false);
+  const [scannerApiKey, setScannerApiKey] = useState(getCloudApiKey);
+  const [scannerKeySaved, setScannerKeySaved] = useState(false);
 
   const professions: Profession[] = [
     'Stock Trader',
@@ -398,7 +401,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </div>
 
-          <div className="rounded-3xl border border-emerald-500/30 bg-[#0d1527] p-6 shadow-xl">
+<div className="rounded-3xl border border-cyan-500/30 bg-[#0d1527] p-6 shadow-xl">
+            <div className="flex items-center space-x-2 border-b border-[#1e2e4f] pb-3">
+              <Database className="h-5 w-5 text-cyan-400" />
+              <h2 className="text-base font-bold text-white">Cloudflare D1 Scanner Sync</h2>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-slate-400">
+              Enter the Worker API key created in Cloudflare. It is saved only in this browser's local storage and is not embedded in the public app bundle. Enter it separately on each device.
+            </p>
+            <label className="mt-4 block text-xs font-semibold text-slate-300">Worker API Key</label>
+            <input type="password" autoComplete="off" value={scannerApiKey} onChange={e => { setScannerApiKey(e.target.value); setScannerKeySaved(false); }} placeholder="Paste MOTI_API_KEY" className="mt-1 w-full rounded-xl border border-[#1e2e4f] bg-[#070d18] px-3 py-2.5 text-xs text-white outline-none focus:border-cyan-400" />
+            <button onClick={() => { saveCloudApiKey(scannerApiKey); setScannerKeySaved(true); }} className="mt-3 w-full rounded-xl bg-cyan-500 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-400">Save Cloud API Key on this device</button>
+            {scannerKeySaved && <p className="mt-2 text-[11px] text-emerald-300">API key saved on this device.</p>}
+            <p className="mt-2 text-[10px] leading-relaxed text-amber-300/80">Do not share this key or paste it into GitHub source code. If this browser is shared, remove the key from this setting after use.</p>
+          </div>
+
+                    <div className="rounded-3xl border border-emerald-500/30 bg-[#0d1527] p-6 shadow-xl">
             <div className="flex items-center space-x-2 border-b border-[#1e2e4f] pb-3">
               <Globe className="h-5 w-5 text-emerald-400" />
               <h2 className="text-base font-bold text-white">Encrypted Google Drive Sync</h2>
