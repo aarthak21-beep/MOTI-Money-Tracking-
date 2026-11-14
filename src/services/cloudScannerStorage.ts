@@ -22,10 +22,3 @@ export const saveScannerData = async <T,>(scanner: string, data: T): Promise<voi
 };
 export const deleteScannerData = async (scanner: string): Promise<void> => saveScannerData(scanner, []);
 
-export const loadNiftyOptionsHistory = async <T,>(): Promise<T[]> => {
-  const result = await request<{ snapshots: T[] }>('/api/nifty-options/history');
-  return result.snapshots || [];
-};
-export const saveNiftyOptionsSnapshot = async <T,>(snapshot: T): Promise<void> => {
-  await request('/api/nifty-options/history', { method: 'PUT', body: JSON.stringify({ snapshot }) });
-};
