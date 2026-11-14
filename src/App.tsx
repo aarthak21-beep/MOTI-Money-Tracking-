@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { PinLockModal } from './components/PinLockModal';
@@ -62,22 +62,79 @@ export default function App() {
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
   // Security Lock State
-  const [isLocked, setIsLocked] = useState<boolean>(false);
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    const lastActivity = Number(localStorage.getItem(`moti_last_activity_v1_${userId}`));
+    return Boolean(
+      profile.pinEnabled &&
+      profile.pinCode &&
+      lastActivity &&
+      Date.now() - lastActivity >= 2 * 60 * 1000
+    );
+  });
 
-  // Auto-lock only after 10 minutes without user activity; do not prompt PIN on app launch.
+  // Auto-lock after 2 minutes without activity. Background time counts too.
+  // The last-activity timestamp is checked again when the app becomes visible,
+  // because mobile browsers may throttle timers while the app is in the background.
+  const activityStorageKey = `moti_last_activity_v1_${userId}`;
+  const lastActivityAt = useRef(Number(localStorage.getItem(activityStorageKey)) || Date.now());
   useEffect(() => {
     if (!profile.pinEnabled || !profile.pinCode || isLocked) return;
-    let timeout: ReturnType<typeof setTimeout>;
-    const resetInactivityTimer = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => setIsLocked(true), 10 * 60 * 1000);
+
+    const INACTIVITY_LIMIT_MS = 2 * 60 * 1000;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    const clearInactivityTimer = () => {
+      if (timeout) clearTimeout(timeout);
+      timeout = undefined;
     };
-    const activityEvents: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
-    activityEvents.forEach((event) => window.addEventListener(event, resetInactivityTimer, { passive: true }));
-    resetInactivityTimer();
+
+    const lockIfExpiredOrSchedule = () => {
+      clearInactivityTimer();
+      const remaining = INACTIVITY_LIMIT_MS - (Date.now() - lastActivityAt.current);
+      if (remaining <= 0) {
+        setIsLocked(true);
+        return;
+      }
+      timeout = setTimeout(() => setIsLocked(true), remaining);
+    };
+
+    const recordActivity = () => {
+      if (document.visibilityState !== 'visible') return;
+      lastActivityAt.current = Date.now();
+      localStorage.setItem(activityStorageKey, String(lastActivityAt.current));
+      lockIfExpiredOrSchedule();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        lockIfExpiredOrSchedule();
+      } else {
+        // Keep the original activity time; time spent in the background counts.
+        clearInactivityTimer();
+      }
+    };
+
+    const activityEvents: (keyof WindowEventMap)[] = [
+      'pointerdown', 'keydown', 'touchstart', 'scroll', 'mousemove'
+    ];
+    activityEvents.forEach((event) =>
+      window.addEventListener(event, recordActivity, { passive: true })
+    );
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Restore the last activity time so a closed/reopened app also locks after 2 minutes.
+    if (!localStorage.getItem(activityStorageKey)) {
+      lastActivityAt.current = Date.now();
+      localStorage.setItem(activityStorageKey, String(lastActivityAt.current));
+    }
+    lockIfExpiredOrSchedule();
+
     return () => {
-      clearTimeout(timeout);
-      activityEvents.forEach((event) => window.removeEventListener(event, resetInactivityTimer));
+      clearInactivityTimer();
+      activityEvents.forEach((event) =>
+        window.removeEventListener(event, recordActivity)
+      );
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [profile.pinEnabled, profile.pinCode, isLocked]);
 
@@ -296,7 +353,11 @@ export default function App() {
       {isLocked && profile.pinCode && (
         <PinLockModal
           correctPin={profile.pinCode}
-          onUnlock={() => setIsLocked(false)}
+          onUnlock={() => {
+            lastActivityAt.current = Date.now();
+            localStorage.setItem(activityStorageKey, String(lastActivityAt.current));
+            setIsLocked(false);
+          }}
           userName={profile.name}
         />
       )}
