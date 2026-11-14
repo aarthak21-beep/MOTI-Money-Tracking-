@@ -171,55 +171,6 @@ export default {
     }
 
 
-    if (url.pathname === '/api/nifty-options/history') {
-      await env.MOTI_DB.prepare(`
-        CREATE TABLE IF NOT EXISTS nifty_options_history (
-          snapshot_date TEXT PRIMARY KEY NOT NULL,
-          spot REAL NOT NULL,
-          data_json TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        )
-      `).run();
-
-      if (request.method === 'GET') {
-        const result = await env.MOTI_DB.prepare(
-          'SELECT snapshot_date, spot, data_json FROM nifty_options_history ORDER BY snapshot_date DESC LIMIT 30'
-        ).all<{ snapshot_date: string; spot: number; data_json: string }>();
-        const snapshots = (result.results || []).flatMap(row => {
-          try { return [{ date: row.snapshot_date, spot: row.spot, rows: JSON.parse(row.data_json) }]; }
-          catch { return []; }
-        });
-        return response({ snapshots }, 200, origin);
-      }
-
-      if (request.method === 'PUT') {
-        const contentLength = Number(request.headers.get('content-length') || 0);
-        if (contentLength > 4 * 1024 * 1024) return response({ error: 'Snapshot exceeds 4 MB' }, 413, origin);
-        let payload: { snapshot?: { date?: unknown; spot?: unknown; rows?: unknown } };
-        try { payload = await request.json() as { snapshot?: { date?: unknown; spot?: unknown; rows?: unknown } }; }
-        catch { return response({ error: 'Invalid JSON body' }, 400, origin); }
-        const snapshot = payload.snapshot;
-        if (!snapshot || typeof snapshot.date !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshot.date)
-          || typeof snapshot.spot !== 'number' || !Number.isFinite(snapshot.spot)
-          || !Array.isArray(snapshot.rows)) {
-          return response({ error: 'Invalid NIFTY option snapshot' }, 400, origin);
-        }
-        const json = JSON.stringify(snapshot.rows);
-        if (new TextEncoder().encode(json).byteLength > 4 * 1024 * 1024) {
-          return response({ error: 'Snapshot exceeds 4 MB' }, 413, origin);
-        }
-        const updatedAt = new Date().toISOString();
-        await env.MOTI_DB.prepare(
-          'INSERT INTO nifty_options_history (snapshot_date, spot, data_json, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(snapshot_date) DO UPDATE SET spot = excluded.spot, data_json = excluded.data_json, updated_at = excluded.updated_at'
-        ).bind(snapshot.date, snapshot.spot, json, updatedAt).run();
-        await env.MOTI_DB.prepare(
-          'DELETE FROM nifty_options_history WHERE snapshot_date NOT IN (SELECT snapshot_date FROM nifty_options_history ORDER BY snapshot_date DESC LIMIT 30)'
-        ).run();
-        return response({ ok: true, date: snapshot.date, updatedAt }, 200, origin);
-      }
-      return response({ error: 'Method not allowed' }, 405, origin);
-    }
-
     if (url.pathname !== '/api/data') {
       return response({ error: 'Not found' }, 404, origin);
     }
