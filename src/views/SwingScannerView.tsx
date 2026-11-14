@@ -339,13 +339,14 @@ export const SwingScannerView: React.FC = () => {
   };
   const exportCsv = () => {
     if (!sortedCandidates.length) return;
-    const csvCell = (value: string) => '"' + value.replace(/"/g, '""') + '"';
-    const rows = sortedCandidates.map(item => csvCell(item.symbol));
-    const csv = '\uFEFF' + [csvCell('Stock'), ...rows].join('\r\n');
+    // FYERS Web watchlist import: one row, comma-separated NSE trading symbols.
+    // Preserve the actual EQ/BE series recorded by the scanner; default to EQ.
+    const symbols = sortedCandidates.map(item => 'NSE:' + item.symbol + '-' + (item.series === 'BE' ? 'BE' : 'EQ'));
+    const csv = '\uFEFF' + symbols.join(',');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'swing-scanner-stocks-' + (latestDate || todayLocal()) + '.csv';
+    link.download = 'fyers-watchlist-' + (latestDate || todayLocal()) + '.csv';
     document.body.appendChild(link);
     link.click();
     link.remove();
