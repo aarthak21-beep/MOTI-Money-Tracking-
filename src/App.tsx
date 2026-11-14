@@ -22,7 +22,6 @@ import { SmartMoneyScreenerView } from './views/SmartMoneyScreenerView';
 
 import { StorageService } from './services/storageService';
 import { CloudAppSyncService } from './services/cloudAppSyncService';
-import { getCloudApiKey } from './services/cloudScannerStorage';
 import {
   UserProfile,
   StockTrade,
@@ -194,7 +193,7 @@ function AuthenticatedApp() {
     };
     window.addEventListener('moti-cloud-sync-applied', onRemoteApplied);
     const start = async () => {
-      if (starting || pollHandle || !getCloudApiKey()) return;
+      if (starting || pollHandle) return;
       starting = true;
       try {
         await CloudAppSyncService.initialize(userId, onRemoteApplied);
