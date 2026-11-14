@@ -3,6 +3,7 @@ interface MotiD1Statement {
   bind(...values: unknown[]): MotiD1Statement;
   first<T = Record<string, unknown>>(): Promise<T | null>;
   run(): Promise<MotiD1Result>;
+  all<T = Record<string, unknown>>(): Promise<{ results?: T[] }>;
 }
 interface MotiD1Database {
   prepare(query: string): MotiD1Statement;
