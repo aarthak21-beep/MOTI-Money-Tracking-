@@ -2,6 +2,7 @@ import { Account, Client } from 'appwrite';
 
 export const APPWRITE_ENDPOINT = 'https://sgp.cloud.appwrite.io/v1';
 export const APPWRITE_PROJECT_ID = '6aedba7500289424a374';
+export const CLOUD_WORKER_URL = 'https://moti-cloud-storage.motidiagnostics.workers.dev';
 
 const client = new Client()
   .setEndpoint(APPWRITE_ENDPOINT)
