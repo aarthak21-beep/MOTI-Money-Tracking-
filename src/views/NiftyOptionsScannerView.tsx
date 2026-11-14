@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { loadScannerData, saveScannerData, deleteScannerData, loadNiftyOptionsHistory, saveNiftyOptionsSnapshot } from '../services/cloudScannerStorage';
+import { loadScannerData, saveScannerData, deleteScannerData } from '../services/cloudScannerStorage';
 import { Activity, Upload, Download, AlertTriangle, CalendarClock } from 'lucide-react';
 
 type OptionRow = {
@@ -7,8 +7,6 @@ type OptionRow = {
   oi: number; changeOi: number; volume: number; iv?: number; spot: number;
 };
 const STORAGE_KEY = 'moti_nifty_options_chain_v1';
-const HISTORY_KEY = 'moti_nifty_options_history_v1';
-type DailySnapshot = { date: string; spot: number; rows: Array<{ expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number }> };
 const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
 const number = (v?: string) => {
   if (!v || v.trim() === '-' || v.trim() === '—') return 0;
@@ -124,29 +122,11 @@ export const NiftyOptionsScannerView: React.FC = () => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as OptionRow[]; } catch { return []; }
   });
   const [message, setMessage] = useState('');
-  const [history, setHistory] = useState<DailySnapshot[]>(() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as DailySnapshot[]; } catch { return []; } });
   useEffect(() => {
     let active = true;
     loadScannerData<OptionRow[]>('nifty-options').then(data => {
       if (active && data) { setRows(data); localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud data load failed.'); });
-    loadNiftyOptionsHistory<DailySnapshot>().then(async cloudHistory => {
-      if (!active) return;
-      if (!cloudHistory.length) {
-        let localHistory: DailySnapshot[] = [];
-        try { localHistory = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as DailySnapshot[]; } catch { localHistory = []; }
-        for (const snapshot of localHistory.slice(-30)) {
-          if (!active) return;
-          await saveNiftyOptionsSnapshot(snapshot);
-        }
-        if (localHistory.length) cloudHistory = await loadNiftyOptionsHistory<DailySnapshot>();
-      }
-      if (active) {
-        const next = [...cloudHistory].sort((a, b) => a.date.localeCompare(b.date)).slice(-30);
-        setHistory(next);
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
-      }
-    }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'NIFTY history cloud load failed.'); });
     return () => { active = false; };
   }, []);
   const [error, setError] = useState('');
@@ -177,20 +157,6 @@ export const NiftyOptionsScannerView: React.FC = () => {
     return { ceOi, peOi, ceChg, peChg, pcr, bias, spot };
   }, [chain]);
   const rangeRows = useMemo(() => chain.filter(r => r.strike >= summary.spot - 600 && r.strike <= summary.spot + 600), [chain, summary.spot]);
-  const previousSnapshot = useMemo(() => [...history].filter(h => h.date < (history.length ? history[history.length - 1].date : '')).sort((a, b) => b.date.localeCompare(a.date))[0] || null, [history]);
-  const latestSnapshot = history.length ? [...history].sort((a, b) => b.date.localeCompare(a.date))[0] : null;
-  const previousRows = useMemo(() => previousSnapshot?.rows.filter(r => r.expiry === selectedExpiry) || [], [previousSnapshot, selectedExpiry]);
-  const priorByContract = useMemo(() => new Map(previousRows.map(r => [`${r.strike}-${r.type}`, r])), [previousRows]);
-  const priceOiSignals = useMemo(() => chain.filter(r => r.type === 'CE' || r.type === 'PE').map(r => {
-    const old = priorByContract.get(`${r.strike}-${r.type}`);
-    if (!old) return { ...r, signal: 'NEW / NO PRIOR DATA', signalType: 'neutral', oldLtp: undefined as number | undefined, oldOi: undefined as number | undefined };
-    const priceUp = r.ltp > old.ltp; const priceDown = r.ltp < old.ltp;
-    const oiUp = r.oi > old.oi; const oiDown = r.oi < old.oi;
-    const signal = priceUp && oiUp ? 'LONG BUILDUP' : priceDown && oiUp ? 'SHORT BUILDUP' : priceUp && oiDown ? 'SHORT COVERING' : priceDown && oiDown ? 'LONG UNWINDING' : 'NO CLEAR CHANGE';
-    const signalType = priceUp && oiUp || priceUp && oiDown ? 'bullish' : priceDown && oiUp || priceDown && oiDown ? 'bearish' : 'neutral';
-    return { ...r, signal, signalType, oldLtp: old.ltp, oldOi: old.oi };
-  }), [chain, priorByContract]);
-  const pcrHistory = useMemo(() => [...history].sort((a, b) => a.date.localeCompare(b.date)).map(h => { const ce = h.rows.filter(r => r.expiry === selectedExpiry && r.type === 'CE').reduce((s, r) => s + r.oi, 0); const pe = h.rows.filter(r => r.expiry === selectedExpiry && r.type === 'PE').reduce((s, r) => s + r.oi, 0); return { date: h.date, pcr: ce ? pe / ce : 0 }; }).filter(x => x.pcr > 0).slice(-7), [history, selectedExpiry]);
   const strikeStats = useMemo(() => {
     const grouped = new Map<number, { strike: number; ceOi: number; peOi: number; ceChange: number; peChange: number; ceVol: number; peVol: number }>();
     for (const r of rangeRows) {
@@ -217,16 +183,9 @@ export const NiftyOptionsScannerView: React.FC = () => {
       if (!parsed.length) throw new Error('वाचता येणाऱ्या NIFTY option rows सापडल्या नाहीत.');
       await saveScannerData('nifty-options', parsed);
       setRows(parsed);
-      const snapshotDate = new Date().toLocaleDateString('en-CA');
-      const snapshot: DailySnapshot = { date: snapshotDate, spot: parsed[0]?.spot || 0, rows: parsed.map(r => ({ expiry: r.expiry, strike: r.strike, type: r.type, ltp: r.ltp, oi: r.oi })) };
-      await saveNiftyOptionsSnapshot(snapshot);
-      const cloudHistory = await loadNiftyOptionsHistory<DailySnapshot>();
-      const nextHistory = [...cloudHistory].sort((a, b) => a.date.localeCompare(b.date)).slice(-30);
-      setHistory(nextHistory);
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
       setExpiryChoice('');
-      setMessage(`${parsed.length} option rows import झाले. NSE CSV मधील spot CE-PE premium parity वरून अंदाजे काढला आहे. Cloudflare D1 मध्ये Appwrite-authenticated session द्वारे save केला आहे.`);
+      setMessage(`${parsed.length} option rows import झाले. NSE CSV मधील spot CE-PE premium parity वरून अंदाजे काढला आहे. `);
     } catch (e) { setError(e instanceof Error ? e.message : 'CSV वाचता आला नाही.'); }
     finally { setLoading(false); }
   };
