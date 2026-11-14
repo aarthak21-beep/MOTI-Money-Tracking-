@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { loadScannerData, saveScannerData, deleteScannerData } from '../services/cloudScannerStorage';
+import { loadScannerData, saveScannerData, deleteScannerData, loadNiftyOptionsHistory, saveNiftyOptionsSnapshot } from '../services/cloudScannerStorage';
 import { Activity, Upload, Download, AlertTriangle, CalendarClock } from 'lucide-react';
 
 type OptionRow = {
@@ -125,7 +125,30 @@ export const NiftyOptionsScannerView: React.FC = () => {
   });
   const [message, setMessage] = useState('');
   const [history, setHistory] = useState<DailySnapshot[]>(() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as DailySnapshot[]; } catch { return []; } });
-  useEffect(() => { let active = true; loadScannerData<OptionRow[]>('nifty-options').then(data => { if (active && data) { setRows(data); localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud data load failed.'); }); return () => { active = false; }; }, []);
+  useEffect(() => {
+    let active = true;
+    loadScannerData<OptionRow[]>('nifty-options').then(data => {
+      if (active && data) { setRows(data); localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+    }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud data load failed.'); });
+    loadNiftyOptionsHistory<DailySnapshot>().then(async cloudHistory => {
+      if (!active) return;
+      if (!cloudHistory.length) {
+        let localHistory: DailySnapshot[] = [];
+        try { localHistory = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as DailySnapshot[]; } catch { localHistory = []; }
+        for (const snapshot of localHistory.slice(-30)) {
+          if (!active) return;
+          await saveNiftyOptionsSnapshot(snapshot);
+        }
+        if (localHistory.length) cloudHistory = await loadNiftyOptionsHistory<DailySnapshot>();
+      }
+      if (active) {
+        const next = [...cloudHistory].sort((a, b) => a.date.localeCompare(b.date)).slice(-30);
+        setHistory(next);
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+      }
+    }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'NIFTY history cloud load failed.'); });
+    return () => { active = false; };
+  }, []);
   const [error, setError] = useState('');
   const [stopPct, setStopPct] = useState(20);
   const [targetPct, setTargetPct] = useState(35);
@@ -196,7 +219,11 @@ export const NiftyOptionsScannerView: React.FC = () => {
       setRows(parsed);
       const snapshotDate = new Date().toLocaleDateString('en-CA');
       const snapshot: DailySnapshot = { date: snapshotDate, spot: parsed[0]?.spot || 0, rows: parsed.map(r => ({ expiry: r.expiry, strike: r.strike, type: r.type, ltp: r.ltp, oi: r.oi })) };
-      setHistory(prev => { const next = [...prev.filter(h => h.date !== snapshotDate), snapshot].sort((a, b) => a.date.localeCompare(b.date)).slice(-30); localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); return next; });
+      await saveNiftyOptionsSnapshot(snapshot);
+      const cloudHistory = await loadNiftyOptionsHistory<DailySnapshot>();
+      const nextHistory = [...cloudHistory].sort((a, b) => a.date.localeCompare(b.date)).slice(-30);
+      setHistory(nextHistory);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
       setExpiryChoice('');
       setMessage(`${parsed.length} option rows import झाले. NSE CSV मधील spot CE-PE premium parity वरून अंदाजे काढला आहे. Cloudflare D1 मध्ये Appwrite-authenticated session द्वारे save केला आहे.`);
@@ -283,6 +310,6 @@ export const NiftyOptionsScannerView: React.FC = () => {
       {candidates.length ? <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Type','Strike','Expiry','Entry','Stop-loss','Target','Risk / lot','Max lots'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{candidates.map(r => { const stop = r.ltp * (1 - stopPct / 100); const riskPerLot = (r.ltp - stop) * lotSize; const lots = riskPerLot > 0 ? Math.floor(1000 / riskPerLot) : 0; return <tr key={r.expiry + r.strike + r.type}><td className="px-3 py-3 font-black text-emerald-300">{r.type}</td><td className="px-3 py-3 text-white">{fmt(r.strike)}</td><td className="px-3 py-3">{r.expiry}</td><td className="px-3 py-3 text-white">₹{fmt(r.ltp)}</td><td className="px-3 py-3 text-rose-300">₹{fmt(stop)}</td><td className="px-3 py-3 text-emerald-300">₹{fmt(r.ltp * (1 + targetPct / 100))}</td><td className="px-3 py-3">₹{fmt(riskPerLot)}</td><td className="px-3 py-3 font-bold">{lots > 0 ? `${lots} lot(s)` : 'SKIP'}</td></tr>; })}</tbody></table></div> : <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs text-amber-100">{rows.length ? 'सध्याच्या OI reading वर स्पष्ट directional bias नाही. Support/Resistance आणि OI table वरून निरीक्षण करा; WAIT.' : 'सुरुवात करण्यासाठी option-chain CSV upload कर.'}</div>}
       <div className="mt-4 flex items-start gap-2 rounded-lg bg-[#080f1b] p-3 text-[11px] leading-5 text-slate-400"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /> Highest CE/PE OI हे फक्त संभाव्य resistance/support आहेत; हमखास स्तर नाहीत. OI/PCR एकट्याने buy signal देत नाहीत. Chart trend, liquidity, bid-ask spread, volatility आणि event risk तपासा. Option buying मध्ये premium पूर्ण गमावण्याचा धोका असतो.</div>
     </div>
-    <div className="flex items-center justify-between text-[10px] text-slate-500"><span><CalendarClock className="mr-1 inline h-3 w-3" /> Current data cloud + browser · History last 30 uploads saved in this browser</span><button onClick={clearData} className="underline hover:text-white">Clear option data</button></div>
+    <div className="flex items-center justify-between text-[10px] text-slate-500"><span><CalendarClock className="mr-1 inline h-3 w-3" /> Current data cloud + browser · History last 30 daily snapshots saved in Cloudflare D1</span><button onClick={clearData} className="underline hover:text-white">Clear option data</button></div>
   </div>;
 };
