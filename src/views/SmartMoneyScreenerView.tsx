@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getCloudApiKey, loadScannerData, saveScannerData, deleteScannerData } from '../services/cloudScannerStorage';
+import { loadScannerData, saveScannerData, deleteScannerData } from '../services/cloudScannerStorage';
 import { Activity, Upload, Download, Trash2, Search, ShieldAlert, FileSpreadsheet, Info } from 'lucide-react';
 
 type StockRow = {
@@ -36,15 +36,7 @@ const saveRowsToDb = async (rows: StockRow[]): Promise<void> => {
     tx.onabort = () => { db.close(); reject(tx.error || new Error('डेटा save रद्द झाला.')); };
   });
 };
-const deleteSavedRows = async (): Promise<void> => {
-  const db = await openDataDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).delete(KEY);
-    tx.oncomplete = () => { db.close(); resolve(); };
-    tx.onerror = () => { db.close(); reject(tx.error || new Error('डेटा delete झाला नाही.')); };
-  });
-};
+
 const csvTemplate = 'date,symbol,close,prevClose,volume,avgVolume,deliveryQty,deliveryPct,high,low\n2026-11-13,RELIANCE,1450,1438,2500000,1200000,1550000,62,1462,1432\n';
 const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
 const number = (v?: string) => { if (!v?.trim()) return undefined; const n = Number(v.replace(/[,₹%\s]/g, '')); return Number.isFinite(n) ? n : undefined; };
@@ -75,7 +67,8 @@ export const SmartMoneyScreenerView: React.FC = () => {
     let active = true;
     (async () => {
       try {
-        let saved = getCloudApiKey() ? ((await loadScannerData<StockRow[]>('smart-money')) || []) : await readSavedRows();
+        const cloudSaved = await loadScannerData<StockRow[]>('smart-money');
+        let saved = cloudSaved || await readSavedRows();
         if (!saved.length) {
           const legacy = localStorage.getItem(KEY);
           if (legacy) {
@@ -88,6 +81,7 @@ export const SmartMoneyScreenerView: React.FC = () => {
             }
           }
         }
+        if (!cloudSaved && saved.length) await saveScannerData('smart-money', saved);
         if (active) setRows(saved);
       } catch {
         if (active) setError('Saved data load/migrate करता आला नाही. CSV पुन्हा import करून पाहा.');
@@ -107,9 +101,9 @@ export const SmartMoneyScreenerView: React.FC = () => {
     return {...r,volumeRatio,change,accumulation,distribution,breakout,signal,score:best};
   }).sort((a,b)=>b.score-a.score),[rows]);
   const visible=enriched.filter(r=>r.symbol.includes(query.trim().toUpperCase())&&(filter==='ALL'||r.signal===filter));
-  const upload=async(file?:File)=>{if(!file)return;setError('');setMessage('');try{const parsed=parseCsv(await file.text());if(getCloudApiKey()) await saveScannerData('smart-money', parsed); else await saveRowsToDb(parsed);setRows(parsed);setMessage(getCloudApiKey()?`${parsed.length} EQ rows Cloudflare D1 मध्ये save झाले.`:`${parsed.length} EQ rows IndexedDB मध्ये save झाले. Settings मध्ये Cloud API Key save केल्यावर cloud sync सुरू होईल.`);}catch(e){setError(e instanceof Error?e.message:'CSV import/save करता आला नाही.');}};
+  const upload=async(file?:File)=>{if(!file)return;setError('');setMessage('');try{const parsed=parseCsv(await file.text());await saveScannerData('smart-money', parsed);setRows(parsed);setMessage(`${parsed.length} EQ rows Cloudflare D1 मध्ये Appwrite-authenticated session द्वारे save झाले.`);}catch(e){setError(e instanceof Error?e.message:'CSV import/save करता आला नाही.');}};
   const download=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvTemplate],{type:'text/csv;charset=utf-8'}));a.download='moti-smart-money-template.csv';a.click();URL.revokeObjectURL(a.href);};
-  const clear=async()=>{if(window.confirm('Smart Money Screener चा saved CSV data delete करायचा?')){try{if(getCloudApiKey()) await deleteScannerData('smart-money'); else await deleteSavedRows();localStorage.removeItem(KEY);setRows([]);setMessage('Saved data delete केला.');}catch{setError('Saved data delete करता आला नाही.');}}};
+  const clear=async()=>{if(window.confirm('Smart Money Screener चा saved CSV data delete करायचा?')){try{await deleteScannerData('smart-money');localStorage.removeItem(KEY);setRows([]);setMessage('Saved data delete केला.');}catch{setError('Saved data delete करता आला नाही.');}}};
   return <div className="space-y-5">
     <section className="rounded-2xl border border-emerald-300/20 bg-gradient-to-br from-[#10251f] via-[#0b1724] to-[#101827] p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2 text-emerald-300"><Activity className="h-5 w-5"/><span className="text-xs font-bold uppercase tracking-[.18em]">MOTI · Swing / Positional</span></div><h1 className="mt-2 text-2xl font-black text-white sm:text-3xl">Smart Money Screener</h1><p className="mt-2 max-w-2xl text-sm text-slate-300">Accumulation, Distribution आणि Volume Breakout चे संभाव्य संकेत शोधा. हा intraday scanner नाही.</p></div><span className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-3 py-1.5 text-xs font-semibold text-emerald-200">CSV based · Beta</span></div>

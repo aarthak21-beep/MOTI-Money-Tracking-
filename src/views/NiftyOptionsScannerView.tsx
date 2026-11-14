@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getCloudApiKey, loadScannerData, saveScannerData, deleteScannerData } from '../services/cloudScannerStorage';
+import { loadScannerData, saveScannerData, deleteScannerData } from '../services/cloudScannerStorage';
 import { Activity, Upload, Download, AlertTriangle, CalendarClock } from 'lucide-react';
 
 type OptionRow = {
@@ -122,7 +122,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as OptionRow[]; } catch { return []; }
   });
   const [message, setMessage] = useState('');
-  useEffect(() => { if (!getCloudApiKey()) return; let active = true; loadScannerData<OptionRow[]>('nifty-options').then(data => { if (active && data) { setRows(data); localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud data load failed.'); }); return () => { active = false; }; }, []);
+  useEffect(() => { let active = true; loadScannerData<OptionRow[]>('nifty-options').then(data => { if (active && data) { setRows(data); localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud data load failed.'); }); return () => { active = false; }; }, []);
   const [error, setError] = useState('');
   const [stopPct, setStopPct] = useState(20);
   const [targetPct, setTargetPct] = useState(35);
@@ -175,11 +175,11 @@ export const NiftyOptionsScannerView: React.FC = () => {
     try {
       const parsed = parseCsv(await file.text(), file.name);
       if (!parsed.length) throw new Error('वाचता येणाऱ्या NIFTY option rows सापडल्या नाहीत.');
-      if (getCloudApiKey()) await saveScannerData('nifty-options', parsed);
+      await saveScannerData('nifty-options', parsed);
       setRows(parsed);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
       setExpiryChoice('');
-      setMessage(`${parsed.length} option rows import झाले. NSE CSV मधील spot CE-PE premium parity वरून अंदाजे काढला आहे. ${getCloudApiKey() ? 'Cloudflare D1 मध्ये save केला आहे.' : 'या browser मध्ये save केला आहे; cloud sync साठी Settings मध्ये API key द्या.'}`);
+      setMessage(`${parsed.length} option rows import झाले. NSE CSV मधील spot CE-PE premium parity वरून अंदाजे काढला आहे. Cloudflare D1 मध्ये Appwrite-authenticated session द्वारे save केला आहे.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'CSV वाचता आला नाही.'); }
     finally { setLoading(false); }
   };
@@ -189,7 +189,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
   };
   const clearData = () => {
     if (window.confirm('Saved NIFTY option-chain data delete करायचा?')) {
-      void (async () => { try { if (getCloudApiKey()) await deleteScannerData('nifty-options'); setRows([]); localStorage.removeItem(STORAGE_KEY); setMessage('Option-chain data clear केला.'); } catch (e) { setError(e instanceof Error ? e.message : 'Cloud delete failed.'); } })();
+      void (async () => { try { await deleteScannerData('nifty-options'); setRows([]); localStorage.removeItem(STORAGE_KEY); setMessage('Option-chain data clear केला.'); } catch (e) { setError(e instanceof Error ? e.message : 'Cloud delete failed.'); } })();
     }
   };
 
