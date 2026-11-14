@@ -179,7 +179,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
       setRows(parsed);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
       setExpiryChoice('');
-      setMessage(`${parsed.length} option rows import झाले. NSE CSV मधील spot CE-PE premium parity वरून अंदाजे काढला आहे. डेटा Cloudflare D1 मध्ये save केला आहे.`);
+      setMessage(`${parsed.length} option rows import झाले. NSE CSV मधील spot CE-PE premium parity वरून अंदाजे काढला आहे. ${getCloudApiKey() ? 'Cloudflare D1 मध्ये save केला आहे.' : 'या browser मध्ये save केला आहे; cloud sync साठी Settings मध्ये API key द्या.'}`);
     } catch (e) { setError(e instanceof Error ? e.message : 'CSV वाचता आला नाही.'); }
     finally { setLoading(false); }
   };
