@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, Upload, RefreshCw, FileSpreadsheet, Info } from 'lucide-react';
+import { getCloudApiKey, loadScannerData, saveScannerData } from '../services/cloudScannerStorage';
 
 type DailyRow = {
   date: string; symbol: string; series?: string; close?: number; prevClose?: number;
@@ -165,6 +166,7 @@ export const SwingScannerView: React.FC = () => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as DailyRow[]; } catch { return []; }
   });
   const [reportDate, setReportDate] = useState(todayLocal);
+  const [cloudReady, setCloudReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -185,7 +187,8 @@ export const SwingScannerView: React.FC = () => {
   const [darvas20, setDarvas20] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'weeklyChange', direction: 'desc' });
-  useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); } catch { setMessage('Browser storage भरले आहे. जुन्या नोंदी clear करा.'); } }, [records]);
+  useEffect(() => { let active = true; (async () => { try { if (getCloudApiKey()) { const cloudRows = await loadScannerData<DailyRow[]>('swing'); if (active && cloudRows) setRecords(cloudRows); } } catch (e) { if (active) setMessage(e instanceof Error ? e.message : 'Cloud data load failed.'); } finally { if (active) setCloudReady(true); } })(); return () => { active = false; }; }, []);
+  useEffect(() => { if (!cloudReady) return; try { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); } catch { setMessage('Browser storage भरले आहे.'); } if (getCloudApiKey()) { saveScannerData('swing', records).catch(e => setMessage(e instanceof Error ? e.message : 'Cloud save failed.')); } }, [records, cloudReady]);
 
   const latestDate = useMemo(() => records.reduce((d, r) => r.date > d ? r.date : d, ''), [records]);
   const latestRows = useMemo(() => records.filter(r => r.date === latestDate), [records, latestDate]);
@@ -330,7 +333,7 @@ export const SwingScannerView: React.FC = () => {
     }
     if (incoming.length) {
       setRecords(old => mergeRows(old, incoming));
-      setMessage(incoming.length + ' stock rows import झाले. Reports: ' + Array.from(new Set(foundTypes)).join(', '));
+      setMessage(incoming.length + ' stock rows import झाले. Reports: ' + Array.from(new Set(foundTypes)).join(', ') + (getCloudApiKey() ? ' · Cloud sync सुरू आहे.' : ' · Settings मध्ये Cloud API Key save करा.'));
     }
     setErrors(issues); setLoading(false);
   };
