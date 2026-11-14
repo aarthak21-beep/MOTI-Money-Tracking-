@@ -38,13 +38,17 @@ export const AppwriteLoginGate: React.FC<Props> = ({ children }) => {
     }
   };
 
-  useEffect(() => { void refreshSession(); }, []);
+  useEffect(() => {
+    localStorage.removeItem('moti_cloud_api_key_v1');
+    void refreshSession();
+  }, []);
 
   const handleLogin = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     setError('');
     try {
+      await appwriteAccount.deleteSession({ sessionId: 'current' }).catch(() => undefined);
       await appwriteAccount.createEmailPasswordSession({ email: email.trim(), password });
       await refreshSession();
     } catch (err) {
