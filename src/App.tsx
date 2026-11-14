@@ -62,7 +62,15 @@ export default function App() {
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
   // Security Lock State
-  const [isLocked, setIsLocked] = useState<boolean>(false);
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    const lastActivity = Number(localStorage.getItem(`moti_last_activity_v1_${userId}`));
+    return Boolean(
+      profile.pinEnabled &&
+      profile.pinCode &&
+      lastActivity &&
+      Date.now() - lastActivity >= 2 * 60 * 1000
+    );
+  });
 
   // Auto-lock after 2 minutes without activity. Background time counts too.
   // The last-activity timestamp is checked again when the app becomes visible,
