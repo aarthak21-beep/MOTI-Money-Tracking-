@@ -16,10 +16,10 @@ const parseCsv = (raw: string): StockRow[] => {
   const headers = split(lines[0]).map(normalize);
   const col = (...names: string[]) => headers.findIndex(h => names.includes(h));
   const idx = {
-    date: col('date','tradedate'), symbol: col('symbol','tradingsymbol'), close: col('close','ltp','lastprice'),
-    prev: col('prevclose','previousclose'), volume: col('volume','tottrdqty','totaltradedquantity','totalvolume'),
+    date: col('date','tradedate','date1'), symbol: col('symbol','tradingsymbol'), close: col('close','closeprice','ltp','lastprice'),
+    prev: col('prevclose','previousclose'), volume: col('volume','tottrdqty','ttltrdqty','totaltradedquantity','totalvolume'),
     avg: col('avgvolume','averagevolume'), delivery: col('deliveryqty','delivqty','deliverablequantity'),
-    deliveryPct: col('deliverypct','delivper','deliverypercentage'), high: col('high'), low: col('low')
+    deliveryPct: col('deliverypct','delivper','deliverypercentage'), high: col('high','highprice'), low: col('low','lowprice')
   };
   if(idx.symbol<0 || idx.close<0 || idx.volume<0) throw new Error('Symbol, Close/LTP आणि Volume columns आवश्यक आहेत.');
   const rows: StockRow[]=[];
