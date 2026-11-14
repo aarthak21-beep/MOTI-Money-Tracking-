@@ -1,5 +1,5 @@
 import { StorageService } from './storageService';
-import { getCloudApiKey } from './cloudScannerStorage';
+import { getAppwriteJwt } from './appwriteAuth';
 
 const API_URL = 'https://moti-cloud-storage.motidiagnostics.workers.dev';
 type CloudBackupResponse = { backup: string | null; revision: number; updatedAt: string | null };
@@ -10,11 +10,10 @@ let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 let lastLocalSnapshot = '';
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const key = getCloudApiKey();
-  if (!key) throw new Error('Cloud API key is not configured on this device.');
+  const jwt = await getAppwriteJwt();
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${key}`, ...(init.headers || {}) },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${jwt}`, ...(init.headers || {}) },
     cache: 'no-store',
   });
   const body = await response.json().catch(() => ({})) as T & { error?: string };
@@ -107,7 +106,7 @@ async function writeCloud(backup: string, expectedRevision: number): Promise<num
 
 export const CloudAppSyncService = {
   async initialize(userId: string, onRemoteApplied: () => void): Promise<void> {
-    if (!getCloudApiKey()) return;
+
     const cloud = await readCloud();
     if (cloud.backup) {
       applyingRemote = true;
@@ -128,7 +127,7 @@ export const CloudAppSyncService = {
   },
 
   schedule(userId: string): void {
-    if (!initialized || applyingRemote || !getCloudApiKey()) return;
+    if (!initialized || applyingRemote) return;
     if (pendingTimer) clearTimeout(pendingTimer);
     pendingTimer = setTimeout(async () => {
       pendingTimer = null;
@@ -166,7 +165,7 @@ export const CloudAppSyncService = {
   },
 
   async poll(userId: string, onRemoteApplied: () => void): Promise<void> {
-    if (!initialized || applyingRemote || pendingTimer || !getCloudApiKey()) return;
+    if (!initialized || applyingRemote || pendingTimer) return;
     const cloud = await readCloud();
     if (!cloud.backup || cloud.revision <= revision) return;
     applyingRemote = true;
