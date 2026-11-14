@@ -22,7 +22,6 @@ import { SmartMoneyScreenerView } from './views/SmartMoneyScreenerView';
 
 import { StorageService } from './services/storageService';
 import { CloudAppSyncService } from './services/cloudAppSyncService';
-import { getCloudApiKey } from './services/cloudScannerStorage';
 import {
   UserProfile,
   StockTrade,
@@ -36,8 +35,9 @@ import {
   AppNotification
 } from './types';
 import { Sparkles } from 'lucide-react';
+import { AppwriteLoginGate } from './components/AppwriteLoginGate';
 
-export default function App() {
+function AuthenticatedApp() {
   const [userId] = useState('usr_default');
   const [profile, setProfile] = useState<UserProfile>(() => StorageService.getProfile(userId));
   const [accounts, setAccounts] = useState<AccountRecord[]>(() => StorageService.getAccounts(userId));
@@ -193,7 +193,7 @@ export default function App() {
     };
     window.addEventListener('moti-cloud-sync-applied', onRemoteApplied);
     const start = async () => {
-      if (starting || pollHandle || !getCloudApiKey()) return;
+      if (starting || pollHandle) return;
       starting = true;
       try {
         await CloudAppSyncService.initialize(userId, onRemoteApplied);
@@ -455,5 +455,14 @@ export default function App() {
         onTransfer={handleQuickTransfer}
       />
     </div>
+  );
+}
+
+
+export default function App() {
+  return (
+    <AppwriteLoginGate>
+      <AuthenticatedApp />
+    </AppwriteLoginGate>
   );
 }
