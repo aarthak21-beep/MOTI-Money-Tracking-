@@ -22,6 +22,7 @@ import { SmartMoneyScreenerView } from './views/SmartMoneyScreenerView';
 
 import { StorageService } from './services/storageService';
 import { CloudAppSyncService } from './services/cloudAppSyncService';
+import { getCloudApiKey } from './services/cloudScannerStorage';
 import {
   UserProfile,
   StockTrade,
@@ -129,11 +130,14 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     let pollHandle: ReturnType<typeof setInterval> | undefined;
+    let starting = false;
     const onRemoteApplied = () => {
       if (!cancelled) reloadAllData();
     };
     window.addEventListener('moti-cloud-sync-applied', onRemoteApplied);
     const start = async () => {
+      if (starting || pollHandle || !getCloudApiKey()) return;
+      starting = true;
       try {
         await CloudAppSyncService.initialize(userId, onRemoteApplied);
         if (cancelled) return;
@@ -144,12 +148,16 @@ export default function App() {
         }, 10000);
       } catch (error) {
         console.warn('MOTI full-app cloud sync could not start:', error);
+      } finally {
+        starting = false;
       }
     };
+    window.addEventListener('moti-cloud-key-updated', start);
     start();
     return () => {
       cancelled = true;
       window.removeEventListener('moti-cloud-sync-applied', onRemoteApplied);
+      window.removeEventListener('moti-cloud-key-updated', start);
       if (pollHandle) clearInterval(pollHandle);
       CloudAppSyncService.stop();
     };
