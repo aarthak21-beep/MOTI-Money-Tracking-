@@ -195,7 +195,7 @@ export default {
         const contentLength = Number(request.headers.get('content-length') || 0);
         if (contentLength > 4 * 1024 * 1024) return response({ error: 'Snapshot exceeds 4 MB' }, 413, origin);
         let payload: { snapshot?: { date?: unknown; spot?: unknown; rows?: unknown } };
-        try { payload = await request.json() as typeof payload; }
+        try { payload = await request.json() as { snapshot?: { date?: unknown; spot?: unknown; rows?: unknown } }; }
         catch { return response({ error: 'Invalid JSON body' }, 400, origin); }
         const snapshot = payload.snapshot;
         if (!snapshot || typeof snapshot.date !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshot.date)
