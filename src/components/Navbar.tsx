@@ -59,19 +59,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           className="flex cursor-pointer items-center space-x-3 transition-opacity hover:opacity-90"
         >
           <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#0e172a] to-[#030712] p-1 border border-emerald-300/25 shadow-lg shadow-amber-500/10">
-            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="MOTI Logo" className="h-full w-full object-contain" />
+            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="MOTI Finova Logo" className="h-full w-full object-contain" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-xl font-black tracking-wider text-white">
-                MOTI
-              </span>
+              <span className="text-xl font-black tracking-wider text-white">MOTI</span>
+              <span className="text-xs font-extrabold tracking-[0.18em] text-emerald-300">FINOVA</span>
               <span className="hidden rounded bg-emerald-300/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300 border border-emerald-300/20 sm:inline-block">
                 PRO
               </span>
             </div>
             <p className="hidden text-[10px] font-medium tracking-tight text-slate-400 md:block">
-              Money & Operations Tracking Intelligence
+              SMART FINANCE · CLEAR FUTURE
             </p>
           </div>
         </div>
@@ -221,7 +220,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="flex h-7 w-7 items-center justify-center rounded-md border border-emerald-300/25 bg-[#050a12] p-1">
               <img
                 src={`${import.meta.env.BASE_URL}logo.svg`}
-                alt="MOTI"
+                alt="MOTI Finova"
                 className="h-full w-full object-contain"
               />
             </span>
