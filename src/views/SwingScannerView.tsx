@@ -339,36 +339,13 @@ export const SwingScannerView: React.FC = () => {
   };
   const exportCsv = () => {
     if (!sortedCandidates.length) return;
-    const headers = [
-      'Symbol', 'Series', 'Latest Close', '5-Day Move %', 'Volume vs 1W Avg',
-      '5D Breakout', '5D Box Low', '5D Box High',
-      '10D Breakout', '10D Box Low', '10D Box High',
-      '20D Breakout', '20D Box Low', '20D Box High',
-      'Today %', 'Report Sources'
-    ];
-    const csvCell = (value: string | number | undefined) => {
-      const text = value === undefined ? '' : String(value);
-      return '"' + text.replace(/"/g, '""') + '"';
-    };
-    const rows = sortedCandidates.map(item => {
-      const range = (days: number) => item.breakoutRanges.find(r => r.days === days);
-      const status = (days: number) => {
-        const r = range(days);
-        return !r?.enough ? 'Insufficient data' : r.breakout ? 'Breakout' : 'No breakout';
-      };
-      return [
-        item.symbol, item.series, item.close, item.weeklyChange, item.volumeMultiple,
-        status(5), range(5)?.boxLow, range(5)?.boxHigh,
-        status(10), range(10)?.boxLow, range(10)?.boxHigh,
-        status(20), range(20)?.boxLow, range(20)?.boxHigh,
-        item.pctToday, item.sources.join(', ')
-      ].map(csvCell).join(',');
-    });
-    const csv = '\\uFEFF' + [headers.map(csvCell).join(','), ...rows].join('\\r\\n');
+    const csvCell = (value: string) => '"' + value.replace(/"/g, '""') + '"';
+    const rows = sortedCandidates.map(item => csvCell(item.symbol));
+    const csv = '\uFEFF' + [csvCell('Stock'), ...rows].join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'swing-scanner-' + (latestDate || todayLocal()) + '.csv';
+    link.download = 'swing-scanner-stocks-' + (latestDate || todayLocal()) + '.csv';
     document.body.appendChild(link);
     link.click();
     link.remove();
