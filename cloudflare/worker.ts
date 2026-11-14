@@ -1,5 +1,15 @@
+interface MotiD1Result { success: boolean; meta?: Record<string, unknown>; }
+interface MotiD1Statement {
+  bind(...values: unknown[]): MotiD1Statement;
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+  run(): Promise<MotiD1Result>;
+}
+interface MotiD1Database {
+  prepare(query: string): MotiD1Statement;
+}
+
 export interface Env {
-  MOTI_DB: D1Database;
+  MOTI_DB: MotiD1Database;
   MOTI_API_KEY: string;
   ALLOWED_ORIGIN?: string;
 }
