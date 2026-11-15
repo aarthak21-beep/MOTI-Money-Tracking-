@@ -330,7 +330,8 @@ export const NiftyOptionsScannerView: React.FC = () => {
     const oldCe=previous?.rows.filter(r=>r.expiry===expiry&&r.type==='CE').reduce((v,r)=>v+r.oi,0)||0,oldPe=previous?.rows.filter(r=>r.expiry===expiry&&r.type==='PE').reduce((v,r)=>v+r.oi,0)||0;
     const previousPcr=oldCe?oldPe/oldCe:0,pcrTrend=previousPcr?(pcr>previousPcr?'UP':pcr<previousPcr?'DOWN':'FLAT'):'NO PRIOR DATA';
     const bias=pcr>=1.1&&peChange>ceChange?'BULLISH':pcr<=0.9&&ceChange>peChange?'BEARISH':'NEUTRAL';
-    return {expiry,spot,ceOi,peOi,ceChange,peChange,pcr,previousPcr,pcrTrend,resistance,support,buildup,hasPrevious:Boolean(previous),rowCount:expiryRows.length,bias};
+    const heatmap=strikes.filter(x=>x.ceOi>0||x.peOi>0).sort((a,b)=>(b.ceOi+b.peOi)-(a.ceOi+a.peOi)).slice(0,12).sort((a,b)=>a.strike-b.strike);
+    return {expiry,spot,ceOi,peOi,ceChange,peChange,pcr,previousPcr,pcrTrend,resistance,support,buildup,hasPrevious:Boolean(previous),rowCount:expiryRows.length,bias,heatmap};
   }).filter(x=>x.rowCount>0),[expiries,rows,history]);
   const overallMarketDirection = useMemo(() => {
     const ceOi = allExpiryAnalytics.reduce((v, x) => v + x.ceOi, 0);
@@ -448,6 +449,20 @@ export const NiftyOptionsScannerView: React.FC = () => {
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Combined CE Change OI</p><p className="mt-1 font-bold text-white">{fmt(overallMarketDirection.ceChange)} contracts</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Combined PE Change OI</p><p className="mt-1 font-bold text-white">{fmt(overallMarketDirection.peChange)} contracts</p></div></div>
       <div className="mt-3 space-y-2">{allExpiryAnalytics.map(item=><div key={item.expiry} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#080f1b] px-3 py-2"><span className="text-xs font-bold text-white">{item.expiry}</span><span className="text-[10px] text-slate-400">PCR {item.pcr.toFixed(2)} · CE Δ {fmt(item.ceChange)} · PE Δ {fmt(item.peChange)}</span><span className={'text-[10px] font-black '+(item.bias==='BULLISH'?'text-emerald-200':item.bias==='BEARISH'?'text-rose-200':'text-amber-200')}>{item.bias}</span></div>)}</div>
       <p className="mt-3 text-[10px] text-amber-200/80">Directional read हा OI-आधारित अंदाज आहे. Option buying करण्यापूर्वी price action, liquidity, spread, IV आणि risk तपासा.</p>
+    </section>
+
+    <section className="rounded-2xl border border-fuchsia-300/20 bg-[#101326] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-white">OI Heatmap · All Eligible Expiries</h2><p className="mt-1 text-[11px] text-slate-400">प्रत्येक expiry मधील सर्वाधिक OI असलेले 12 strikes; रंगाची तीव्रता OI प्रमाणात.</p></div><div className="flex gap-3 text-[10px]"><span className="text-rose-200">■ CE Call OI</span><span className="text-emerald-200">■ PE Put OI</span></div></div>
+      {!allExpiryAnalytics.length?<p className="mt-3 text-xs text-amber-200">Heatmap साठी eligible expiry data उपलब्ध नाही.</p>:<div className="mt-4 grid gap-3 xl:grid-cols-2">{allExpiryAnalytics.map(item=>{const maxOi=Math.max(1,...item.heatmap.flatMap(x=>[x.ceOi,x.peOi]));return <div key={item.expiry} className="rounded-xl border border-slate-700 bg-[#080f1b] p-3">
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-xs font-black text-white">{item.expiry}</h3><span className="text-[10px] text-slate-400">Spot ₹{fmt(item.spot)}</span></div>
+        <div className="grid grid-cols-[1fr_62px_1fr] gap-2 pb-2 text-[9px] font-bold uppercase tracking-wide text-slate-500"><span className="text-right">CE OI</span><span className="text-center">Strike</span><span>PE OI</span></div>
+        {!item.heatmap.length?<p className="py-3 text-center text-[10px] text-slate-500">No OI data in spot ±600 range</p>:<div className="space-y-1">{item.heatmap.map(level=><div key={level.strike} className="grid grid-cols-[1fr_62px_1fr] items-center gap-2">
+          <div className="relative flex h-7 items-center justify-end overflow-hidden rounded bg-rose-400/5 px-2"><div className="absolute inset-y-0 right-0 rounded bg-rose-500/35" style={{width:(level.ceOi/maxOi*100)+'%'}}/><span className="relative text-[10px] font-semibold text-rose-100">{fmt(level.ceOi)}</span></div>
+          <div className={'rounded px-1 py-1 text-center text-[10px] font-black '+(Math.abs(level.strike-item.spot)<=50?'bg-cyan-300/15 text-cyan-100':'bg-slate-800 text-slate-200')}>{fmt(level.strike)}</div>
+          <div className="relative flex h-7 items-center overflow-hidden rounded bg-emerald-400/5 px-2"><div className="absolute inset-y-0 left-0 rounded bg-emerald-500/35" style={{width:(level.peOi/maxOi*100)+'%'}}/><span className="relative text-[10px] font-semibold text-emerald-100">{fmt(level.peOi)}</span></div>
+        </div>)}</div>}
+      </div>})}</div>}
+      <p className="mt-3 text-[10px] text-amber-200/80">हे OI concentration view आहे; जास्त CE/PE OI म्हणजे guaranteed resistance/support नाही. Heatmap फक्त spot ±600 मधील उपलब्ध strikes वापरतो.</p>
     </section>
 
     <section className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
