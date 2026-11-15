@@ -170,8 +170,10 @@ const scoreRow = (row: PennyRow): PennyRow => {
   const availableMetrics = coverageFields.filter(v => v !== undefined).length;
   const normalized = Math.round(earned);
   const hardRisk = Boolean(row.lossLatestQuarter || row.negativeNetWorth || (row.redFlagCount !== undefined && row.redFlagCount >= 3));
+  const dataQualityWarnings = risks.filter(r => r.startsWith('Exceptional ') || r.startsWith('Unusually high ')).length;
+  const substantiveRiskCount = risks.length - dataQualityWarnings;
   const hasGrowthData = row.salesGrowth !== undefined && row.profitGrowth !== undefined;
-  const status = availableMetrics < 4 ? 'Insufficient Data' : hardRisk || risks.length >= 3 || normalized < 40 ? 'Risky / Avoid' : !hasGrowthData || availableMetrics < 8 ? 'Incomplete Data' : normalized >= 70 ? 'Strong Fundamentals' : 'Improving Fundamentals';
+  const status = availableMetrics < 4 ? 'Insufficient Data' : hardRisk || substantiveRiskCount >= 3 || normalized < 40 ? 'Risky / Avoid' : !hasGrowthData || availableMetrics < 8 ? 'Incomplete Data' : normalized >= 70 ? 'Strong Fundamentals' : 'Improving Fundamentals';
   return { ...row, score: normalized, coverage: availableMetrics, status, risks };
 };
 const money = (n?: number) => n === undefined ? '—' : '₹' + n.toLocaleString('en-IN',{maximumFractionDigits:2});
