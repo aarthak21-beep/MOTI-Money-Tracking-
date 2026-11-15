@@ -205,7 +205,6 @@ const pct = (v?: number) => v === undefined ? '—' : (v > 0 ? '+' : '') + v.toF
 export const SwingScannerView: React.FC = () => {
   const [records, setRecords] = useState<DailyRow[]>([]);
   const [reportDate, setReportDate] = useState(todayLocal);
-  const [cloudReady, setCloudReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -246,7 +245,6 @@ export const SwingScannerView: React.FC = () => {
             setMessage('जुना browser history D1 मध्ये migrate झाला.');
           }
         }
-        if (active) setCloudReady(true);
       } catch (e) {
         if (active) setMessage(e instanceof Error ? e.message : 'Cloud data load failed.');
       }
