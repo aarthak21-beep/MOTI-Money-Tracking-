@@ -7,7 +7,13 @@ type PennyRow = {
   salesGrowth?: number; profitGrowth?: number; roe?: number; roce?: number;
   debtEquity?: number; promoterHolding?: number; pledge?: number;
   operatingCashFlow?: number; epsGrowth?: number; pe?: number;
-  sourceDate?: string; score: number; coverage: number; status: string; risks: string[];
+  marketCap?: number; usualPe?: number; industryMedianPe?: number; peVsUsual?: number; peVsIndustry?: number;
+  pb?: number; dividendYield?: number; opm?: number; financingMargin?: number;
+  threeMonthReturn?: number; promoterHoldingChange1y?: number; netProfitLast4?: number[];
+  above200Day?: boolean; lossLatestQuarter?: boolean; negativeNetWorth?: boolean;
+  redFlagCount?: number; greenFlagCount?: number; redFlags?: string; greenFlags?: string;
+  sizeClass?: string; sector?: string; industry?: string; segment?: string; latestQuarter?: string;
+  accountsModel?: string; sourceDate?: string; score: number; coverage: number; status: string; risks: string[];
 };
 type SavedData = { updatedAt: string; rows: PennyRow[] };
 const STORAGE_KEY = 'moti_penny_stock_v1';
@@ -36,9 +42,9 @@ const readCsv = (raw: string) => {
   return lines.slice(1).map(line => splitLine(line, delimiter)).filter(cells => cells.some(Boolean)).map(cells => ({ headers, cells }));
 };
 const aliases: Record<string, string[]> = {
-  symbol: ['symbol','ticker','tradingsymbol','nsecode','stockcode','securityid','companysymbol'],
+  symbol: ['nsesymbol','symbol','ticker','tradingsymbol','nsecode','stockcode','securityid','companysymbol'],
   company: ['company','companyname','name','securityname'],
-  price: ['currentprice','currentmarketprice','cmp','ltp','close','shareprice','price'],
+  price: ['lastprice','currentprice','currentmarketprice','cmp','ltp','close','shareprice','price'],
   salesGrowth: ['salesgrowth','salesgrowth3years','salesgrowth3yr','salesgrowth5years','revenuegrowth','revenuegrowth3years'],
   profitGrowth: ['profitgrowth','profitgrowth3years','profitgrowth3yr','profitgrowth5years','netprofitgrowth','profitgrowth5years'],
   roe: ['roe','returnonequity','returnonequitypercent'],
@@ -48,7 +54,32 @@ const aliases: Record<string, string[]> = {
   pledge: ['promoterpledge','pledge','pledgedpercentage','promoterpledged'],
   operatingCashFlow: ['operatingcashflow','cashfromoperatingactivity','cashflowfromoperatingactivities','cashfromoperations','cashfromoperatingactivities'],
   epsGrowth: ['epsgrowth','epsgrowth3years','epsgrowth5years'],
-  pe: ['pe','peratio','priceearnings','priceearningratio','stockpe']
+  pe: ['pe','peratio','priceearnings','priceearningratio','stockpe'],
+  marketCap: ['marketcap'],
+  usualPe: ['usualpe'],
+  industryMedianPe: ['industrymedianpe'],
+  peVsUsual: ['pevsusual'],
+  peVsIndustry: ['pevsindustry'],
+  pb: ['pb','pricetobook'],
+  dividendYield: ['dividendyield'],
+  opm: ['opm','operatingmargin'],
+  financingMargin: ['financingmargin'],
+  threeMonthReturn: ['3monthreturn','threemonthreturn'],
+  promoterHoldingChange1y: ['promoterholdingchange1y'],
+  netProfitLast4: ['netprofitlast4reportedperiods'],
+  above200Day: ['above200dayaverage'],
+  lossLatestQuarter: ['lossinlatestquarter'],
+  negativeNetWorth: ['negativenetworth'],
+  redFlagCount: ['redflagscount','redflagcount'],
+  greenFlagCount: ['greenflagscount','greenflagcount'],
+  redFlags: ['redflags'],
+  greenFlags: ['greenflags'],
+  sizeClass: ['sizeclass'],
+  sector: ['sector'],
+  industry: ['industry'],
+  segment: ['segment'],
+  latestQuarter: ['latestquarter'],
+  accountsModel: ['accountsmodel']
 };
 const findIndex = (headers: string[], keys: string[]) => headers.findIndex(h => keys.some(k => norm(k) === h || h.includes(norm(k))));
 const parseFundamentals = (raw: string): PennyRow[] => {
@@ -68,7 +99,21 @@ const parseFundamentals = (raw: string): PennyRow[] => {
       roce: parseNum(get('roce')), debtEquity: parseNum(get('debtEquity')),
       promoterHolding: parseNum(get('promoterHolding')), pledge: parseNum(get('pledge')),
       operatingCashFlow: parseNum(get('operatingCashFlow')), epsGrowth: parseNum(get('epsGrowth')),
-      pe: parseNum(get('pe'))
+      pe: parseNum(get('pe')),
+      marketCap: parseNum(get('marketCap')), usualPe: parseNum(get('usualPe')),
+      industryMedianPe: parseNum(get('industryMedianPe')), peVsUsual: parseNum(get('peVsUsual')),
+      peVsIndustry: parseNum(get('peVsIndustry')), pb: parseNum(get('pb')),
+      dividendYield: parseNum(get('dividendYield')), opm: parseNum(get('opm')),
+      financingMargin: parseNum(get('financingMargin')), threeMonthReturn: parseNum(get('threeMonthReturn')),
+      promoterHoldingChange1y: parseNum(get('promoterHoldingChange1y')),
+      netProfitLast4: (get('netProfitLast4') || '').split(/[;,|]/).map(parseNum).filter((n): n is number => n !== undefined),
+      above200Day: /^(yes|true|1|above)$/i.test(get('above200Day') || ''),
+      lossLatestQuarter: /^(yes|true|1|loss)$/i.test(get('lossLatestQuarter') || ''),
+      negativeNetWorth: /^(yes|true|1|negative)$/i.test(get('negativeNetWorth') || ''),
+      redFlagCount: parseNum(get('redFlagCount')), greenFlagCount: parseNum(get('greenFlagCount')),
+      redFlags: get('redFlags'), greenFlags: get('greenFlags'),
+      sizeClass: get('sizeClass'), sector: get('sector'), industry: get('industry'),
+      segment: get('segment'), latestQuarter: get('latestQuarter'), accountsModel: get('accountsModel')
     };
     return { symbol, company: get('company'), ...values, score: 0, coverage: 0, status: 'Insufficient Data', risks: [] } as PennyRow;
   }).filter((row): row is PennyRow => Boolean(row));
@@ -111,6 +156,11 @@ const scoreRow = (row: PennyRow): PennyRow => {
   if (row.pledge !== undefined && row.pledge > 20) risks.push('High promoter pledge');
   if (row.operatingCashFlow !== undefined && row.operatingCashFlow < 0) risks.push('Negative operating cash flow');
   if (row.pe !== undefined && row.pe < 0) risks.push('Negative P/E / loss-making');
+  if (row.lossLatestQuarter) risks.push('Loss in latest quarter');
+  if (row.negativeNetWorth) risks.push('Negative net worth');
+  if (row.redFlagCount !== undefined && row.redFlagCount > 0) risks.push('Red flags: ' + row.redFlagCount);
+  if (row.promoterHoldingChange1y !== undefined && row.promoterHoldingChange1y < -5) risks.push('Promoter holding fell');
+  if (row.greenFlagCount !== undefined && row.greenFlagCount > 0 && row.greenFlags) { /* informational only */ }
   const normalized = possible ? Math.round(score / possible * 100) : 0;
   const availableMetrics = [row.salesGrowth,row.profitGrowth,row.roe,row.roce,row.debtEquity,row.promoterHolding,row.pledge,row.operatingCashFlow,row.epsGrowth,row.pe].filter(v => v !== undefined).length;
   const status = availableMetrics < 4 ? 'Insufficient Data' : risks.length >= 3 || normalized < 40 ? 'Risky / Avoid' : normalized >= 70 ? 'Strong Fundamentals' : 'Improving Fundamentals';
@@ -164,7 +214,7 @@ export const PennyStockScannerView: React.FC = () => {
     } catch (e) { setError(e instanceof Error ? e.message : 'Bhavcopy वाचता आली नाही.'); }
     finally { setBusy(false); }
   };
-  const results = useMemo(() => rows.filter(row => (!query || row.symbol.toLowerCase().includes(query.toLowerCase()) || (row.company || '').toLowerCase().includes(query.toLowerCase()))).filter(row => row.price === undefined || row.price <= 50).sort((a,b) => b.score-a.score),[rows,query]);
+  const results = useMemo(() => rows.filter(row => (!query || row.symbol.toLowerCase().includes(query.toLowerCase()) || (row.company || '').toLowerCase().includes(query.toLowerCase()))).filter(row => row.price !== undefined && row.price > 0 && row.price <= 50).sort((a,b) => b.score-a.score),[rows,query]);
   const handleExport = () => {
     const headers = ['Symbol','Company','Price','Score','Coverage','Status','Sales Growth','Profit Growth','ROE','ROCE','Debt Equity','Promoter Holding','Pledge','Operating Cash Flow','EPS Growth','PE','Risk Flags'];
     const csv = [headers.join(','), ...results.map(r => [r.symbol,r.company || '',r.price ?? '',r.score,r.coverage,r.status,r.salesGrowth ?? '',r.profitGrowth ?? '',r.roe ?? '',r.roce ?? '',r.debtEquity ?? '',r.promoterHolding ?? '',r.pledge ?? '',r.operatingCashFlow ?? '',r.epsGrowth ?? '',r.pe ?? '',r.risks.join('; ')].map(v => '"' + String(v).replace(/"/g,'""') + '"').join(','))].join('\n');
@@ -198,7 +248,7 @@ export const PennyStockScannerView: React.FC = () => {
     {message && <div className="rounded-lg border border-emerald-300/25 bg-emerald-300/10 p-3 text-sm text-emerald-200">{message}</div>}
     {busy && <p className="text-xs text-cyan-200"><RefreshCw className="mr-2 inline h-3.5 w-3.5 animate-spin"/>डेटा process होत आहे…</p>}
     <div className="flex flex-wrap items-center justify-between gap-3"><div className="relative min-w-[220px] flex-1"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Symbol किंवा कंपनी शोधा…" className="w-full rounded-lg border border-white/10 bg-[#0b1421] py-2 pl-9 pr-3 text-sm text-white outline-none focus:border-emerald-300/40"/></div><div className="flex items-center gap-2 text-xs text-slate-400">{updatedAt ? 'Last upload: '+new Date(updatedAt).toLocaleString('en-IN') : 'अजून डेटा upload केलेला नाही'}<button onClick={()=>void clear()} disabled={!rows.length || busy} className="rounded-lg border border-rose-300/20 p-2 text-rose-300 disabled:opacity-30" title="Delete saved data"><Trash2 className="h-4 w-4"/></button></div></div>
-    <div className="overflow-x-auto rounded-xl border border-white/10 bg-[#0b1421]"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="bg-white/[0.04] text-slate-400"><tr>{['Company / Symbol','Price','Score','Status','Sales Growth','Profit Growth','ROE','ROCE','Debt/Eq.','Promoter','Pledge','Cash Flow','PE'].map(h=><th key={h} className="whitespace-nowrap px-3 py-3 font-semibold">{h}</th>)}</tr></thead><tbody>{results.map(row=><tr key={row.symbol} className="border-t border-white/[0.06] hover:bg-white/[0.025]"><td className="px-3 py-3"><p className="font-bold text-white">{row.company || row.symbol}</p><p className="text-[10px] text-slate-500">{row.symbol}</p></td><td className="px-3 py-3 text-slate-200">{money(row.price)}</td><td className="px-3 py-3 font-bold text-white">{row.score}/100 <span className="block text-[10px] font-normal text-slate-500">{row.coverage}/10 fields</span></td><td className="px-3 py-3"><span className={row.status==='Strong Fundamentals'?'text-emerald-300':row.status==='Risky / Avoid'?'text-rose-300':'text-amber-300'}>{row.status}</span>{row.risks.length>0&&<span className="block max-w-36 text-[10px] text-rose-300/80">{row.risks.join(', ')}</span>}</td><td className="px-3 py-3 text-slate-300">{pct(row.salesGrowth)}</td><td className="px-3 py-3 text-slate-300">{pct(row.profitGrowth)}</td><td className="px-3 py-3 text-slate-300">{metric(row.roe,'%')}</td><td className="px-3 py-3 text-slate-300">{metric(row.roce,'%')}</td><td className="px-3 py-3 text-slate-300">{metric(row.debtEquity)}</td><td className="px-3 py-3 text-slate-300">{pct(row.promoterHolding)}</td><td className="px-3 py-3 text-slate-300">{pct(row.pledge)}</td><td className="px-3 py-3 text-slate-300">{row.operatingCashFlow===undefined?'—':row.operatingCashFlow.toLocaleString('en-IN')}</td><td className="px-3 py-3 text-slate-300">{metric(row.pe)}</td></tr>)}{!results.length&&<tr><td colSpan={13} className="px-4 py-12 text-center text-slate-500">Fundamental CSV upload करा. Bhavcopy upload केल्यावर ₹50 पर्यंतचे शेअर्स filter होतील.</td></tr>}</tbody></table></div>
+    <div className="overflow-x-auto rounded-xl border border-white/10 bg-[#0b1421]"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="bg-white/[0.04] text-slate-400"><tr>{['Company / Symbol','Price','Score','Status','Sales Growth','Profit Growth','ROE','ROCE','Debt/Eq.','Promoter','3M Return','200D Avg','Red Flags','PE'].map(h=><th key={h} className="whitespace-nowrap px-3 py-3 font-semibold">{h}</th>)}</tr></thead><tbody>{results.map(row=><tr key={row.symbol} className="border-t border-white/[0.06] hover:bg-white/[0.025]"><td className="px-3 py-3"><p className="font-bold text-white">{row.company || row.symbol}</p><p className="text-[10px] text-slate-500">{row.symbol}</p></td><td className="px-3 py-3 text-slate-200">{money(row.price)}</td><td className="px-3 py-3 font-bold text-white">{row.score}/100 <span className="block text-[10px] font-normal text-slate-500">{row.coverage}/10 fields</span></td><td className="px-3 py-3"><span className={row.status==='Strong Fundamentals'?'text-emerald-300':row.status==='Risky / Avoid'?'text-rose-300':'text-amber-300'}>{row.status}</span>{row.risks.length>0&&<span className="block max-w-36 text-[10px] text-rose-300/80">{row.risks.join(', ')}</span>}</td><td className="px-3 py-3 text-slate-300">{pct(row.salesGrowth)}</td><td className="px-3 py-3 text-slate-300">{pct(row.profitGrowth)}</td><td className="px-3 py-3 text-slate-300">{metric(row.roe,'%')}</td><td className="px-3 py-3 text-slate-300">{metric(row.roce,'%')}</td><td className="px-3 py-3 text-slate-300">{metric(row.debtEquity)}</td><td className="px-3 py-3 text-slate-300">{pct(row.promoterHolding)}</td><td className="px-3 py-3 text-slate-300">{pct(row.threeMonthReturn)}</td><td className="px-3 py-3 text-slate-300">{row.above200Day===undefined?'—':row.above200Day?'Yes':'No'}</td><td className="px-3 py-3 text-slate-300">{row.redFlagCount ?? '—'}</td><td className="px-3 py-3 text-slate-300">{metric(row.pe)}</td></tr>)}{!results.length&&<tr><td colSpan={13} className="px-4 py-12 text-center text-slate-500">Fundamental CSV upload करा. Bhavcopy upload केल्यावर ₹50 पर्यंतचे शेअर्स filter होतील.</td></tr>}</tbody></table></div>
     <div className="rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs leading-relaxed text-amber-100/80"><div className="mb-1 flex items-center gap-2 font-bold text-amber-200"><ShieldAlert className="h-4 w-4"/>महत्त्वाची सूचना</div>Score हा उपलब्ध CSV कॉलमवर आधारित प्राथमिक screening score आहे; तो buy/sell recommendation नाही. Auditor remarks, contingent liabilities, corporate governance, sector context आणि data freshness वेगळे तपासणे आवश्यक आहे. Fundamental CSV आणि Bhavcopy एकाच महिन्याचे असावेत. CSV मधील header names source नुसार बदलू शकतात; कॉलम ओळखला नाही तर तो score मध्ये धरला जाणार नाही.</div>
   </div>;
 };
