@@ -468,8 +468,9 @@ export const SwingScannerView: React.FC = () => {
             multiple
             disabled={loading}
             onChange={e => {
-              const selectedFiles = e.currentTarget.files;
-              void handleFiles(selectedFiles).finally(() => { e.currentTarget.value = ''; });
+              const input = e.currentTarget;
+              const selectedFiles = input.files;
+              void handleFiles(selectedFiles).finally(() => { input.value = ''; });
             }}
             className="block w-full max-w-[360px] cursor-pointer rounded-xl border border-emerald-300/40 bg-[#0a1220] p-2 text-xs text-white file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-emerald-300 file:px-4 file:py-2 file:text-xs file:font-black file:text-slate-950 hover:file:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
           />
