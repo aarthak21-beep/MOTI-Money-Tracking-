@@ -8,7 +8,6 @@ type DailyRow = {
   volumeMultiple?: number; pctChange?: number; sources: string[];
 };
 type ReportType = 'top20' | 'volume' | 'advance' | 'bhavcopy';
-const STORAGE_KEY = 'moti_nse_daily_reports_v1';
 const bhavcopyDateFromFilename = (name: string): string | undefined => {
   const match = name.match(/BhavCopy_NSE_CM_0_0_0_(\\d{4})(\\d{2})(\\d{2})_F_/i);
   if (!match) return undefined;
@@ -204,11 +203,8 @@ const money = (v?: number) => v === undefined ? '—' : '₹' + v.toLocaleString
 const pct = (v?: number) => v === undefined ? '—' : (v > 0 ? '+' : '') + v.toFixed(2) + '%';
 
 export const SwingScannerView: React.FC = () => {
-  const [records, setRecords] = useState<DailyRow[]>(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as DailyRow[]; } catch { return []; }
-  });
+  const [records, setRecords] = useState<DailyRow[]>([]);
   const [reportDate, setReportDate] = useState(todayLocal);
-  const [cloudReady, setCloudReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -229,8 +225,32 @@ export const SwingScannerView: React.FC = () => {
   const [darvas20, setDarvas20] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'weeklyChange', direction: 'desc' });
-  useEffect(() => { let active = true; (async () => { try { const cloudRows = await loadScannerData<DailyRow[]>('swing'); if (active) { if (cloudRows) setRecords(cloudRows); setCloudReady(true); } } catch (e) { if (active) setMessage(e instanceof Error ? e.message : 'Cloud data load failed.'); } })(); return () => { active = false; }; }, []);
-  useEffect(() => { if (!cloudReady) return; try { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); } catch { setMessage('Browser storage भरले आहे.'); } saveScannerData('swing', records).catch(e => setMessage(e instanceof Error ? e.message : 'Cloud save failed.')); }, [records, cloudReady]);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const cloudRows = await loadScannerData<DailyRow[]>('swing');
+        if (!active) return;
+        if (cloudRows?.length) {
+          setRecords(cloudRows);
+        } else {
+          // One-time migration only: preserve any older browser-only history in D1.
+          // Normal reads and all future writes use D1; no browser storage is written.
+          let legacyRows: DailyRow[] = [];
+          try { legacyRows = JSON.parse(localStorage.getItem('moti_nse_daily_reports_v1') || '[]') as DailyRow[]; } catch { legacyRows = []; }
+          if (legacyRows.length) {
+            await saveScannerData('swing', legacyRows);
+            if (!active) return;
+            setRecords(legacyRows);
+            setMessage('जुना browser history D1 मध्ये migrate झाला.');
+          }
+        }
+      } catch (e) {
+        if (active) setMessage(e instanceof Error ? e.message : 'Cloud data load failed.');
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   const latestDate = useMemo(() => records.reduce((d, r) => r.date > d ? r.date : d, ''), [records]);
   const latestRows = useMemo(() => records.filter(r => r.date === latestDate), [records, latestDate]);
@@ -378,8 +398,14 @@ export const SwingScannerView: React.FC = () => {
       } catch (e) { issues.push(file.name + ': ' + (e instanceof Error ? e.message : 'CSV वाचता आला नाही')); }
     }
     if (incoming.length) {
-      setRecords(old => mergeRows(old, incoming));
-      setMessage(incoming.length + ' stock rows import झाले. Reports: ' + Array.from(new Set(foundTypes)).join(', ') + ' · Appwrite-authenticated cloud sync सुरू आहे.');
+      try {
+        const merged = mergeRows(records, incoming);
+        await saveScannerData('swing', merged);
+        setRecords(merged);
+        setMessage(incoming.length + ' stock rows import झाले आणि D1 मध्ये save झाले. Reports: ' + Array.from(new Set(foundTypes)).join(', '));
+      } catch (e) {
+        setMessage('D1 save अयशस्वी: ' + (e instanceof Error ? e.message : 'Cloud save failed.'));
+      }
     }
     setErrors(issues); setLoading(false);
   };
@@ -398,8 +424,16 @@ export const SwingScannerView: React.FC = () => {
     link.remove();
     URL.revokeObjectURL(url);
   };
-  const clearHistory = () => {
-    if (window.confirm('जतन केलेला NSE report history clear करायचा?')) { setRecords([]); setMessage('Saved report history clear झाला.'); }
+  const clearHistory = async () => {
+    if (!window.confirm('जतन केलेला NSE report history D1 मधून clear करायचा?')) return;
+    setLoading(true);
+    try {
+      await saveScannerData('swing', []);
+      setRecords([]);
+      setMessage('Saved report history D1 मधून clear झाला.');
+    } catch (e) {
+      setMessage('D1 history clear अयशस्वी: ' + (e instanceof Error ? e.message : 'Cloud save failed.'));
+    } finally { setLoading(false); }
   };
 
   return <div className="space-y-5">
@@ -467,7 +501,7 @@ export const SwingScannerView: React.FC = () => {
     <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><div className="flex items-center gap-2 text-xs font-bold text-cyan-200"><Info className="h-4 w-4" /> Data notes</div>
       <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] leading-5 text-slate-400">
         <li>डेटा फक्त तू upload केलेल्या NSE reports मधून येतो; scanner live NSE prices fetch करत नाही.</li>
-        <li>Reports browser च्या local storage मध्ये राहतात; त्याच browser/device वर पुढच्या दिवशी नवीन reports add कर.</li>
+        <li>Reports D1 cloud database मध्ये save होतात; वेगळ्या browser/device वरूनही त्याच account ने history मिळते.</li>
         <li>Volume Gainers report मधील NSE 1-week volume multiple थेट दाखवला जातो.</li>
         <li>Bhavcopy ZIP मधील रोजचे EQ/BE OHLCV रेकॉर्ड 5/10/20 Range Breakout आणि Darvas-style Box साठी वापरले जातात. जुन्या CSV-only डेटासाठी Top 20 appearances हा fallback आहे; त्या नोंदी सलग exchange sessions असतीलच असे नाही.</li>
         <li>NSE Cash Market Bhavcopy ZIP पूर्ण Cash Market universe मधील उपलब्ध EQ/BE records साठवण्यासाठी आहे. जुने Top 20/Volume Gainers/Advances reports स्वतंत्रपणे काम करत राहतात.</li>
