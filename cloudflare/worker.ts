@@ -296,6 +296,19 @@ export default {
         `).run();
       }
 
+      // An empty Swing replace is the explicit Clear History action.
+      // Clear only Swing rows from both storage layers so GET cannot resurrect
+      // the legacy snapshot after the date chunks have been removed.
+      if (scanner === 'swing' && payload.mode === 'replace' && Array.isArray(payload.data) && payload.data.length === 0) {
+        await env.MOTI_DB.prepare(
+          'DELETE FROM moti_scanner_data_chunks WHERE scanner = ?1'
+        ).bind('swing').run();
+        await env.MOTI_DB.prepare(
+          'DELETE FROM moti_scanner_data WHERE scanner = ?1'
+        ).bind('swing').run();
+        return response({ ok: true, scanner, cleared: true, updatedAt }, 200, origin);
+      }
+
       if (scanner === 'swing' && payload.mode === 'replace') {
         await env.MOTI_DB.prepare(
           'DELETE FROM moti_scanner_data_chunks WHERE scanner = ?1'
