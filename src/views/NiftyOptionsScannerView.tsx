@@ -8,7 +8,7 @@ type OptionRow = {
 };
 const STORAGE_KEY = 'moti_nifty_options_chain_v1';
 const HISTORY_KEY = 'moti_nifty_options_history_v1';
-type DailySnapshot = { date: string; spot: number; rows: Array<{ expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number; changeOi?: number; volume?: number }> };
+type DailySnapshot = { date: string; expiry?: string; spot: number; rows: Array<{ expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number; changeOi?: number; volume?: number }> };
 const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
 const number = (v?: string) => {
   if (!v || v.trim() === '-' || v.trim() === '—') return 0;
@@ -187,8 +187,12 @@ export const NiftyOptionsScannerView: React.FC = () => {
     return { ceOi, peOi, ceChg, peChg, pcr, bias, spot };
   }, [chain]);
   const rangeRows = useMemo(() => chain.filter(r => r.strike >= summary.spot - 600 && r.strike <= summary.spot + 600), [chain, summary.spot]);
-  const previousSnapshot = useMemo(() => [...history].filter(h => h.date < (history.length ? history[history.length - 1].date : '')).sort((a, b) => b.date.localeCompare(a.date))[0] || null, [history]);
-  const latestSnapshot = history.length ? [...history].sort((a, b) => b.date.localeCompare(a.date))[0] : null;
+  const expirySnapshots = useMemo(() => history.filter(h => h.expiry === selectedExpiry || (!h.expiry && h.rows.some(r => r.expiry === selectedExpiry))), [history, selectedExpiry]);
+  const latestSnapshot = expirySnapshots.slice().sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+  const previousSnapshot = latestSnapshot
+    ? expirySnapshots.filter(h => h.date < latestSnapshot.date).sort((a, b) => b.date.localeCompare(a.date))[0] || null
+    : null;
+  const historyDays = useMemo(() => new Set(history.map(h => h.date)).size, [history]);
   const previousRows = useMemo(() => previousSnapshot?.rows.filter(r => r.expiry === selectedExpiry) || [], [previousSnapshot, selectedExpiry]);
   const priorByContract = useMemo(() => new Map(previousRows.map(r => [`${r.strike}-${r.type}`, r])), [previousRows]);
   const priceOiSignals = useMemo(() => chain.map(r => {
@@ -253,9 +257,10 @@ export const NiftyOptionsScannerView: React.FC = () => {
       setRows(parsed);
       const snapshotDate = new Date().toLocaleDateString('en-CA');
       const snapshot: DailySnapshot = { date: snapshotDate, spot: parsed[0]?.spot || 0, rows: parsed.map(r => ({ expiry: r.expiry, strike: r.strike, type: r.type, ltp: r.ltp, oi: r.oi, changeOi: r.changeOi, volume: r.volume })) };
+      // Worker stores each expiry independently under (upload date + expiry).
       await saveNiftyOptionsSnapshot(snapshot);
       const cloudHistory = await loadNiftyOptionsHistory<DailySnapshot>();
-      const nextHistory = [...cloudHistory].sort((a, b) => a.date.localeCompare(b.date)).slice(-30);
+      const nextHistory = [...cloudHistory].sort((a, b) => a.date.localeCompare(b.date) || String(a.expiry || '').localeCompare(String(b.expiry || '')));
       setHistory(nextHistory);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
@@ -315,8 +320,8 @@ export const NiftyOptionsScannerView: React.FC = () => {
     </div>
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-bold text-white">Daily Snapshot History · Last 30 uploads</h2><p className="mt-1 text-[11px] text-slate-400">प्रत्येक दिवसाचा upload snapshot याच browser मध्ये जतन होतो. त्याच दिवशी पुन्हा upload केल्यास त्या दिवसाचा snapshot update होतो.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-xs text-slate-300">{history.length} days saved</span></div>
-      {latestSnapshot ? <div className="mt-3 grid gap-3 sm:grid-cols-3"><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest upload date</p><p className="mt-1 text-sm font-bold text-white">{latestSnapshot.date}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest Spot</p><p className="mt-1 text-sm font-bold text-white">₹{fmt(latestSnapshot.spot)}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Previous snapshot</p><p className="mt-1 text-sm font-bold text-white">{previousSnapshot?.date || 'अजून उपलब्ध नाही'}</p></div></div> : <p className="mt-3 text-xs text-amber-200">पहिला CSV upload केल्यानंतर Daily History सुरू होईल.</p>}
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-bold text-white">Daily Snapshot History · Selected expiry</h2><p className="mt-1 text-[11px] text-slate-400">प्रत्येक Upload Date + Expiry स्वतंत्र Cloudflare history मध्ये जतन होते. त्याच दिवशी तीच expiry पुन्हा upload केल्यास फक्त त्या expiry चा snapshot update होतो; इतर expiry सुरक्षित राहतात.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-xs text-slate-300">{historyDays} days · {history.length} expiry snapshots</span></div>
+      {latestSnapshot ? <div className="mt-3 grid gap-3 sm:grid-cols-3"><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest upload date</p><p className="mt-1 text-sm font-bold text-white">{latestSnapshot.date} · {selectedExpiry}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest Spot</p><p className="mt-1 text-sm font-bold text-white">₹{fmt(latestSnapshot.spot)}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Previous snapshot</p><p className="mt-1 text-sm font-bold text-white">{previousSnapshot?.date || 'अजून उपलब्ध नाही'}</p></div></div> : <p className="mt-3 text-xs text-amber-200">पहिला CSV upload केल्यानंतर Daily History सुरू होईल.</p>}
       {previousSnapshot && <><p className="mt-3 text-[11px] text-slate-300">Previous snapshot पासून NIFTY Spot बदल: <b className={latestSnapshot!.spot >= previousSnapshot.spot ? 'text-emerald-300' : 'text-rose-300'}>{latestSnapshot!.spot >= previousSnapshot.spot ? '+' : ''}{fmt(latestSnapshot!.spot - previousSnapshot.spot)} points</b>. प्रत्येक CE/PE contract स्वतंत्रपणे मागील snapshot च्या LTP आणि OI शी compare केला आहे. आजचा Change in OI आणि Volume हे NSE CSV मधून घेतले आहेत.</p><div className="mt-3 overflow-x-auto"><table className="w-full min-w-[900px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Type','Strike','Price Δ %','OI Δ vs Prior','Today Chg OI','Today Volume','Price + OI Read','Confidence'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{[...priceOiSignals].sort((a, b) => b.volume - a.volume).slice(0, 30).map(r => <tr key={r.expiry + r.strike + r.type}><td className="px-3 py-2 font-bold text-white">{r.type}</td><td className="px-3 py-2">{fmt(r.strike)}</td><td className="px-3 py-2">{r.priceChangePct === undefined ? '—' : (r.priceChangePct >= 0 ? '+' : '') + fmt(r.priceChangePct) + '%'}</td><td className="px-3 py-2">{r.oiDeltaSinceSnapshot === undefined ? '—' : fmt(r.oiDeltaSinceSnapshot)}</td><td className="px-3 py-2">{fmt(r.changeOi)}</td><td className="px-3 py-2">{fmt(r.volume)}</td><td className={'px-3 py-2 font-bold ' + (r.signalType === 'bullish' ? 'text-emerald-300' : r.signalType === 'bearish' ? 'text-rose-300' : 'text-amber-200')}>{r.signal}</td><td className="px-3 py-2 text-amber-200">{r.confidence}</td></tr>)}</tbody></table></div></>}
       {pcrHistory.length > 0 && <div className="mt-3"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Selected expiry PCR history</p><div className="flex flex-wrap gap-2">{pcrHistory.map(p => <span key={p.date} className="rounded-lg bg-[#080f1b] px-3 py-2 text-[11px] text-slate-300">{p.date}: <b className="text-white">{p.pcr.toFixed(2)}</b></span>)}</div></div>}
     </div>
