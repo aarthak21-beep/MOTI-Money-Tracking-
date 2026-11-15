@@ -294,12 +294,35 @@ export const SwingScannerView: React.FC = () => {
         };
       });
       const latestVolume = latestRows.find(r => r.symbol === symbol && r.volumeMultiple !== undefined);
-      const volume = latestVolume?.volumeMultiple;
+      // Prefer NSE Volume Gainers' published multiple. Otherwise calculate from
+      // today's Bhavcopy volume against the average of the previous 5 Bhavcopy sessions.
+      const previousBhavcopyVolumes = symbolRows
+        .filter(r => r.sources.includes('bhavcopy') && r.date < latest.date && r.volume !== undefined)
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .slice(-5)
+        .map(r => r.volume as number);
+      const averagePreviousVolume = previousBhavcopyVolumes.length === 5
+        ? previousBhavcopyVolumes.reduce((sum, value) => sum + value, 0) / 5
+        : undefined;
+      const bhavcopyVolumeMultiple = latest.sources.includes('bhavcopy') && latest.volume !== undefined && averagePreviousVolume
+        ? latest.volume / averagePreviousVolume
+        : undefined;
+      const volume = latestVolume?.volumeMultiple ?? bhavcopyVolumeMultiple;
       const sourceSet = Array.from(new Set(latestRows.filter(r => r.symbol === symbol).flatMap(r => r.sources)));
       const latestSeries = [...symbolRows].reverse().find(r => r.series)?.series;
       const series = latestRows.find(r => r.symbol === symbol && r.series)?.series || latestSeries;
       const todayRow = latestRows.find(r => r.symbol === symbol && r.pctChange !== undefined);
-      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, breakoutRanges, sources: sourceSet, pctToday: todayRow?.pctChange ?? latest.pctChange, qualifiedBefore };
+      const pctToday = todayRow?.pctChange ?? latest.pctChange;
+      const hasMediumBreakout = breakoutRanges.some(r => (r.days === 10 || r.days === 20) && r.breakout);
+      const hasBoxSetup = breakoutRanges.some(r => (r.days === 5 || r.days === 10 || r.days === 20) && (r.breakout || r.inside));
+      const setup = (weeklyChange ?? 0) > 10 || (pctToday ?? 0) > 5
+        ? 'Avoid / Extended'
+        : (weeklyChange ?? -Infinity) >= 3 && (volume ?? 0) >= 1.5 && hasMediumBreakout
+          ? 'Strong Setup'
+          : hasBoxSetup || (weeklyChange ?? 0) >= 2
+            ? 'Breakout Watch'
+            : 'Breakout Watch';
+      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, breakoutRanges, sources: sourceSet, pctToday, qualifiedBefore, setup };
     }).filter((item): item is NonNullable<typeof item> =>
       item !== null &&
       item.qualifiedBefore &&
@@ -495,7 +518,7 @@ export const SwingScannerView: React.FC = () => {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-left text-xs">
           <thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400">
-            <tr>{[{label:'Stock',key:'symbol'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
+            <tr>{[{label:'Stock',key:'symbol'},{label:'Setup',key:'setup'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
             <tr className="border-t border-[#1e2e4f] bg-[#0a1220] align-top normal-case">
               <th className="px-2 py-2"><input aria-label="Filter stock" value={stockSearch} onChange={e => setStockSearch(e.target.value)} placeholder="Stock" className="w-full min-w-20 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white placeholder:text-slate-500" /></th>
               <th className="px-2 py-2"><div className="flex min-w-32 gap-1"><input aria-label="Minimum latest close" type="number" value={minClose} onChange={e => setMinClose(e.target.value)} placeholder="Min" className="w-1/2 min-w-0 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white" /><input aria-label="Maximum latest close" type="number" value={maxClose} onChange={e => setMaxClose(e.target.value)} placeholder="Max" className="w-1/2 min-w-0 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white" /></div></th>
@@ -510,6 +533,7 @@ export const SwingScannerView: React.FC = () => {
           <tbody className="divide-y divide-[#1e2e4f]/60">
             {sortedCandidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
               <td className="px-3 py-3 font-black text-white">{item.symbol}</td>
+              <td className="px-3 py-3"><span className={item.setup === 'Strong Setup' ? 'rounded-md bg-emerald-300/15 px-2 py-1 font-bold text-emerald-300' : item.setup === 'Avoid / Extended' ? 'rounded-md bg-rose-300/10 px-2 py-1 font-semibold text-rose-300' : 'rounded-md bg-amber-300/10 px-2 py-1 font-semibold text-amber-200'}>{item.setup}</span></td>
               <td className="px-3 py-3 text-white">{money(item.close)}</td>
               <td className={'px-3 py-3 font-bold ' + ((item.weeklyChange ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{pct(item.weeklyChange)}</td>
               <td className="px-3 py-3 text-cyan-200">{item.volumeMultiple === undefined ? '—' : item.volumeMultiple.toFixed(2) + 'x'}</td>
@@ -528,7 +552,7 @@ export const SwingScannerView: React.FC = () => {
       <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] leading-5 text-slate-400">
         <li>डेटा फक्त तू upload केलेल्या NSE reports मधून येतो; scanner live NSE prices fetch करत नाही.</li>
         <li>Reports D1 cloud database मध्ये save होतात; वेगळ्या browser/device वरूनही त्याच account ने history मिळते.</li>
-        <li>Volume Gainers report मधील NSE 1-week volume multiple थेट दाखवला जातो.</li>
+        <li>Volume Gainers report मधील NSE 1-week volume multiple थेट दाखवला जातो; तो उपलब्ध नसेल तर Bhavcopy मधील आजचा volume मागील 5 उपलब्ध Bhavcopy sessions च्या average शी तुलना करून दाखवला जातो. 5 जुने sessions नसतील तर — दिसेल.</li>
         <li>Bhavcopy ZIP मधील रोजचे EQ/BE OHLCV रेकॉर्ड 5/10/20 Range Breakout आणि Darvas-style Box साठी वापरले जातात. जुन्या CSV-only डेटासाठी Top 20 appearances हा fallback आहे; त्या नोंदी सलग exchange sessions असतीलच असे नाही.</li>
         <li>NSE Cash Market Bhavcopy ZIP पूर्ण Cash Market universe मधील उपलब्ध EQ/BE records साठवण्यासाठी आहे. जुने Top 20/Volume Gainers/Advances reports स्वतंत्रपणे काम करत राहतात.</li>
         <li>नवीन stock लिस्टमध्ये येण्यासाठी EQ/BE series, त्या दिवसाचा बदल किमान +4% आणि किंमत ₹300–₹3,000 आवश्यक आहे. एकदा आलेला stock रोज +4% राहण्याची गरज नाही; तो ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहतो. रेंजच्या बाहेर तात्पुरता लपतो आणि परत रेंजमध्ये आल्यावर पुन्हा दिसतो.</li>
