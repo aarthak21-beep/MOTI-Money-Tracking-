@@ -373,6 +373,7 @@ export const SwingScannerView: React.FC = () => {
     const value = (item: typeof candidates[number]): string | number => {
       switch (sortConfig.key) {
         case 'symbol': return item.symbol;
+        case 'setup': return item.setup;
         case 'close': return item.close ?? Number.NEGATIVE_INFINITY;
         case 'weeklyChange': return item.weeklyChange ?? Number.NEGATIVE_INFINITY;
         case 'volumeMultiple': return item.volumeMultiple ?? Number.NEGATIVE_INFINITY;
