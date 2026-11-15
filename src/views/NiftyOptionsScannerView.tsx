@@ -255,7 +255,8 @@ export const NiftyOptionsScannerView: React.FC = () => {
       const parsed = suppliedSpot > 0 ? parsedRows.map(r => ({ ...r, spot: suppliedSpot })) : parsedRows;
       await saveScannerData('nifty-options', parsed);
       setRows(parsed);
-      const snapshotDate = new Date().toLocaleDateString('en-CA');
+      const now = new Date();
+      const snapshotDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const snapshot: DailySnapshot = { date: snapshotDate, spot: parsed[0]?.spot || 0, rows: parsed.map(r => ({ expiry: r.expiry, strike: r.strike, type: r.type, ltp: r.ltp, oi: r.oi, changeOi: r.changeOi, volume: r.volume })) };
       // Worker stores each expiry independently under (upload date + expiry).
       await saveNiftyOptionsSnapshot(snapshot);
