@@ -466,10 +466,14 @@ export const SwingScannerView: React.FC = () => {
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="relative">
           <span className="text-xs text-slate-300">Report date</span>
-          <button type="button" onClick={() => { setCalendarMonth(reportDate.slice(0, 7)); setCalendarOpen(open => !open); }} aria-expanded={calendarOpen} aria-label="Choose report date" className="mt-1 flex min-w-[190px] items-center justify-between gap-3 rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm font-semibold text-white hover:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-300">
-            <span>{new Date(reportDate + 'T12:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-            <span aria-hidden="true">▦</span>
-          </button>
+          <div className="mt-1 flex items-center gap-2">
+            <input type="text" inputMode="numeric" aria-label="Edit report date" placeholder="YYYY-MM-DD" value={reportDate} onChange={e => {
+              const value = e.target.value.trim();
+              if (/^\d{4}-\d{2}-\d{2}$/.test(value) && parseDateValue(value)) setReportDate(value);
+              else if (!value) setReportDate('');
+            }} onBlur={() => { if (!reportDate) setReportDate(todayLocal()); }} className="w-[145px] rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm font-semibold text-white placeholder:text-slate-500 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+            <button type="button" onClick={() => { setCalendarMonth((reportDate || todayLocal()).slice(0, 7)); setCalendarOpen(open => !open); }} aria-expanded={calendarOpen} aria-label="Open calendar" className="rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-lg text-white hover:border-emerald-300">▦</button>
+          </div>
           {calendarOpen && <div className="absolute left-0 top-full z-50 mt-2 w-[280px] rounded-xl border border-slate-600 bg-[#0d1928] p-3 shadow-2xl">
             <div className="mb-3 flex items-center justify-between">
               <button type="button" onClick={() => setCalendarMonth(month => shiftCalendarMonth(month, -1))} aria-label="Previous month" className="rounded-md px-3 py-1.5 text-lg text-white hover:bg-white/10">‹</button>
