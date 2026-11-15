@@ -460,10 +460,20 @@ export const SwingScannerView: React.FC = () => {
             }} className="w-[145px] rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm font-semibold text-white placeholder:text-slate-500 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-300" />
           </div>
         </div>
-        <label className={`relative inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-xl bg-emerald-300 px-4 py-3 text-xs font-black text-slate-950 hover:bg-emerald-200 ${loading ? 'cursor-not-allowed opacity-60' : ''}`}>
-          <Upload className="h-4 w-4" /> {loading ? 'Reading reports...' : 'Upload NSE CSV / Bhavcopy ZIP'}
-          <input type="file" accept=".csv,.zip,text/csv,application/zip" multiple disabled={loading} onChange={e => { handleFiles(e.currentTarget.files); e.currentTarget.value = ''; }} className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed" />
-        </label>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-slate-300">Upload NSE CSV / Bhavcopy ZIP</span>
+          <input
+            type="file"
+            accept=".csv,.zip,text/csv,application/zip"
+            multiple
+            disabled={loading}
+            onChange={e => {
+              const selectedFiles = e.currentTarget.files;
+              void handleFiles(selectedFiles).finally(() => { e.currentTarget.value = ''; });
+            }}
+            className="block w-full max-w-[360px] cursor-pointer rounded-xl border border-emerald-300/40 bg-[#0a1220] p-2 text-xs text-white file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-emerald-300 file:px-4 file:py-2 file:text-xs file:font-black file:text-slate-950 hover:file:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+          />
+        </div>
       </div>
       <p className="mt-2 text-[10px] text-slate-400">CSV/ZIP upload केल्यावर file name किंवा report header मधून तारीख आपोआप शोधली जाईल. तारीख सापडली नाही तर वर निवडलेली Report date वापरली जाईल.</p>
     </div>
