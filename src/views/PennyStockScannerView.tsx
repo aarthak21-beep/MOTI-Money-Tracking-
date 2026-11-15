@@ -135,21 +135,21 @@ const parseBhavcopy = (raw: string): Map<string, number> => {
   return prices;
 };
 const scoreRow = (row: PennyRow): PennyRow => {
-  let score = 0; let possible = 0; const risks: string[] = [];
-  const add = (value: number | undefined, points: number, test: (n:number)=>number) => {
+  let earned = 0; let availableWeight = 0; const risks: string[] = [];
+  const add = (value: number | undefined, weight: number, test: (n:number)=>number) => {
     if (value === undefined) return;
-    possible += points; score += test(value);
+    availableWeight += weight; earned += test(value);
   };
-  add(row.salesGrowth, 12, n => n > 15 ? 12 : n > 5 ? 8 : n >= 0 ? 4 : 0);
-  add(row.profitGrowth, 14, n => n > 15 ? 14 : n > 5 ? 9 : n >= 0 ? 4 : 0);
-  add(row.roe, 10, n => n >= 20 ? 10 : n >= 12 ? 7 : n >= 8 ? 4 : 0);
-  add(row.roce, 12, n => n >= 20 ? 12 : n >= 15 ? 9 : n >= 10 ? 5 : 0);
-  add(row.debtEquity, 12, n => n <= 0.3 ? 12 : n <= 0.7 ? 9 : n <= 1.2 ? 5 : 0);
-  add(row.promoterHolding, 8, n => n >= 50 ? 8 : n >= 35 ? 6 : n >= 20 ? 3 : 0);
-  add(row.pledge, 10, n => n === 0 ? 10 : n <= 5 ? 7 : n <= 20 ? 3 : 0);
-  add(row.operatingCashFlow, 10, n => n > 0 ? 10 : 0);
-  add(row.epsGrowth, 7, n => n > 15 ? 7 : n > 0 ? 4 : 0);
-  add(row.pe, 5, n => n > 0 && n <= 25 ? 5 : n <= 40 && n > 0 ? 3 : 0);
+  // Fundamental-first score: quarterly growth, returns, leverage and operating margin.
+  add(row.salesGrowth, 15, n => n > 15 ? 15 : n > 5 ? 10 : n >= 0 ? 5 : 0);
+  add(row.profitGrowth, 18, n => n > 20 ? 18 : n > 10 ? 13 : n >= 0 ? 6 : 0);
+  add(row.roe, 12, n => n >= 20 ? 12 : n >= 15 ? 9 : n >= 10 ? 6 : 0);
+  add(row.roce, 15, n => n >= 20 ? 15 : n >= 15 ? 11 : n >= 10 ? 6 : 0);
+  add(row.debtEquity, 15, n => n >= 0 && n <= 0.3 ? 15 : n <= 0.7 && n >= 0 ? 11 : n <= 1.2 && n >= 0 ? 6 : 0);
+  add(row.promoterHolding, 10, n => n >= 50 ? 10 : n >= 35 ? 7 : n >= 20 ? 4 : 0);
+  add(row.opm, 10, n => n >= 20 ? 10 : n >= 12 ? 7 : n >= 5 ? 4 : 0);
+  if (row.pe !== undefined && row.pe > 0) add(row.pe, 5, n => n <= 20 ? 5 : n <= 30 ? 4 : n <= 45 ? 2 : 0);
+  else if (row.pb !== undefined && row.pb > 0) add(row.pb, 5, n => n <= 2 ? 5 : n <= 4 ? 3 : n <= 7 ? 1 : 0);
   if (row.salesGrowth !== undefined && row.salesGrowth < 0) risks.push('Sales growth negative');
   if (row.profitGrowth !== undefined && row.profitGrowth < 0) risks.push('Profit growth negative');
   if (row.debtEquity !== undefined && row.debtEquity > 1.5) risks.push('High debt');
@@ -160,10 +160,11 @@ const scoreRow = (row: PennyRow): PennyRow => {
   if (row.negativeNetWorth) risks.push('Negative net worth');
   if (row.redFlagCount !== undefined && row.redFlagCount > 0) risks.push('Red flags: ' + row.redFlagCount);
   if (row.promoterHoldingChange1y !== undefined && row.promoterHoldingChange1y < -5) risks.push('Promoter holding fell');
-  if (row.greenFlagCount !== undefined && row.greenFlagCount > 0 && row.greenFlags) { /* informational only */ }
-  const normalized = possible ? Math.round(score / possible * 100) : 0;
-  const availableMetrics = [row.salesGrowth,row.profitGrowth,row.roe,row.roce,row.debtEquity,row.promoterHolding,row.pledge,row.operatingCashFlow,row.epsGrowth,row.pe].filter(v => v !== undefined).length;
-  const status = availableMetrics < 4 ? 'Insufficient Data' : risks.length >= 3 || normalized < 40 ? 'Risky / Avoid' : normalized >= 70 ? 'Strong Fundamentals' : 'Improving Fundamentals';
+  const coverageFields = [row.salesGrowth,row.profitGrowth,row.roe,row.roce,row.debtEquity,row.promoterHolding,row.opm,row.pe ?? row.pb,row.marketCap,row.dividendYield,row.promoterHoldingChange1y,row.redFlagCount,row.greenFlagCount];
+  const availableMetrics = coverageFields.filter(v => v !== undefined).length;
+  const normalized = availableWeight ? Math.round(earned / availableWeight * 100) : 0;
+  const hardRisk = Boolean(row.lossLatestQuarter || row.negativeNetWorth || (row.redFlagCount !== undefined && row.redFlagCount >= 3));
+  const status = availableMetrics < 4 ? 'Insufficient Data' : hardRisk || risks.length >= 3 || normalized < 40 ? 'Risky / Avoid' : normalized >= 70 ? 'Strong Fundamentals' : 'Improving Fundamentals';
   return { ...row, score: normalized, coverage: availableMetrics, status, risks };
 };
 const money = (n?: number) => n === undefined ? '—' : '₹' + n.toLocaleString('en-IN',{maximumFractionDigits:2});
