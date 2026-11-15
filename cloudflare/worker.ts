@@ -350,7 +350,7 @@ export default {
               return response({ error: 'Existing date history is invalid; refusing to overwrite it.' }, 500, origin);
             }
           }
-          const merged = new Map<string, Record<string, unknown>>();
+          const merged = new Map();
           for (const item of [...oldRows, ...incomingRows]) {
             const key = String(item.symbol || '');
             const previous = merged.get(key);
