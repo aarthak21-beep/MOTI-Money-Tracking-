@@ -242,33 +242,41 @@ export const SwingScannerView: React.FC = () => {
     return () => { active = false; };
   }, []);
 
-  const latestDate = useMemo(() => records.reduce((d, r) => r.date > d ? r.date : d, ''), [records]);
+  const bhavcopySessionDates = useMemo(() => Array.from(new Set(
+    records.filter(r => r.sources.includes('bhavcopy')).map(r => r.date)
+  )).sort(), [records]);
+  const latestDate = useMemo(() => bhavcopySessionDates[bhavcopySessionDates.length - 1] || '', [bhavcopySessionDates]);
   const latestRows = useMemo(() => records.filter(r => r.date === latestDate), [records, latestDate]);
   const candidates = useMemo(() => {
-    // A symbol enters the watchlist once it meets EQ/BE +4% + price criteria.
-    // After entry, it stays on the list regardless of daily % change, and is
-    // only hidden while its latest known close is outside ₹300–₹3,000.
-    const symbols = Array.from(new Set(records.map(r => r.symbol)));
+    // Bhavcopy is the source of truth for the watchlist and all technical levels.
+    // A stock must qualify on an EQ/BE Bhavcopy session (+4%, close ₹300–₹3,000).
+    const symbols = Array.from(new Set(records.filter(r => r.sources.includes('bhavcopy')).map(r => r.symbol)));
     return symbols.map(symbol => {
       const symbolRows = records.filter(r => r.symbol === symbol);
-      const history = symbolRows.filter(r => r.close !== undefined).sort((a, b) => a.date.localeCompare(b.date));
-      const latest = history[history.length - 1] || latestRows.find(r => r.symbol === symbol);
-      if (!latest) return null;
-      const qualifiedBefore = symbolRows.some(r =>
+      const bhavcopyRows = symbolRows
+        .filter(r => r.sources.includes('bhavcopy') && r.volume !== undefined && r.high !== undefined && r.low !== undefined && r.close !== undefined)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const latestBhavcopy = bhavcopyRows[bhavcopyRows.length - 1];
+      if (!latestBhavcopy) return null;
+      const latest = latestBhavcopy;
+      const qualifiedBefore = bhavcopyRows.some(r =>
         (r.series === 'EQ' || r.series === 'BE') &&
         (r.pctChange ?? -Infinity) >= 4 &&
         r.close !== undefined && r.close >= 300 && r.close <= 3000
       );
-      const first = history.length >= 6 ? history[history.length - 6] : undefined;
-      const weeklyChange = history.length >= 6 && first?.close ? ((latest.close! / first.close) - 1) * 100 : undefined;
-      // Top 20 CSVs contain selective symbols, so these are prior Top 20 appearances,
-      // not guaranteed consecutive exchange sessions. Exclude the latest report date.
-      const priorTop20 = symbolRows
-        .filter(r => (r.sources.includes('bhavcopy') || r.sources.includes('top20')) && r.date < latest.date && r.high !== undefined && r.low !== undefined)
-        .sort((a, b) => a.date.localeCompare(b.date));
+      const first = bhavcopyRows.length >= 6 ? bhavcopyRows[bhavcopyRows.length - 6] : undefined;
+      const weeklyChange = bhavcopyRows.length >= 6 && first?.close
+        ? ((latest.close! / first.close) - 1) * 100
+        : undefined;
+
+      // Only calculate a range when the stock has a row for every one of the
+      // immediately preceding market-wide Bhavcopy sessions (no selective Top 20 gaps).
+      const priorSessionDates = bhavcopySessionDates.filter(date => date < latest.date);
       const breakoutRanges = [5, 10, 20].map(days => {
-        const sample = priorTop20.slice(-days);
-        const enough = sample.length >= days;
+        const sessionDates = priorSessionDates.slice(-days);
+        const byDate = new Map(bhavcopyRows.map(row => [row.date, row]));
+        const sample = sessionDates.map(date => byDate.get(date)).filter((row): row is DailyRow => !!row);
+        const enough = sessionDates.length === days && sample.length === days;
         const boxHigh = enough ? Math.max(...sample.map(r => r.high!)) : undefined;
         const boxLow = enough ? Math.min(...sample.map(r => r.low!)) : undefined;
         return {
@@ -277,27 +285,22 @@ export const SwingScannerView: React.FC = () => {
           inside: enough && latest.close !== undefined && boxHigh !== undefined && boxLow !== undefined && latest.close <= boxHigh && latest.close >= boxLow
         };
       });
-      // Bhavcopy is the sole source for volume analysis. Use the latest available
-      // Bhavcopy session for this symbol and compare it with the prior 5 Bhavcopy sessions.
-      const bhavcopyRows = symbolRows
-        .filter(r => r.sources.includes('bhavcopy') && r.volume !== undefined)
-        .sort((a, b) => a.date.localeCompare(b.date));
-      const latestBhavcopy = bhavcopyRows[bhavcopyRows.length - 1];
+
+      // Volume multiple uses latest Bhavcopy volume versus the previous 5 sessions.
       const previousBhavcopyVolumes = bhavcopyRows
-        .filter(r => r.date < (latestBhavcopy?.date || ''))
+        .filter(r => r.date < latest.date)
         .slice(-5)
         .map(r => r.volume as number);
       const averagePreviousVolume = previousBhavcopyVolumes.length === 5
         ? previousBhavcopyVolumes.reduce((sum, value) => sum + value, 0) / 5
         : undefined;
-      const volume = latestBhavcopy?.volume !== undefined && averagePreviousVolume && averagePreviousVolume > 0
-        ? latestBhavcopy.volume / averagePreviousVolume
+      const volume = latest.volume !== undefined && averagePreviousVolume !== undefined && averagePreviousVolume > 0
+        ? latest.volume / averagePreviousVolume
         : undefined;
       const sourceSet = Array.from(new Set(latestRows.filter(r => r.symbol === symbol).flatMap(r => r.sources)));
-      const latestSeries = [...symbolRows].reverse().find(r => r.series)?.series;
-      const series = latestRows.find(r => r.symbol === symbol && r.series)?.series || latestSeries;
-      const todayRow = latestRows.find(r => r.symbol === symbol && r.pctChange !== undefined);
-      const pctToday = todayRow?.pctChange ?? latest.pctChange;
+      const series = latest.series || [...symbolRows].reverse().find(r => r.sources.includes('bhavcopy') && r.series)?.series;
+      const pctToday = latest.pctChange;
+
       const hasMediumBreakout = breakoutRanges.some(r => (r.days === 10 || r.days === 20) && r.breakout);
       const mediumBoxes = breakoutRanges.filter(r => r.days === 10 || r.days === 20);
       const nearBreakout = mediumBoxes.some(r =>
@@ -307,11 +310,12 @@ export const SwingScannerView: React.FC = () => {
 
       // Detect a tightening base only from actual daily Bhavcopy sessions.
       // Compare the latest 5-session range with the preceding 5-session range.
-      const dailyBhavcopy = bhavcopyRows
-        .filter(r => r.high !== undefined && r.low !== undefined && r.close !== undefined && r.date < (latestBhavcopy?.date || ''))
-        .slice(-10);
-      const recentBase = dailyBhavcopy.slice(-5);
-      const priorBase = dailyBhavcopy.slice(0, 5);
+      const baseSessionDates = bhavcopySessionDates.filter(date => date < latest.date).slice(-10);
+      const bhavcopyByDate = new Map(bhavcopyRows.map(row => [row.date, row]));
+      const dailyBhavcopy = baseSessionDates.map(date => bhavcopyByDate.get(date)).filter((row): row is DailyRow => !!row);
+      const baseHasTenSessions = baseSessionDates.length === 10 && dailyBhavcopy.length === 10;
+      const recentBase = baseHasTenSessions ? dailyBhavcopy.slice(-5) : [];
+      const priorBase = baseHasTenSessions ? dailyBhavcopy.slice(0, 5) : [];
       const rangeWidth = (rows: DailyRow[]) => rows.length === 5
         ? (Math.max(...rows.map(r => r.high!)) - Math.min(...rows.map(r => r.low!)))
         : undefined;
@@ -347,7 +351,7 @@ export const SwingScannerView: React.FC = () => {
       (item.series === 'EQ' || item.series === 'BE') &&
       item.close !== undefined && item.close >= 300 && item.close <= 3000
     ).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
-  }, [records, latestRows, latestDate]);
+  }, [records, latestRows, latestDate, bhavcopySessionDates]);
 
   const sortedCandidates = [...candidates].sort((a, b) => {
     const direction = sortConfig.direction === 'asc' ? 1 : -1;
