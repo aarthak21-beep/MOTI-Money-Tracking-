@@ -1,24 +1,7 @@
-interface MotiD1Result { success: boolean; meta?: Record<string, unknown>; }
-interface MotiD1Statement {
-  bind(...values: unknown[]): MotiD1Statement;
-  first<T = Record<string, unknown>>(): Promise<T | null>;
-  run(): Promise<MotiD1Result>;
-  all<T = Record<string, unknown>>(): Promise<{ results?: T[] }>;
-}
-interface MotiD1Database {
-  prepare(query: string): MotiD1Statement;
-}
-
-export interface Env {
-  MOTI_DB: MotiD1Database;
-  APPWRITE_API_KEY: string;
-  ALLOWED_ORIGIN?: string;
-}
-
 const SCANNERS = new Set(['swing', 'nifty-options', 'smart-money']);
 const ALLOWED_ORIGINS = new Set(['https://moti-money-tracking.pages.dev', 'https://finova.themotigroup.co.in', 'https://aarthak21-beep.github.io']);
 
-function response(body: unknown, status: number, origin: string): Response {
+function response(body, status, origin) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -37,7 +20,7 @@ const APPWRITE_PROJECT_ID = '6aedba7500289424a374';
 const APPWRITE_DATABASE_ID = '6aedbc350031fd28e31a';
 const FINOVA_ACCESS_TABLE_ID = '6af861370019508c91e1';
 
-async function authorizeFinovaUser(request: Request, env: Env): Promise<boolean> {
+async function authorizeFinovaUser(request, env) {
   const authorization = request.headers.get('Authorization') || '';
   const jwt = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
   if (!jwt || !env.APPWRITE_API_KEY) return false;
@@ -50,7 +33,7 @@ async function authorizeFinovaUser(request: Request, env: Env): Promise<boolean>
       },
     });
     if (!accountResponse.ok) return false;
-    const account = await accountResponse.json() as { $id?: string };
+    const account = await accountResponse.json();
     if (!account.$id) return false;
 
     const query = JSON.stringify({ method: 'equal', attribute: 'user_id', values: [account.$id] });
@@ -64,7 +47,7 @@ async function authorizeFinovaUser(request: Request, env: Env): Promise<boolean>
       },
     });
     if (!rowsResponse.ok) return false;
-    const result = await rowsResponse.json() as { rows?: Array<{ user_id?: string; is_active?: boolean }> };
+    const result = await rowsResponse.json();
     return (result.rows || []).some(row => row.user_id === account.$id && row.is_active === true);
   } catch {
     return false;
@@ -72,7 +55,7 @@ async function authorizeFinovaUser(request: Request, env: Env): Promise<boolean>
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request, env) {
     const url = new URL(request.url);
     const requestOrigin = request.headers.get('Origin') || '';
     const allowedOrigins = new Set([...(ALLOWED_ORIGINS), ...(env.ALLOWED_ORIGIN ? [env.ALLOWED_ORIGIN] : [])]);
@@ -121,7 +104,7 @@ export default {
       if (request.method === 'GET') {
         const row = await env.MOTI_DB.prepare(
           'SELECT backup_json, revision, updated_at FROM moti_app_backup WHERE id = ?1'
-        ).bind('default').first<{ backup_json: string; revision: number; updated_at: string }>();
+        ).bind('default').first();
         if (!row) return response({ backup: null, revision: 0, updatedAt: null }, 200, origin);
         try {
           return response({ backup: row.backup_json, revision: row.revision, updatedAt: row.updated_at }, 200, origin);
@@ -133,9 +116,9 @@ export default {
       if (request.method === 'PUT') {
         const contentLength = Number(request.headers.get('content-length') || 0);
         if (contentLength > 5 * 1024 * 1024) return response({ error: 'Payload exceeds 5 MB' }, 413, origin);
-        let payload: { backup?: unknown; expectedRevision?: unknown };
+        let payload;
         try {
-          payload = await request.json() as { backup?: unknown; expectedRevision?: unknown };
+          payload = await request.json();
         } catch {
           return response({ error: 'Invalid JSON body' }, 400, origin);
         }
@@ -146,7 +129,7 @@ export default {
           return response({ error: 'Payload exceeds 5 MB' }, 413, origin);
         }
         try {
-          const parsed = JSON.parse(payload.backup) as Record<string, unknown>;
+          const parsed = JSON.parse(payload.backup);
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
             return response({ error: 'Backup must be a JSON object' }, 400, origin);
           }
@@ -184,7 +167,7 @@ export default {
       if (request.method === 'GET') {
         const result = await env.MOTI_DB.prepare(
           'SELECT snapshot_date, spot, data_json FROM nifty_options_history ORDER BY snapshot_date DESC LIMIT 30'
-        ).all<{ snapshot_date: string; spot: number; data_json: string }>();
+        ).all();
         const snapshots = (result.results || []).flatMap(row => {
           try { return [{ date: row.snapshot_date, spot: row.spot, rows: JSON.parse(row.data_json) }]; }
           catch { return []; }
@@ -195,8 +178,8 @@ export default {
       if (request.method === 'PUT') {
         const contentLength = Number(request.headers.get('content-length') || 0);
         if (contentLength > 4 * 1024 * 1024) return response({ error: 'Snapshot exceeds 4 MB' }, 413, origin);
-        let payload: { snapshot?: { date?: unknown; spot?: unknown; rows?: unknown } };
-        try { payload = await request.json() as { snapshot?: { date?: unknown; spot?: unknown; rows?: unknown } }; }
+        let payload;
+        try { payload = await request.json(); }
         catch { return response({ error: 'Invalid JSON body' }, 400, origin); }
         const snapshot = payload.snapshot;
         if (!snapshot || typeof snapshot.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(snapshot.date)
@@ -238,10 +221,10 @@ export default {
       `).run();
       const row = await env.MOTI_DB.prepare(
         'SELECT data_json, updated_at FROM moti_scanner_data WHERE scanner = ?1'
-      ).bind(scanner).first<{ data_json: string; updated_at: string }>();
+      ).bind(scanner).first();
       const chunks = await env.MOTI_DB.prepare(
         'SELECT data_json, updated_at FROM moti_scanner_data_chunks WHERE scanner = ?1 ORDER BY chunk_key'
-      ).bind(scanner).all<{ data_json: string; updated_at: string }>();
+      ).bind(scanner).all();
       try {
         const legacy = row?.data_json ? JSON.parse(row.data_json) : [];
         const chunkRows = (chunks.results || []).flatMap(item => {
@@ -249,7 +232,7 @@ export default {
           return Array.isArray(parsed) ? parsed : [];
         });
         if (scanner === 'swing') {
-          const merged = new Map<string, Record<string, unknown>>();
+          const merged = new Map();
           for (const item of [...(Array.isArray(legacy) ? legacy : []), ...chunkRows]) {
             const key = String(item?.date || '') + '|' + String(item?.symbol || '');
             if (item?.date && item?.symbol) merged.set(key, { ...merged.get(key), ...item });
@@ -269,9 +252,9 @@ export default {
     if (request.method === 'PUT') {
       const contentLength = Number(request.headers.get('content-length') || 0);
       if (contentLength > 5 * 1024 * 1024) return response({ error: 'Payload exceeds 5 MB' }, 413, origin);
-      let payload: { scanner?: string; data?: unknown; mode?: string };
+      let payload;
       try {
-        payload = await request.json() as { scanner?: string; data?: unknown; mode?: string };
+        payload = await request.json();
       } catch {
         return response({ error: 'Invalid JSON body' }, 400, origin);
       }
@@ -322,7 +305,7 @@ export default {
           }, 400, origin);
         }
 
-        const byDate = new Map<string, Array<Record<string, unknown>>>();
+        const byDate = new Map();
         for (const rawItem of payload.data) {
           if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) {
             return response({
@@ -330,7 +313,7 @@ export default {
             }, 400, origin);
           }
 
-          const item = rawItem as Record<string, unknown>;
+          const item = rawItem;
           const date = String(item.date || '');
           const symbol = String(item.symbol || '').trim();
 
@@ -357,8 +340,8 @@ export default {
         for (const [date, incomingRows] of byDate) {
           const existing = await env.MOTI_DB.prepare(
             'SELECT data_json FROM moti_scanner_data_chunks WHERE scanner = ?1 AND chunk_key = ?2'
-          ).bind(scanner, date).first<{ data_json: string }>();
-          let oldRows: Array<Record<string, unknown>> = [];
+          ).bind(scanner, date).first();
+          let oldRows = [];
           if (existing?.data_json) {
             try {
               const parsed = JSON.parse(existing.data_json);
