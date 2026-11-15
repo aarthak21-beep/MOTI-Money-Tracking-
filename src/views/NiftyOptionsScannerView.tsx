@@ -117,6 +117,7 @@ const parseCsv = (text: string, filename = ''): OptionRow[] => {
 };
 const csvTemplate = 'Expiry,Strike,OptionType,LTP,OI,ChangeOI,Volume,IV,UnderlyingValue\n2026-12-03,26000,CE,150,120000,15000,45000,14.2,25950\n2026-12-03,26000,PE,175,145000,22000,51000,14.8,25950';
 const fmt = (v: number) => v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const localDateKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const today = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
 const expiryDaysAway = (expiry: string) => {
   const [year, month, day] = expiry.split('-').map(Number);
@@ -140,6 +141,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const [message, setMessage] = useState('');
   const [manualSpot, setManualSpot] = useState('');
   const [history, setHistory] = useState<DailySnapshot[]>(() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as DailySnapshot[]; } catch { return []; } });
+  const [todayKey, setTodayKey] = useState(localDateKey);
   useEffect(() => {
     let active = true;
     loadScannerData<OptionRow[]>('nifty-options').then(async data => {
@@ -174,6 +176,24 @@ export const NiftyOptionsScannerView: React.FC = () => {
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'NIFTY history cloud load failed.'); });
     return () => { active = false; };
   }, []);
+  useEffect(() => {
+    let lastDate = todayKey;
+    const interval = window.setInterval(() => {
+      const currentDate = localDateKey();
+      if (currentDate === lastDate) return;
+      lastDate = currentDate;
+      setTodayKey(currentDate);
+      // Reclassify and prune cloud chain data when the local calendar day changes.
+      void loadScannerData<OptionRow[]>('nifty-options').then(async data => {
+        if (!data) return;
+        const eligibleRows = data.filter(row => isEligiblePositionalExpiry(row.expiry));
+        if (eligibleRows.length !== data.length) await saveScannerData('nifty-options', eligibleRows);
+        setRows(eligibleRows);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(eligibleRows));
+      }).catch(e => setError(e instanceof Error ? e.message : 'Cloud data refresh failed.'));
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [todayKey]);
   const [error, setError] = useState('');
   const [stopPct, setStopPct] = useState(20);
   const [targetPct, setTargetPct] = useState(35);
@@ -186,7 +206,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const groupExpiries = useMemo(() => {
     // Classify every expiry by its actual calendar distance, not by its position in the uploaded file.
     return expiries.filter(expiry => getExpiryBucket(expiry) === expiryGroup);
-  }, [expiries, expiryGroup]);
+  }, [expiries, expiryGroup, todayKey]);
   const selectedExpiry = groupExpiries.includes(expiryChoice) ? expiryChoice : groupExpiries[0] || '';
   const chain = useMemo(() => rows.filter(r => r.expiry === selectedExpiry), [rows, selectedExpiry]);
   const summary = useMemo(() => {
@@ -272,12 +292,14 @@ export const NiftyOptionsScannerView: React.FC = () => {
       // Keep other expiries already uploaded today; replace only expiries present in this CSV.
       const cloudRows = await loadScannerData<OptionRow[]>('nifty-options');
       const existingRows = (cloudRows || rows).filter(row => isEligiblePositionalExpiry(row.expiry));
-      const uploadedExpiries = new Set(parsed.map(r => r.expiry));
+      // Only eligible expiries enter the current chain; all parsed rows still go to Daily History below.
+      const eligibleParsed = parsed.filter(row => isEligiblePositionalExpiry(row.expiry));
+      const uploadedExpiries = new Set(eligibleParsed.map(r => r.expiry));
       const mergedByContract = new Map<string, OptionRow>();
       for (const row of existingRows) {
         if (!uploadedExpiries.has(row.expiry)) mergedByContract.set(`${row.expiry}|${row.strike}|${row.type}`, row);
       }
-      for (const row of parsed) mergedByContract.set(`${row.expiry}|${row.strike}|${row.type}`, row);
+      for (const row of eligibleParsed) mergedByContract.set(`${row.expiry}|${row.strike}|${row.type}`, row);
       const mergedRows = Array.from(mergedByContract.values()).sort((a, b) =>
         a.expiry.localeCompare(b.expiry) || a.strike - b.strike || a.type.localeCompare(b.type)
       );
@@ -294,7 +316,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedRows));
       setExpiryChoice('');
-      setMessage(`${parsed.length} option rows import झाले. ${suppliedSpot > 0 ? `तुम्ही दिलेला NIFTY Spot ₹${fmt(suppliedSpot)} वापरला.` : 'NIFTY Spot CE-PE premium parity वरून अंदाजे काढला आहे.'} Daily snapshot save झाला.`);
+      setMessage(`${parsed.length} option rows History मध्ये save झाले; ${eligibleParsed.length} eligible rows Main Scanner मध्ये ठेवले. ${suppliedSpot > 0 ? `तुम्ही दिलेला NIFTY Spot ₹${fmt(suppliedSpot)} वापरला.` : 'NIFTY Spot CE-PE premium parity वरून अंदाजे काढला आहे.'} Daily snapshot save झाला.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'CSV वाचता आला नाही.'); }
     finally { setLoading(false); }
   };
