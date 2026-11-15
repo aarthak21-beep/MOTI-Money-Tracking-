@@ -284,6 +284,12 @@ export default {
       }
       const updatedAt = new Date().toISOString();
 
+      if (scanner === 'swing' && payload.mode === 'replace') {
+        await env.MOTI_DB.prepare(
+          'DELETE FROM moti_scanner_data_chunks WHERE scanner = ?1'
+        ).bind(scanner).run();
+      }
+
       if (scanner === 'swing' && payload.mode === 'merge' && Array.isArray(payload.data)) {
         await env.MOTI_DB.prepare(`
           CREATE TABLE IF NOT EXISTS moti_scanner_data_chunks (
