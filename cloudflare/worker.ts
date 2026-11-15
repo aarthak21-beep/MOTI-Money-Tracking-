@@ -302,7 +302,36 @@ export default {
         ).bind(scanner).run();
       }
 
-      if (scanner === 'swing' && payload.mode === 'merge' && Array.isArray(payload.data)) {
+      if (scanner === 'swing' && payload.mode === 'merge') {
+        if (!Array.isArray(payload.data) || payload.data.length === 0) {
+          return response({
+            error: 'No Swing rows supplied for D1 merge.'
+          }, 400, origin);
+        }
+
+        const byDate = new Map<string, Array<Record<string, unknown>>>();
+        for (const rawItem of payload.data) {
+          if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) {
+            return response({
+              error: 'Invalid Swing row: each row must be an object. No rows were saved.'
+            }, 400, origin);
+          }
+
+          const item = rawItem as Record<string, unknown>;
+          const date = String(item.date || '');
+          const symbol = String(item.symbol || '').trim();
+
+          if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || !symbol) {
+            return response({
+              error: 'Invalid Swing row: valid date and symbol are required. No rows were saved.'
+            }, 400, origin);
+          }
+
+          const rows = byDate.get(date) || [];
+          rows.push({ ...item, symbol });
+          byDate.set(date, rows);
+        }
+
         await env.MOTI_DB.prepare(`
           CREATE TABLE IF NOT EXISTS moti_scanner_data_chunks (
             scanner TEXT NOT NULL,
@@ -312,15 +341,6 @@ export default {
             PRIMARY KEY (scanner, chunk_key)
           )
         `).run();
-        const byDate = new Map<string, Array<Record<string, unknown>>>();
-        for (const item of payload.data as Array<Record<string, unknown>>) {
-          const date = String(item?.date || '');
-          const symbol = String(item?.symbol || '');
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !symbol) continue;
-          const rows = byDate.get(date) || [];
-          rows.push(item);
-          byDate.set(date, rows);
-        }
         for (const [date, incomingRows] of byDate) {
           const existing = await env.MOTI_DB.prepare(
             'SELECT data_json FROM moti_scanner_data_chunks WHERE scanner = ?1 AND chunk_key = ?2'
