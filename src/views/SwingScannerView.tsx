@@ -221,8 +221,10 @@ const calendarMonthDays = (month: string): string[] => {
 export const SwingScannerView: React.FC = () => {
   const [records, setRecords] = useState<DailyRow[]>([]);
   const [reportDate, setReportDate] = useState(todayLocal);
+  const [reportDateInput, setReportDateInput] = useState(todayLocal());
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => todayLocal().slice(0, 7));
+  useEffect(() => { setReportDateInput(reportDate); }, [reportDate]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -467,11 +469,11 @@ export const SwingScannerView: React.FC = () => {
         <div className="relative">
           <span className="text-xs text-slate-300">Report date</span>
           <div className="mt-1 flex items-center gap-2">
-            <input type="text" inputMode="numeric" aria-label="Edit report date" placeholder="YYYY-MM-DD" value={reportDate} onChange={e => {
-              const value = e.target.value.trim();
+            <input type="text" inputMode="numeric" aria-label="Edit report date" placeholder="YYYY-MM-DD" value={reportDateInput} onClick={() => { setCalendarMonth((reportDate || todayLocal()).slice(0, 7)); setCalendarOpen(true); }} onChange={e => setReportDateInput(e.target.value)} onBlur={() => {
+              const value = reportDateInput.trim();
               if (/^\d{4}-\d{2}-\d{2}$/.test(value) && parseDateValue(value)) setReportDate(value);
-              else if (!value) setReportDate('');
-            }} onBlur={() => { if (!reportDate) setReportDate(todayLocal()); }} className="w-[145px] rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm font-semibold text-white placeholder:text-slate-500 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+              else setReportDateInput(reportDate || todayLocal());
+            }} className="w-[145px] rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm font-semibold text-white placeholder:text-slate-500 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-300" />
             <button type="button" onClick={() => { setCalendarMonth((reportDate || todayLocal()).slice(0, 7)); setCalendarOpen(open => !open); }} aria-expanded={calendarOpen} aria-label="Open calendar" className="rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-lg text-white hover:border-emerald-300">▦</button>
           </div>
           {calendarOpen && <div className="absolute left-0 top-full z-50 mt-2 w-[280px] rounded-xl border border-slate-600 bg-[#0d1928] p-3 shadow-2xl">
