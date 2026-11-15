@@ -45,11 +45,12 @@ const splitScannerData = (data: unknown): unknown[] => {
 };
 
 const saveScannerDataInternal = async <T,>(scanner: string, data: T, mergeChunks = true): Promise<void> => {
-  const batches = scanner === 'swing' && mergeChunks ? splitScannerData(data) : [data];
+  const shouldMerge = scanner === 'swing' && mergeChunks && !(Array.isArray(data) && data.length === 0);
+  const batches = shouldMerge ? splitScannerData(data) : [data];
   for (let index = 0; index < batches.length; index++) {
     await request('/api/data', {
       method: 'PUT',
-      body: JSON.stringify({ scanner, data: batches[index], mode: scanner === 'swing' && mergeChunks ? 'merge' : 'replace' }),
+      body: JSON.stringify({ scanner, data: batches[index], mode: shouldMerge ? 'merge' : 'replace' }),
     });
   }
 };
