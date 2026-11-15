@@ -203,27 +203,11 @@ const money = (v?: number) => v === undefined ? '—' : '₹' + v.toLocaleString
 const pct = (v?: number) => v === undefined ? '—' : (v > 0 ? '+' : '') + v.toFixed(2) + '%';
 
 
-const shiftCalendarMonth = (month: string, amount: number): string => {
-  const [year, mon] = month.split('-').map(Number);
-  const date = new Date(year, mon - 1 + amount, 1);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-};
-const calendarMonthDays = (month: string): string[] => {
-  const [year, mon] = month.split('-').map(Number);
-  const first = new Date(year, mon - 1, 1);
-  const start = new Date(year, mon - 1, 1 - first.getDay());
-  return Array.from({ length: 42 }, (_, i) => {
-    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
-    return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-  });
-};
 
 export const SwingScannerView: React.FC = () => {
   const [records, setRecords] = useState<DailyRow[]>([]);
   const [reportDate, setReportDate] = useState(todayLocal);
   const [reportDateInput, setReportDateInput] = useState(todayLocal());
-  const [calendarOpen, setCalendarOpen] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(() => todayLocal().slice(0, 7));
   useEffect(() => { setReportDateInput(reportDate); }, [reportDate]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -469,31 +453,12 @@ export const SwingScannerView: React.FC = () => {
         <div className="relative">
           <span className="text-xs text-slate-300">Report date</span>
           <div className="mt-1 flex items-center gap-2">
-            <input type="text" inputMode="numeric" aria-label="Edit report date" placeholder="YYYY-MM-DD" value={reportDateInput} onClick={() => { setCalendarMonth((reportDate || todayLocal()).slice(0, 7)); setCalendarOpen(true); }} onChange={e => setReportDateInput(e.target.value)} onBlur={() => {
+            <input type="text" inputMode="numeric" aria-label="Edit report date" placeholder="YYYY-MM-DD" value={reportDateInput} onChange={e => setReportDateInput(e.target.value)} onBlur={() => {
               const value = reportDateInput.trim();
               if (/^\d{4}-\d{2}-\d{2}$/.test(value) && parseDateValue(value)) setReportDate(value);
               else setReportDateInput(reportDate || todayLocal());
             }} className="w-[145px] rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm font-semibold text-white placeholder:text-slate-500 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-300" />
-            <button type="button" onClick={() => { setCalendarMonth((reportDate || todayLocal()).slice(0, 7)); setCalendarOpen(open => !open); }} aria-expanded={calendarOpen} aria-label="Open calendar" className="rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-lg text-white hover:border-emerald-300">▦</button>
           </div>
-          {calendarOpen && <div className="absolute left-0 top-full z-50 mt-2 w-[280px] rounded-xl border border-slate-600 bg-[#0d1928] p-3 shadow-2xl">
-            <div className="mb-3 flex items-center justify-between">
-              <button type="button" onClick={() => setCalendarMonth(month => shiftCalendarMonth(month, -1))} aria-label="Previous month" className="rounded-md px-3 py-1.5 text-lg text-white hover:bg-white/10">‹</button>
-              <span className="text-sm font-bold text-white">{new Date(calendarMonth + '-01T12:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</span>
-              <button type="button" onClick={() => setCalendarMonth(month => shiftCalendarMonth(month, 1))} aria-label="Next month" className="rounded-md px-3 py-1.5 text-lg text-white hover:bg-white/10">›</button>
-            </div>
-            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-slate-400">{['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => <span key={day} className="py-1">{day}</span>)}</div>
-            <div className="grid grid-cols-7 gap-1">{calendarMonthDays(calendarMonth).map(day => {
-              const inMonth = day.slice(0, 7) === calendarMonth;
-              const selected = day === reportDate;
-              const today = day === todayLocal();
-              return <button key={day} type="button" onClick={() => { setReportDate(day); setCalendarOpen(false); }} className={'h-8 rounded-md text-xs ' + (selected ? 'bg-emerald-300 font-black text-slate-950' : inMonth ? 'text-white hover:bg-white/10' : 'text-slate-600 hover:bg-white/5') + (today && !selected ? ' ring-1 ring-emerald-300/70' : '')}>{Number(day.slice(-2))}</button>;
-            })}</div>
-            <div className="mt-3 flex justify-between border-t border-slate-700 pt-2">
-              <button type="button" onClick={() => { const today = todayLocal(); setReportDate(today); setCalendarMonth(today.slice(0, 7)); setCalendarOpen(false); }} className="text-xs font-semibold text-emerald-300 hover:text-emerald-200">Today</button>
-              <button type="button" onClick={() => setCalendarOpen(false)} className="text-xs text-slate-400 hover:text-white">Close</button>
-            </div>
-          </div>}
         </div>
         <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-300 px-4 py-3 text-xs font-black text-slate-950 hover:bg-emerald-200">
           <Upload className="h-4 w-4" /> {loading ? 'Reading reports...' : 'Upload NSE CSV / Bhavcopy ZIP'}
