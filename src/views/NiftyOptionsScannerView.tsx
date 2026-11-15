@@ -124,6 +124,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as OptionRow[]; } catch { return []; }
   });
   const [message, setMessage] = useState('');
+  const [manualSpot, setManualSpot] = useState('');
   const [history, setHistory] = useState<DailySnapshot[]>(() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as DailySnapshot[]; } catch { return []; } });
   useEffect(() => {
     let active = true;
@@ -232,8 +233,11 @@ export const NiftyOptionsScannerView: React.FC = () => {
     if (!file) return;
     setLoading(true); setError(''); setMessage('');
     try {
-      const parsed = parseCsv(await file.text(), file.name);
-      if (!parsed.length) throw new Error('वाचता येणाऱ्या NIFTY option rows सापडल्या नाहीत.');
+      const parsedRows = parseCsv(await file.text(), file.name);
+      if (!parsedRows.length) throw new Error('वाचता येणाऱ्या NIFTY option rows सापडल्या नाहीत.');
+      const suppliedSpot = Number(manualSpot.replace(/[,₹\s]/g, ''));
+      if (manualSpot.trim() && (!Number.isFinite(suppliedSpot) || suppliedSpot <= 0)) throw new Error('NIFTY Spot योग्य आकड्यात भरा.');
+      const parsed = suppliedSpot > 0 ? parsedRows.map(r => ({ ...r, spot: suppliedSpot })) : parsedRows;
       await saveScannerData('nifty-options', parsed);
       setRows(parsed);
       const snapshotDate = new Date().toLocaleDateString('en-CA');
@@ -245,7 +249,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
       setExpiryChoice('');
-      setMessage(`${parsed.length} option rows import झाले. NSE CSV मधील spot CE-PE premium parity वरून अंदाजे काढला आहे. Cloudflare D1 मध्ये Appwrite-authenticated session द्वारे save केला आहे.`);
+      setMessage(`${parsed.length} option rows import झाले. ${suppliedSpot > 0 ? `तुम्ही दिलेला NIFTY Spot ₹${fmt(suppliedSpot)} वापरला.` : 'NIFTY Spot CE-PE premium parity वरून अंदाजे काढला आहे.'} Daily snapshot save झाला.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'CSV वाचता आला नाही.'); }
     finally { setLoading(false); }
   };
@@ -264,14 +268,17 @@ export const NiftyOptionsScannerView: React.FC = () => {
       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300"><Activity className="h-4 w-4" /> MOTI · Separate Options Module</div>
       <h1 className="mt-3 text-2xl font-black text-white sm:text-3xl">NIFTY Options Positional Scanner</h1>
       <p className="mt-2 max-w-3xl text-sm text-slate-300">Intraday नाही. किमान 14 दिवस बाकी असलेली expiry निवडून CE / PE positioning तपासा. OI हे positioning data आहे; ते एकटे buy signal नाही.</p>
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-[10px] font-bold text-slate-300">NIFTY Spot (optional, NSE वर दिसणारा)
+          <input type="number" min="1" step="0.05" value={manualSpot} onChange={e => setManualSpot(e.target.value)} placeholder="उदा. 25144.30" className="w-44 rounded-xl border border-slate-600 bg-[#080f1b] px-3 py-3 text-sm text-white placeholder:text-slate-500" />
+        </label>
         <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-xs font-black text-slate-950 hover:bg-cyan-200">
           <Upload className="h-4 w-4" /> {loading ? 'Reading CSV...' : 'Upload NIFTY Option Chain CSV'}
           <input type="file" accept=".csv,text/csv" className="hidden" disabled={loading} onChange={e => { handleUpload(e.target.files?.[0]); e.currentTarget.value = ''; }} />
         </label>
         <button onClick={downloadTemplate} className="inline-flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-3 text-xs font-bold text-slate-200 hover:bg-white/5"><Download className="h-4 w-4" /> CSV Template</button>
       </div>
-      <p className="mt-2 text-[10px] text-slate-400">Full Option Chain CSV मध्ये सर्व strikes scan होतात. एका selected Strike चा NSE CSV असल्यास फाइलचे नाव NIFTY-Strike-26000.csv असे ठेवा; त्या फाइलमधून फक्त तोच strike वाचता येईल. डेटा local browser मध्ये save होतो.</p>
+      <p className="mt-2 text-[10px] text-slate-400">NSE वरचा अचूक Spot भरून मग CSV upload करा. रिकामा ठेवल्यास CE-PE premium parity वरून अंदाज वापरला जाईल. Full Option Chain CSV मध्ये सर्व strikes scan होतात; single-strike CSV मध्ये फक्त तोच strike वाचता येतो.</p>
     </div>
 
     {message && <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-200">{message}</div>}
@@ -291,14 +298,14 @@ export const NiftyOptionsScannerView: React.FC = () => {
     </section>
 
     <div className="grid gap-3 sm:grid-cols-3">
-      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">NIFTY Spot (estimated)</p><p className="mt-1 text-xl font-black text-white">{summary.spot ? fmt(summary.spot) : '—'}</p></div>
+      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">NIFTY Spot</p><p className="mt-1 text-xl font-black text-white">{summary.spot ? fmt(summary.spot) : '—'}</p></div>
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Put / Call OI Ratio</p><p className="mt-1 text-xl font-black text-white">{summary.pcr ? summary.pcr.toFixed(2) : '—'}</p></div>
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Directional read (OI only)</p><p className={'mt-1 text-xl font-black ' + (summary.bias === 'BULLISH' ? 'text-emerald-300' : summary.bias === 'BEARISH' ? 'text-rose-300' : 'text-amber-300')}>{summary.bias}</p></div>
     </div>
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-bold text-white">Daily Snapshot History · Last 30 uploads</h2><p className="mt-1 text-[11px] text-slate-400">प्रत्येक दिवसाचा upload snapshot याच browser मध्ये जतन होतो. त्याच दिवशी पुन्हा upload केल्यास त्या दिवसाचा snapshot update होतो.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-xs text-slate-300">{history.length} days saved</span></div>
-      {latestSnapshot ? <div className="mt-3 grid gap-3 sm:grid-cols-3"><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest upload date</p><p className="mt-1 text-sm font-bold text-white">{latestSnapshot.date}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest estimated spot</p><p className="mt-1 text-sm font-bold text-white">₹{fmt(latestSnapshot.spot)}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Previous snapshot</p><p className="mt-1 text-sm font-bold text-white">{previousSnapshot?.date || 'अजून उपलब्ध नाही'}</p></div></div> : <p className="mt-3 text-xs text-amber-200">पहिला CSV upload केल्यानंतर Daily History सुरू होईल.</p>}
+      {latestSnapshot ? <div className="mt-3 grid gap-3 sm:grid-cols-3"><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest upload date</p><p className="mt-1 text-sm font-bold text-white">{latestSnapshot.date}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest Spot</p><p className="mt-1 text-sm font-bold text-white">₹{fmt(latestSnapshot.spot)}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Previous snapshot</p><p className="mt-1 text-sm font-bold text-white">{previousSnapshot?.date || 'अजून उपलब्ध नाही'}</p></div></div> : <p className="mt-3 text-xs text-amber-200">पहिला CSV upload केल्यानंतर Daily History सुरू होईल.</p>}
       {previousSnapshot && <><p className="mt-3 text-[11px] text-slate-300">Previous snapshot पासून NIFTY Spot बदल: <b className={latestSnapshot!.spot >= previousSnapshot.spot ? 'text-emerald-300' : 'text-rose-300'}>{latestSnapshot!.spot >= previousSnapshot.spot ? '+' : ''}{fmt(latestSnapshot!.spot - previousSnapshot.spot)} points</b>. खालील contract classification मागील snapshot च्या LTP आणि OI वर आधारित आहे.</p><div className="mt-3 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Type','Strike','Old LTP','New LTP','OI Δ','Price + OI Read'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{priceOiSignals.filter(r => r.oldLtp !== undefined).slice(0, 30).map(r => <tr key={r.expiry + r.strike + r.type}><td className="px-3 py-2 font-bold text-white">{r.type}</td><td className="px-3 py-2">{fmt(r.strike)}</td><td className="px-3 py-2">₹{fmt(r.oldLtp!)}</td><td className="px-3 py-2">₹{fmt(r.ltp)}</td><td className="px-3 py-2">{fmt(r.oi - r.oldOi!)}</td><td className={'px-3 py-2 font-bold ' + (r.signalType === 'bullish' ? 'text-emerald-300' : r.signalType === 'bearish' ? 'text-rose-300' : 'text-amber-200')}>{r.signal}</td></tr>)}</tbody></table></div></>}
       {pcrHistory.length > 0 && <div className="mt-3"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Selected expiry PCR history</p><div className="flex flex-wrap gap-2">{pcrHistory.map(p => <span key={p.date} className="rounded-lg bg-[#080f1b] px-3 py-2 text-[11px] text-slate-300">{p.date}: <b className="text-white">{p.pcr.toFixed(2)}</b></span>)}</div></div>}
     </div>
