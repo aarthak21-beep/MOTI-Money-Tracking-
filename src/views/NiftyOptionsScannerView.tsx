@@ -268,7 +268,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
     if (!chain.length || !summary.spot) return [];
     const types: ('CE' | 'PE')[] = summary.bias === 'BULLISH' ? ['CE'] : summary.bias === 'BEARISH' ? ['PE'] : ['CE', 'PE'];
     return types.flatMap(type => {
-      const sameType = rangeRows.filter(r => r.type === type);
+      const sameType = rangeRows.filter(r => r.type === type && r.ltp > 0 && r.ltp * lotSize <= capital && r.ltp * (stopPct / 100) * lotSize <= 1500);
       const maxVolume = Math.max(1, ...sameType.map(r => r.volume));
       const supportiveOi = type === 'CE' ? summary.peChg > 0 && summary.ceChg <= 0 : summary.ceChg > 0 && summary.peChg <= 0;
       return sameType.map(option => {
@@ -282,10 +282,10 @@ export const NiftyOptionsScannerView: React.FC = () => {
         const biasScore = summary.bias === 'WAIT' ? 0 : 20;
         const rawScore = Math.round(nearAtmScore + pcrScore + oiScore + volumeScore + momentumScore + biasScore);
         const score = signal?.oldLtp === undefined ? Math.min(60, rawScore) : Math.min(100, rawScore);
-        return { ...option, score, distance, signal: signal?.signal || 'PRIOR SNAPSHOT नाही', hasPriorSnapshot: signal?.oldLtp !== undefined };
+        return { ...option, score, distance, premiumPerLot: option.ltp * lotSize, perLotRisk: option.ltp * (stopPct / 100) * lotSize, maxLots: Math.min(Math.floor(capital / (option.ltp * lotSize)), Math.floor(1500 / (option.ltp * (stopPct / 100) * lotSize))), signal: signal?.signal || 'PRIOR SNAPSHOT नाही', hasPriorSnapshot: signal?.oldLtp !== undefined };
       }).sort((a, b) => b.score - a.score).slice(0, 3);
     });
-  }, [chain, rangeRows, summary, priceOiSignals]);
+  }, [chain, rangeRows, summary, priceOiSignals, capital, lotSize, stopPct]);
   const handleUpload = async (file?: File) => {
     if (!file) return;
     setLoading(true); setError(''); setMessage('');
@@ -362,10 +362,10 @@ export const NiftyOptionsScannerView: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">MOTI PRO · Options Radar</p><h2 className="mt-1 text-xl font-black text-white">CE / PE Opportunity Radar</h2></div><span className="rounded-full border border-violet-300/30 px-3 py-1 text-[10px] font-bold text-violet-200">CSV DATA MODE</span></div>
       <p className="mt-2 text-xs text-slate-400">PCR, OI change, volume, ATM जवळीक आणि मागील snapshot मधील Price + OI संकेत यांवर आधारित heuristic score. Live API जोडलेला नाही.</p>
       {summary.bias === 'WAIT' && proRadar.length > 0 && <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-3 text-xs text-amber-100">OI bias सध्या WAIT आहे. खालील CE आणि PE strikes फक्त Watchlist आहेत — हे BUY signals नाहीत.</div>}
-      {!proRadar.length ? <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-sm text-amber-100">Radar साठी पुरेसा CSV data उपलब्ध नाही. पूर्ण Option Chain CSV upload करा.</div> : <div className="mt-4 grid gap-3 md:grid-cols-3">
+      {!proRadar.length ? <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-sm text-amber-100">तुझ्या ₹{fmt(capital)} capital आणि ₹1,500 SL-risk limit मध्ये बसणारा contract या expiry मध्ये नाही. कमी premium असलेला contract शोधण्यासाठी दुसरी expiry पाहा किंवा CSV update करा.</div> : <div className="mt-4 grid gap-3 md:grid-cols-3">
         {proRadar.map((option, index) => { const stop = option.ltp * (1 - stopPct / 100); const target = option.ltp * (1 + targetPct / 100); const stage = summary.bias === 'WAIT' ? 'WATCHLIST · NOT A BUY SIGNAL' : !option.hasPriorSnapshot ? 'DATA INCOMPLETE · WATCH' : option.score >= 80 ? 'STRONG SETUP' : option.score >= 65 ? 'GOOD SETUP' : option.score >= 50 ? 'WATCH' : 'LOW CONFIDENCE'; return <div key={option.expiry + option.strike + option.type} className="rounded-xl border border-slate-600/60 bg-[#0b1424] p-4">
           <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-violet-200">#{index + 1} · {option.type}</span><span className="text-[10px] font-bold text-slate-300">{stage}</span></div>
-          <p className="mt-2 text-xl font-black text-white">{fmt(option.strike)} {option.type}</p><p className="mt-1 text-xs text-slate-400">Radar Score <b className="text-violet-200">{option.score}/100</b> · LTP ₹{fmt(option.ltp)}</p>
+          <p className="mt-2 text-xl font-black text-white">{fmt(option.strike)} {option.type}</p><p className="mt-1 text-xs text-slate-400">Radar Score <b className="text-violet-200">{option.score}/100</b> · LTP ₹{fmt(option.ltp)}</p><p className="mt-1 text-[11px] text-cyan-200">Premium / lot ₹{fmt(option.premiumPerLot)} · Max lots {option.maxLots}</p>
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><span className="text-slate-500">Entry reference</span><p className="font-bold text-white">₹{fmt(option.ltp)}</p></div><div><span className="text-slate-500">Stop reference</span><p className="font-bold text-rose-300">₹{fmt(stop)}</p></div><div><span className="text-slate-500">Target reference</span><p className="font-bold text-emerald-300">₹{fmt(target)}</p></div><div><span className="text-slate-500">ATM पासून अंतर</span><p className="font-bold text-white">{fmt(option.distance)}%</p></div></div>
           <p className="mt-3 border-t border-slate-700 pt-2 text-[10px] text-slate-400">Price + OI: {option.signal} · {option.hasPriorSnapshot ? 'Prior snapshot available' : 'No prior snapshot; score capped at 60'}</p></div>; })}
       </div>}
