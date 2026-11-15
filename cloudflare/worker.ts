@@ -227,12 +227,40 @@ export default {
     if (request.method === 'GET') {
       const scanner = url.searchParams.get('scanner') || '';
       if (!SCANNERS.has(scanner)) return response({ error: 'Unknown scanner' }, 400, origin);
+      await env.MOTI_DB.prepare(`
+        CREATE TABLE IF NOT EXISTS moti_scanner_data_chunks (
+          scanner TEXT NOT NULL,
+          chunk_key TEXT NOT NULL,
+          data_json TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (scanner, chunk_key)
+        )
+      `).run();
       const row = await env.MOTI_DB.prepare(
         'SELECT data_json, updated_at FROM moti_scanner_data WHERE scanner = ?1'
       ).bind(scanner).first<{ data_json: string; updated_at: string }>();
-      if (!row) return response({ scanner, data: null, updatedAt: null }, 200, origin);
+      const chunks = await env.MOTI_DB.prepare(
+        'SELECT data_json, updated_at FROM moti_scanner_data_chunks WHERE scanner = ?1 ORDER BY chunk_key'
+      ).bind(scanner).all<{ data_json: string; updated_at: string }>();
       try {
-        return response({ scanner, data: JSON.parse(row.data_json), updatedAt: row.updated_at }, 200, origin);
+        const legacy = row?.data_json ? JSON.parse(row.data_json) : [];
+        const chunkRows = (chunks.results || []).flatMap(item => {
+          const parsed = JSON.parse(item.data_json);
+          return Array.isArray(parsed) ? parsed : [];
+        });
+        if (scanner === 'swing') {
+          const merged = new Map<string, Record<string, unknown>>();
+          for (const item of [...(Array.isArray(legacy) ? legacy : []), ...chunkRows]) {
+            const key = String(item?.date || '') + '|' + String(item?.symbol || '');
+            if (key) merged.set(key, { ...merged.get(key), ...item });
+          }
+          const data = Array.from(merged.values()).sort((a, b) =>
+            String(a.date || '').localeCompare(String(b.date || '')) ||
+            String(a.symbol || '').localeCompare(String(b.symbol || ''))
+          );
+          return response({ scanner, data: data.length ? data : null, updatedAt: chunks.results?.[0]?.updated_at || row?.updated_at || null }, 200, origin);
+        }
+        return response({ scanner, data: row ? JSON.parse(row.data_json) : null, updatedAt: row?.updated_at || null }, 200, origin);
       } catch {
         return response({ error: 'Stored data is invalid JSON' }, 500, origin);
       }
@@ -241,23 +269,98 @@ export default {
     if (request.method === 'PUT') {
       const contentLength = Number(request.headers.get('content-length') || 0);
       if (contentLength > 5 * 1024 * 1024) return response({ error: 'Payload exceeds 5 MB' }, 413, origin);
-      let payload: { scanner?: string; data?: unknown };
+      let payload: { scanner?: string; data?: unknown; mode?: string };
       try {
-        payload = await request.json() as { scanner?: string; data?: unknown };
+        payload = await request.json() as { scanner?: string; data?: unknown; mode?: string };
       } catch {
         return response({ error: 'Invalid JSON body' }, 400, origin);
       }
       const scanner = payload.scanner || '';
       if (!SCANNERS.has(scanner)) return response({ error: 'Unknown scanner' }, 400, origin);
       if (payload.data === undefined) return response({ error: 'Missing data' }, 400, origin);
-      const json = JSON.stringify(payload.data);
-      if (new TextEncoder().encode(json).byteLength > 5 * 1024 * 1024) {
+      const incomingJson = JSON.stringify(payload.data);
+      if (new TextEncoder().encode(incomingJson).byteLength > 5 * 1024 * 1024) {
         return response({ error: 'Payload exceeds 5 MB' }, 413, origin);
       }
       const updatedAt = new Date().toISOString();
+
+      if (scanner === 'swing' && (payload.mode === 'replace' || payload.mode === 'merge')) {
+        await env.MOTI_DB.prepare(`
+          CREATE TABLE IF NOT EXISTS moti_scanner_data_chunks (
+            scanner TEXT NOT NULL,
+            chunk_key TEXT NOT NULL,
+            data_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (scanner, chunk_key)
+          )
+        `).run();
+      }
+
+      if (scanner === 'swing' && payload.mode === 'replace') {
+        await env.MOTI_DB.prepare(
+          'DELETE FROM moti_scanner_data_chunks WHERE scanner = ?1'
+        ).bind(scanner).run();
+      }
+
+      if (scanner === 'swing' && payload.mode === 'merge' && Array.isArray(payload.data)) {
+        await env.MOTI_DB.prepare(`
+          CREATE TABLE IF NOT EXISTS moti_scanner_data_chunks (
+            scanner TEXT NOT NULL,
+            chunk_key TEXT NOT NULL,
+            data_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (scanner, chunk_key)
+          )
+        `).run();
+        const byDate = new Map<string, Array<Record<string, unknown>>>();
+        for (const item of payload.data as Array<Record<string, unknown>>) {
+          const date = String(item?.date || '');
+          const symbol = String(item?.symbol || '');
+          if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || !symbol) continue;
+          const rows = byDate.get(date) || [];
+          rows.push(item);
+          byDate.set(date, rows);
+        }
+        for (const [date, incomingRows] of byDate) {
+          const existing = await env.MOTI_DB.prepare(
+            'SELECT data_json FROM moti_scanner_data_chunks WHERE scanner = ?1 AND chunk_key = ?2'
+          ).bind(scanner, date).first<{ data_json: string }>();
+          let oldRows: Array<Record<string, unknown>> = [];
+          if (existing?.data_json) {
+            try {
+              const parsed = JSON.parse(existing.data_json);
+              if (Array.isArray(parsed)) oldRows = parsed;
+            } catch {
+              return response({ error: 'Existing date history is invalid; refusing to overwrite it.' }, 500, origin);
+            }
+          }
+          const merged = new Map<string, Record<string, unknown>>();
+          for (const item of [...oldRows, ...incomingRows]) {
+            const key = String(item.symbol || '');
+            const previous = merged.get(key);
+            merged.set(key, previous ? {
+              ...previous,
+              ...Object.fromEntries(Object.entries(item).filter(([field, value]) => value !== undefined && field !== 'sources')),
+              sources: Array.from(new Set([
+                ...(Array.isArray(previous.sources) ? previous.sources : []),
+                ...(Array.isArray(item.sources) ? item.sources : []),
+              ])),
+            } : item);
+          }
+          const json = JSON.stringify(Array.from(merged.values()).sort((a, b) => String(a.symbol).localeCompare(String(b.symbol))));
+          if (new TextEncoder().encode(json).byteLength > 5 * 1024 * 1024) {
+            return response({ error: 'A single trading-day chunk exceeds 5 MB; no data for that day was written.' }, 413, origin);
+          }
+          await env.MOTI_DB.prepare(
+            'INSERT INTO moti_scanner_data_chunks (scanner, chunk_key, data_json, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(scanner, chunk_key) DO UPDATE SET data_json = excluded.data_json, updated_at = excluded.updated_at'
+          ).bind(scanner, date, json, updatedAt).run();
+        }
+        return response({ ok: true, scanner, updatedAt, chunksSaved: byDate.size }, 200, origin);
+      }
+
       await env.MOTI_DB.prepare(
         'INSERT INTO moti_scanner_data (scanner, data_json, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(scanner) DO UPDATE SET data_json = excluded.data_json, updated_at = excluded.updated_at'
-      ).bind(scanner, json, updatedAt).run();
+      ).bind(scanner, incomingJson, updatedAt).run();
       return response({ ok: true, scanner, updatedAt }, 200, origin);
     }
 
