@@ -240,6 +240,8 @@ export const SwingScannerView: React.FC = () => {
           try { legacyRows = JSON.parse(localStorage.getItem('moti_nse_daily_reports_v1') || '[]') as DailyRow[]; } catch { legacyRows = []; }
           if (legacyRows.length) {
             await saveScannerData('swing', legacyRows);
+            // Remove the legacy copy only after D1 confirms the migration.
+            try { localStorage.removeItem('moti_nse_daily_reports_v1'); } catch { /* storage may be unavailable */ }
             if (!active) return;
             setRecords(legacyRows);
             setMessage('जुना browser history D1 मध्ये migrate झाला.');
@@ -429,6 +431,8 @@ export const SwingScannerView: React.FC = () => {
     setLoading(true);
     try {
       await saveScannerData('swing', []);
+      // Prevent the one-time legacy migration from restoring cleared history on refresh.
+      try { localStorage.removeItem('moti_nse_daily_reports_v1'); } catch { /* storage may be unavailable */ }
       setRecords([]);
       setMessage('Saved report history D1 मधून clear झाला.');
     } catch (e) {
