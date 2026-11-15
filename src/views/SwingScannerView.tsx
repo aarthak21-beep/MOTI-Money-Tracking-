@@ -212,22 +212,6 @@ export const SwingScannerView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
-  const [stockSearch, setStockSearch] = useState('');
-  const [minClose, setMinClose] = useState('');
-  const [maxClose, setMaxClose] = useState('');
-  const [minFiveDay, setMinFiveDay] = useState('');
-  const [maxFiveDay, setMaxFiveDay] = useState('');
-  const [minVolume, setMinVolume] = useState('');
-  const [maxVolume, setMaxVolume] = useState('');
-  const [minToday, setMinToday] = useState('');
-  const [maxToday, setMaxToday] = useState('');
-  const [breakout5, setBreakout5] = useState('all');
-  const [breakout10, setBreakout10] = useState('all');
-  const [breakout20, setBreakout20] = useState('all');
-  const [darvas5, setDarvas5] = useState('all');
-  const [darvas10, setDarvas10] = useState('all');
-  const [darvas20, setDarvas20] = useState('all');
-  const [sourceFilter, setSourceFilter] = useState('all');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'weeklyChange', direction: 'desc' });
   useEffect(() => {
     let active = true;
@@ -365,35 +349,7 @@ export const SwingScannerView: React.FC = () => {
     ).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
   }, [records, latestRows, latestDate]);
 
-  const filteredCandidates = candidates.filter(item => {
-    if (stockSearch && !item.symbol.toLowerCase().includes(stockSearch.trim().toLowerCase())) return false;
-    if (minClose !== '' && (item.close === undefined || item.close < Number(minClose))) return false;
-    if (maxClose !== '' && (item.close === undefined || item.close > Number(maxClose))) return false;
-    if (minFiveDay !== '' && (item.weeklyChange === undefined || item.weeklyChange < Number(minFiveDay))) return false;
-    if (maxFiveDay !== '' && (item.weeklyChange === undefined || item.weeklyChange > Number(maxFiveDay))) return false;
-    if (minVolume !== '' && (item.volumeMultiple === undefined || item.volumeMultiple < Number(minVolume))) return false;
-    if (maxVolume !== '' && (item.volumeMultiple === undefined || item.volumeMultiple > Number(maxVolume))) return false;
-    if (minToday !== '' && (item.pctToday === undefined || item.pctToday < Number(minToday))) return false;
-    if (maxToday !== '' && (item.pctToday === undefined || item.pctToday > Number(maxToday))) return false;
-    const checkBreakout = (value: string, days: number) => {
-      if (value === 'all') return true;
-      const range = item.breakoutRanges.find(r => r.days === days);
-      if (!range || !range.enough) return value === 'need';
-      return value === 'yes' ? range.breakout : value === 'no' ? !range.breakout : false;
-    };
-    if (!checkBreakout(breakout5, 5) || !checkBreakout(breakout10, 10) || !checkBreakout(breakout20, 20)) return false;
-    const checkDarvas = (value: string, days: number) => {
-      if (value === 'all') return true;
-      const box = item.breakoutRanges.find(r => r.days === days);
-      if (!box || !box.enough) return value === 'need';
-      const status = box.breakout ? 'breakout' : box.inside ? 'inside' : 'below';
-      return status === value;
-    };
-    if (!checkDarvas(darvas5, 5) || !checkDarvas(darvas10, 10) || !checkDarvas(darvas20, 20)) return false;
-    if (sourceFilter !== 'all' && !item.sources.includes(sourceFilter)) return false;
-    return true;
-  });
-  const sortedCandidates = [...filteredCandidates].sort((a, b) => {
+  const sortedCandidates = [...candidates].sort((a, b) => {
     const direction = sortConfig.direction === 'asc' ? 1 : -1;
     const rangeScore = (item: typeof candidates[number], mode: 'breakout' | 'darvas') => {
       const score = (days: number) => {
@@ -427,12 +383,6 @@ export const SwingScannerView: React.FC = () => {
     direction: current.key === key ? (current.direction === 'desc' ? 'asc' : 'desc') : key === 'symbol' ? 'asc' : 'desc'
   }));
   const sortIndicator = (key: string) => sortConfig.key === key ? (sortConfig.direction === 'asc' ? ' ↑' : ' ↓') : ' ↕';
-  const resetFilters = () => {
-    setStockSearch(''); setMinClose(''); setMaxClose(''); setMinFiveDay(''); setMaxFiveDay('');
-    setMinVolume(''); setMaxVolume(''); setMinToday(''); setMaxToday('');
-    setBreakout5('all'); setBreakout10('all'); setBreakout20('all');
-    setDarvas5('all'); setDarvas10('all'); setDarvas20('all'); setSourceFilter('all');
-  };
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     setLoading(true); setMessage(''); setErrors([]);
@@ -554,16 +504,6 @@ export const SwingScannerView: React.FC = () => {
         <table className="w-full min-w-[1150px] text-left text-xs">
           <thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400">
             <tr>{[{label:'Stock',key:'symbol'},{label:'Setup',key:'setup'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
-            <tr className="border-t border-[#1e2e4f] bg-[#0a1220] align-top normal-case">
-              <th className="px-2 py-2"><input aria-label="Filter stock" value={stockSearch} onChange={e => setStockSearch(e.target.value)} placeholder="Stock" className="w-full min-w-20 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white placeholder:text-slate-500" /></th>
-              <th className="px-2 py-2"><div className="flex min-w-32 gap-1"><input aria-label="Minimum latest close" type="number" value={minClose} onChange={e => setMinClose(e.target.value)} placeholder="Min" className="w-1/2 min-w-0 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white" /><input aria-label="Maximum latest close" type="number" value={maxClose} onChange={e => setMaxClose(e.target.value)} placeholder="Max" className="w-1/2 min-w-0 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white" /></div></th>
-              <th className="px-2 py-2"><div className="flex min-w-32 gap-1"><input aria-label="Minimum 5-day move" type="number" step="0.5" value={minFiveDay} onChange={e => setMinFiveDay(e.target.value)} placeholder="Min" className="w-1/2 min-w-0 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white" /><input aria-label="Maximum 5-day move" type="number" step="0.5" value={maxFiveDay} onChange={e => setMaxFiveDay(e.target.value)} placeholder="Max" className="w-1/2 min-w-0 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white" /></div></th>
-              <th className="px-2 py-2"><div className="flex min-w-32 gap-1"><input aria-label="Minimum volume multiple" type="number" min="0" step="0.1" value={minVolume} onChange={e => setMinVolume(e.target.value)} placeholder="Min" className="w-1/2 min-w-0 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white" /><input aria-label="Maximum volume multiple" type="number" min="0" step="0.1" value={maxVolume} onChange={e => setMaxVolume(e.target.value)} placeholder="Max" className="w-1/2 min-w-0 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white" /></div></th>
-              <th className="px-2 py-2"><div className="flex min-w-48 flex-col gap-1">{[{days:5,value:breakout5,set:setBreakout5},{days:10,value:breakout10,set:setBreakout10},{days:20,value:breakout20,set:setBreakout20}].map(({days,value,set}) => <label key={days} className="flex items-center gap-1 text-[9px] font-normal text-slate-400"><span className="w-7 shrink-0">{days}D</span><select aria-label={`Range breakout ${days}D filter`} value={value} onChange={e => set(e.target.value)} className="min-w-0 flex-1 rounded-md border border-slate-700 bg-[#0d1527] px-1 py-1.5 text-[10px] text-white"><option value="all">All</option><option value="yes">Breakout</option><option value="no">No breakout</option><option value="need">Insufficient data</option></select></label>)}</div></th>
-              <th className="px-2 py-2"><div className="flex min-w-48 flex-col gap-1">{[{days:5,value:darvas5,set:setDarvas5},{days:10,value:darvas10,set:setDarvas10},{days:20,value:darvas20,set:setDarvas20}].map(({days,value,set}) => <label key={days} className="flex items-center gap-1 text-[9px] font-normal text-slate-400"><span className="w-7 shrink-0">{days}D</span><select aria-label={`Darvas box ${days}D filter`} value={value} onChange={e => set(e.target.value)} className="min-w-0 flex-1 rounded-md border border-slate-700 bg-[#0d1527] px-1 py-1.5 text-[10px] text-white"><option value="all">All</option><option value="breakout">Box breakout</option><option value="inside">Inside box</option><option value="below">Below box</option><option value="need">Insufficient data</option></select></label>)}</div></th>
-              <th className="px-2 py-2"><div className="flex min-w-32 gap-1"><input aria-label="Minimum today percent" type="number" step="0.5" value={minToday} onChange={e => setMinToday(e.target.value)} placeholder="Min" className="w-1/2 min-w-0 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white" /><input aria-label="Maximum today percent" type="number" step="0.5" value={maxToday} onChange={e => setMaxToday(e.target.value)} placeholder="Max" className="w-1/2 min-w-0 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[11px] font-normal text-white" /></div></th>
-              <th className="px-2 py-2"><select aria-label="Report source filter" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} className="min-w-32 rounded-md border border-slate-700 bg-[#0d1527] px-2 py-2 text-[10px] font-normal text-white"><option value="all">All sources</option><option value="bhavcopy">Bhavcopy</option><option value="top20">Top 20</option><option value="volume">Volume Gainers</option><option value="advance">Advances</option></select></th>
-            </tr>
           </thead>
           <tbody className="divide-y divide-[#1e2e4f]/60">
             {sortedCandidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
@@ -579,9 +519,9 @@ export const SwingScannerView: React.FC = () => {
             </tr>)}
           </tbody>
         </table>
-        {!filteredCandidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">{candidates.length ? 'या filters मध्ये stock सापडला नाही' : 'NSE reports upload कर'}</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि Advances CSV मधील वाढणारे stocks शोधण्यासाठी वापरली जाईल. एकदा +4% वरून लिस्टमध्ये आलेला stock पुढे +4% खाली गेला तरी ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहील.</p></div>}
+        {!candidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">{candidates.length ? 'या filters मध्ये stock सापडला नाही' : 'NSE reports upload कर'}</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि Advances CSV मधील वाढणारे stocks शोधण्यासाठी वापरली जाईल. एकदा +4% वरून लिस्टमध्ये आलेला stock पुढे +4% खाली गेला तरी ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहील.</p></div>}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#1e2e4f] bg-[#0a1220] px-4 py-3"><p className="text-[10px] text-slate-400">Showing <span className="font-bold text-white">{filteredCandidates.length}</span> of {candidates.length} watchlist stocks</p><button onClick={resetFilters} className="rounded-lg border border-slate-700 px-3 py-2 text-[10px] font-bold text-slate-300 hover:bg-white/5">Reset all filters</button></div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#1e2e4f] bg-[#0a1220] px-4 py-3"><p className="text-[10px] text-slate-400">Showing <span className="font-bold text-white">{candidates.length}</span> watchlist stocks</p></div>
     </div>
     <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><div className="flex items-center gap-2 text-xs font-bold text-cyan-200"><Info className="h-4 w-4" /> Data notes</div>
       <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] leading-5 text-slate-400">
