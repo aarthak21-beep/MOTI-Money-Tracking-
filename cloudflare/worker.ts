@@ -199,7 +199,7 @@ export default {
         try { payload = await request.json() as { snapshot?: { date?: unknown; spot?: unknown; rows?: unknown } }; }
         catch { return response({ error: 'Invalid JSON body' }, 400, origin); }
         const snapshot = payload.snapshot;
-        if (!snapshot || typeof snapshot.date !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshot.date)
+        if (!snapshot || typeof snapshot.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(snapshot.date)
           || typeof snapshot.spot !== 'number' || !Number.isFinite(snapshot.spot)
           || !Array.isArray(snapshot.rows)) {
           return response({ error: 'Invalid NIFTY option snapshot' }, 400, origin);
@@ -252,7 +252,7 @@ export default {
           const merged = new Map<string, Record<string, unknown>>();
           for (const item of [...(Array.isArray(legacy) ? legacy : []), ...chunkRows]) {
             const key = String(item?.date || '') + '|' + String(item?.symbol || '');
-            if (key) merged.set(key, { ...merged.get(key), ...item });
+            if (item?.date && item?.symbol) merged.set(key, { ...merged.get(key), ...item });
           }
           const data = Array.from(merged.values()).sort((a, b) =>
             String(a.date || '').localeCompare(String(b.date || '')) ||
@@ -316,7 +316,7 @@ export default {
         for (const item of payload.data as Array<Record<string, unknown>>) {
           const date = String(item?.date || '');
           const symbol = String(item?.symbol || '');
-          if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || !symbol) continue;
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !symbol) continue;
           const rows = byDate.get(date) || [];
           rows.push(item);
           byDate.set(date, rows);
