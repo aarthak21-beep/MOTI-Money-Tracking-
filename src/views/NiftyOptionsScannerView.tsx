@@ -118,6 +118,16 @@ const parseCsv = (text: string, filename = ''): OptionRow[] => {
 const csvTemplate = 'Expiry,Strike,OptionType,LTP,OI,ChangeOI,Volume,IV,UnderlyingValue\n2026-12-03,26000,CE,150,120000,15000,45000,14.2,25950\n2026-12-03,26000,PE,175,145000,22000,51000,14.8,25950';
 const fmt = (v: number) => v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const today = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
+const startOfWeek = (date: Date) => { const d = new Date(date.getFullYear(), date.getMonth(), date.getDate()); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
+const expiryWeekOffset = (expiry: string) => {
+  const parts = expiry.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(n => !Number.isFinite(n))) return -1;
+  const expiryDate = new Date(parts[0], parts[1] - 1, parts[2]);
+  if (expiryDate.getFullYear() !== parts[0] || expiryDate.getMonth() !== parts[1] - 1 || expiryDate.getDate() !== parts[2]) return -1;
+  const currentWeek = startOfWeek(today()).getTime();
+  const expiryWeek = startOfWeek(expiryDate).getTime();
+  return Math.round((expiryWeek - currentWeek) / 604800000);
+};
 
 export const NiftyOptionsScannerView: React.FC = () => {
   const [rows, setRows] = useState<OptionRow[]>(() => {
@@ -155,13 +165,14 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const [targetPct, setTargetPct] = useState(35);
   const [lotSize, setLotSize] = useState(65);
   const [expiryChoice, setExpiryChoice] = useState('');
-  const [expiryGroup, setExpiryGroup] = useState<'0-6' | '7-13' | '14+'>('14+');
+  const [expiryGroup, setExpiryGroup] = useState<'next' | 'two-weeks' | 'three-plus'>('next');
   const [loading, setLoading] = useState(false);
 
   const expiries = useMemo(() => Array.from(new Set(rows.map(r => r.expiry))).sort(), [rows]);
   const groupExpiries = useMemo(() => expiries.filter(e => {
-    const days = Math.floor((new Date(e + 'T00:00:00').getTime() - today().getTime()) / 86400000);
-    return days >= 0 && (expiryGroup === '0-6' ? days <= 6 : expiryGroup === '7-13' ? days >= 7 && days <= 13 : days >= 14);
+    const weekOffset = expiryWeekOffset(e);
+    // Current week's expiry is deliberately excluded from all positional groups.
+    return expiryGroup === 'next' ? weekOffset === 1 : expiryGroup === 'two-weeks' ? weekOffset === 2 : weekOffset >= 3;
   }), [expiries, expiryGroup]);
   const selectedExpiry = groupExpiries.includes(expiryChoice) ? expiryChoice : groupExpiries[0] || '';
   const chain = useMemo(() => rows.filter(r => r.expiry === selectedExpiry), [rows, selectedExpiry]);
@@ -267,7 +278,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
     <div className="rounded-2xl border border-cyan-300/20 bg-gradient-to-br from-[#10243b] via-[#0d1928] to-[#0d1527] p-5 sm:p-7">
       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300"><Activity className="h-4 w-4" /> MOTI · Separate Options Module</div>
       <h1 className="mt-3 text-2xl font-black text-white sm:text-3xl">NIFTY Options Positional Scanner</h1>
-      <p className="mt-2 max-w-3xl text-sm text-slate-300">Intraday नाही. किमान 14 दिवस बाकी असलेली expiry निवडून CE / PE positioning तपासा. OI हे positioning data आहे; ते एकटे buy signal नाही.</p>
+      <p className="mt-2 max-w-3xl text-sm text-slate-300">Intraday नाही. या आठवड्याची expiry वगळली आहे. पुढील आठवडा, त्यानंतरचा आठवडा किंवा 3+ आठवड्यांनंतरची expiry निवडून CE / PE positioning तपासा. OI हे positioning data आहे; ते एकटे buy signal नाही.</p>
       <div className="mt-4 flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1 text-[10px] font-bold text-slate-300">NIFTY Spot (optional, NSE वर दिसणारा)
           <input type="number" min="1" step="0.05" value={manualSpot} onChange={e => setManualSpot(e.target.value)} placeholder="उदा. 25144.30" className="w-44 rounded-xl border border-slate-600 bg-[#080f1b] px-3 py-3 text-sm text-white placeholder:text-slate-500" />
@@ -312,9 +323,9 @@ export const NiftyOptionsScannerView: React.FC = () => {
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h2 className="text-sm font-bold text-white">Expiry Selection</h2><p className="mt-1 text-[11px] text-slate-400">गट निवडा; त्या गटातील उपलब्ध expiry खाली दिसतील.</p></div>
+        <div><h2 className="text-sm font-bold text-white">Expiry Selection · या आठवड्याची expiry वगळलेली</h2><p className="mt-1 text-[11px] text-slate-400">आठवडा सोमवार ते रविवार मोजला जातो. पुढील आठवड्यापासूनच expiry निवडता येईल.</p></div>
         <div className="flex flex-wrap gap-2">
-          {([{ id: '0-6', label: '0–6 दिवस' }, { id: '7-13', label: '7–13 दिवस' }, { id: '14+', label: '14+ दिवस' }] as const).map(g => <button key={g.id} onClick={() => { setExpiryGroup(g.id); setExpiryChoice(''); }} className={'rounded-lg border px-3 py-2 text-xs font-bold ' + (expiryGroup === g.id ? 'border-cyan-300 bg-cyan-300 text-slate-950' : 'border-slate-600 text-slate-200 hover:bg-white/5')}>{g.label}</button>)}
+          {([{ id: 'next', label: 'Next Week' }, { id: 'two-weeks', label: '2 Weeks Ahead' }, { id: 'three-plus', label: '3+ Weeks Ahead' }] as const).map(g => <button key={g.id} onClick={() => { setExpiryGroup(g.id); setExpiryChoice(''); }} className={'rounded-lg border px-3 py-2 text-xs font-bold ' + (expiryGroup === g.id ? 'border-cyan-300 bg-cyan-300 text-slate-950' : 'border-slate-600 text-slate-200 hover:bg-white/5')}>{g.label}</button>)}
           <select value={selectedExpiry} onChange={e => setExpiryChoice(e.target.value)} className="rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm text-white">
             {groupExpiries.length ? groupExpiries.map(e => <option key={e} value={e}>{e}</option>) : <option value="">या गटात expiry उपलब्ध नाही</option>}
           </select>
