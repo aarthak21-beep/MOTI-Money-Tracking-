@@ -209,6 +209,25 @@ export const NiftyOptionsScannerView: React.FC = () => {
     const type = summary.bias === 'BULLISH' ? 'CE' : 'PE';
     return rangeRows.filter(r => r.type === type).sort((a, b) => b.changeOi - a.changeOi).slice(0, 5);
   }, [chain, rangeRows, summary]);
+  const proRadar = useMemo(() => {
+    if (!chain.length || !summary.spot || summary.bias === 'WAIT') return [];
+    const type: 'CE' | 'PE' = summary.bias === 'BULLISH' ? 'CE' : 'PE';
+    const sameType = rangeRows.filter(r => r.type === type);
+    const maxVolume = Math.max(1, ...sameType.map(r => r.volume));
+    const supportiveOi = type === 'CE' ? summary.peChg > 0 && summary.ceChg <= 0 : summary.ceChg > 0 && summary.peChg <= 0;
+    return sameType.map(option => {
+      const distance = Math.abs(option.strike - summary.spot) / summary.spot * 100;
+      const nearAtmScore = Math.max(0, 10 - distance * 8);
+      const pcrScore = type === 'CE' ? (summary.pcr >= 1.2 ? 15 : summary.pcr >= 1.05 ? 10 : 0) : (summary.pcr <= 0.8 ? 15 : summary.pcr <= 0.95 ? 10 : 0);
+      const oiScore = supportiveOi ? 20 : 0;
+      const volumeScore = Math.min(15, option.volume / maxVolume * 15);
+      const signal = priceOiSignals.find(r => r.strike === option.strike && r.type === option.type);
+      const momentumScore = signal?.signal === 'LONG BUILDUP' || signal?.signal === 'SHORT COVERING' ? 20 : 0;
+      const biasScore = 20;
+      const score = Math.min(100, Math.round(nearAtmScore + pcrScore + oiScore + volumeScore + momentumScore + biasScore));
+      return { ...option, score, distance, signal: signal?.signal || 'PRIOR SNAPSHOT नाही' };
+    }).sort((a, b) => b.score - a.score).slice(0, 3);
+  }, [chain, rangeRows, summary, priceOiSignals]);
   const handleUpload = async (file?: File) => {
     if (!file) return;
     setLoading(true); setError(''); setMessage('');
@@ -257,6 +276,19 @@ export const NiftyOptionsScannerView: React.FC = () => {
 
     {message && <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-200">{message}</div>}
     {error && <div className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-3 text-xs text-rose-200">{error}</div>}
+
+    <section className="rounded-2xl border border-violet-300/20 bg-gradient-to-br from-[#21183b] via-[#101a2d] to-[#0d1527] p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">MOTI PRO · Options Radar</p><h2 className="mt-1 text-xl font-black text-white">CE / PE Opportunity Radar</h2></div><span className="rounded-full border border-violet-300/30 px-3 py-1 text-[10px] font-bold text-violet-200">CSV DATA MODE</span></div>
+      <p className="mt-2 text-xs text-slate-400">PCR, OI change, volume, ATM जवळीक आणि मागील snapshot मधील Price + OI संकेत यांवर आधारित heuristic score. Live API जोडलेला नाही.</p>
+      {summary.bias === 'WAIT' || !proRadar.length ? <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-sm text-amber-100">सध्या स्पष्ट CE / PE setup नाही. नवीन Option Chain CSV upload करा किंवा पुढील snapshot मिळाल्यावर पुन्हा तपासा.</div> : <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {proRadar.map((option, index) => { const stop = option.ltp * (1 - stopPct / 100); const target = option.ltp * (1 + targetPct / 100); const stage = option.score >= 80 ? 'STRONG SETUP' : option.score >= 65 ? 'GOOD SETUP' : option.score >= 50 ? 'WATCH' : 'LOW CONFIDENCE'; return <div key={option.expiry + option.strike + option.type} className="rounded-xl border border-slate-600/60 bg-[#0b1424] p-4">
+          <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-violet-200">#{index + 1} · {option.type}</span><span className="text-[10px] font-bold text-slate-300">{stage}</span></div>
+          <p className="mt-2 text-xl font-black text-white">{fmt(option.strike)} {option.type}</p><p className="mt-1 text-xs text-slate-400">Radar Score <b className="text-violet-200">{option.score}/100</b> · LTP ₹{fmt(option.ltp)}</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><span className="text-slate-500">Entry reference</span><p className="font-bold text-white">₹{fmt(option.ltp)}</p></div><div><span className="text-slate-500">Stop reference</span><p className="font-bold text-rose-300">₹{fmt(stop)}</p></div><div><span className="text-slate-500">Target reference</span><p className="font-bold text-emerald-300">₹{fmt(target)}</p></div><div><span className="text-slate-500">ATM पासून अंतर</span><p className="font-bold text-white">{fmt(option.distance)}%</p></div></div>
+          <p className="mt-3 border-t border-slate-700 pt-2 text-[10px] text-slate-400">Price + OI: {option.signal}</p></div>; })}
+      </div>}
+      <p className="mt-3 text-[10px] text-amber-200/80">हे फक्त CSV मधील उपलब्ध डेटावरचे संकेत आहेत; Entry/SL/Target indicative आहेत. Live premium feed, bid-ask spread, IV/Greeks आणि liquidity तपासल्याशिवाय प्रत्यक्ष ट्रेड करू नका.</p>
+    </section>
 
     <div className="grid gap-3 sm:grid-cols-3">
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">NIFTY Spot (estimated)</p><p className="mt-1 text-xl font-black text-white">{summary.spot ? fmt(summary.spot) : '—'}</p></div>
