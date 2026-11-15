@@ -371,6 +371,33 @@ export const SwingScannerView: React.FC = () => {
           ? 'Retest – Possible'
           : 'No retest';
       const retestLevel = retestSignal === 'Retest – Possible' ? priorBreakout?.level : undefined;
+      // Score only a confirmed possible retest: proximity to the breakout level,
+      // recovery from the session low, and lower-than-usual retest volume.
+      const retestDistancePct = retestLevel !== undefined && latest.low !== undefined && retestLevel > 0
+        ? Math.abs((latest.low / retestLevel) - 1) * 100
+        : undefined;
+      const retestRecoveryPct = latest.low !== undefined && latest.close !== undefined && latest.low > 0
+        ? ((latest.close / latest.low) - 1) * 100
+        : undefined;
+      const retestProximityScore = retestDistancePct !== undefined
+        ? Math.max(0, 40 * (1 - retestDistancePct / 1.5))
+        : 0;
+      const retestRecoveryScore = retestRecoveryPct !== undefined
+        ? Math.min(30, Math.max(0, retestRecoveryPct / 1.5 * 30))
+        : 0;
+      const retestVolumeScore = volume === undefined ? 0
+        : volume <= 0.8 ? 30
+          : volume <= 1 ? 25
+            : volume <= 1.3 ? 15
+              : 5;
+      const retestQualityScore = retestSignal === 'Retest – Possible'
+        ? Math.round(retestProximityScore + retestRecoveryScore + retestVolumeScore)
+        : undefined;
+      const retestQuality = retestQualityScore === undefined
+        ? (retestSignal === 'Insufficient data' ? 'Insufficient data' : 'No retest')
+        : retestQualityScore >= 75 ? 'High'
+          : retestQualityScore >= 55 ? 'Good'
+            : 'Developing';
 
       // Check the next three actual market sessions after the latest prior breakout.
       const postBreakoutDates = priorBreakout
@@ -455,7 +482,7 @@ export const SwingScannerView: React.FC = () => {
             : accumulationSetup
               ? 'Accumulation / Base'
               : 'No Setup';
-      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, volumeConfirmation, breakoutStrength, bestBreakoutMargin, retestSignal, retestLevel, breakoutFailureSignal, consolidationBreakoutSignal, volumeDryUpSignal, breakoutRanges, sources: sourceSet, pctToday, qualifiedBefore, setup };
+      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, volumeConfirmation, breakoutStrength, bestBreakoutMargin, retestSignal, retestLevel, retestQuality, retestQualityScore, breakoutFailureSignal, consolidationBreakoutSignal, volumeDryUpSignal, breakoutRanges, sources: sourceSet, pctToday, qualifiedBefore, setup };
     }).filter((item): item is NonNullable<typeof item> =>
       item !== null &&
       item.qualifiedBefore &&
@@ -485,6 +512,7 @@ export const SwingScannerView: React.FC = () => {
         case 'breakoutStrength': return item.bestBreakoutMargin ?? Number.NEGATIVE_INFINITY;
         case 'volumeConfirmation': return item.volumeMultiple ?? Number.NEGATIVE_INFINITY;
         case 'retestSignal': return item.retestSignal;
+        case 'retestQuality': return item.retestQualityScore ?? Number.NEGATIVE_INFINITY;
         case 'breakoutFailureSignal': return item.breakoutFailureSignal;
         case 'consolidationBreakoutSignal': return item.consolidationBreakoutSignal;
         case 'volumeDryUpSignal': return item.volumeDryUpSignal;
@@ -631,7 +659,7 @@ export const SwingScannerView: React.FC = () => {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-left text-xs">
           <thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400">
-            <tr>{[{label:'Stock',key:'symbol'},{label:'Setup',key:'setup'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Breakout Strength',key:'breakoutStrength'},{label:'Volume Confirmation',key:'volumeConfirmation'},{label:'Retest Signal',key:'retestSignal'},{label:'Breakout Failure',key:'breakoutFailureSignal'},{label:'Consolidation Breakout',key:'consolidationBreakoutSignal'},{label:'Volume Dry-up',key:'volumeDryUpSignal'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
+            <tr>{[{label:'Stock',key:'symbol'},{label:'Setup',key:'setup'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Breakout Strength',key:'breakoutStrength'},{label:'Volume Confirmation',key:'volumeConfirmation'},{label:'Retest Signal',key:'retestSignal'},{label:'Retest Quality',key:'retestQuality'},{label:'Breakout Failure',key:'breakoutFailureSignal'},{label:'Consolidation Breakout',key:'consolidationBreakoutSignal'},{label:'Volume Dry-up',key:'volumeDryUpSignal'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
           </thead>
           <tbody className="divide-y divide-[#1e2e4f]/60">
             {visibleCandidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
@@ -643,6 +671,7 @@ export const SwingScannerView: React.FC = () => {
               <td className="px-3 py-3"><span className={item.breakoutStrength === 'Strong' ? 'font-bold text-emerald-300' : item.breakoutStrength === 'Medium' ? 'font-semibold text-amber-200' : item.breakoutStrength === 'Weak' ? 'text-orange-300' : 'text-slate-400'}>{item.breakoutStrength}</span>{item.bestBreakoutMargin !== undefined && <span className="ml-1 text-[10px] text-slate-500">(+{item.bestBreakoutMargin.toFixed(2)}%)</span>}</td>
               <td className="px-3 py-3"><span className={item.volumeConfirmation === 'Confirmed' ? 'font-bold text-emerald-300' : item.volumeConfirmation === 'Average' ? 'text-amber-200' : item.volumeConfirmation === 'Low' ? 'text-orange-300' : 'text-slate-500'}>{item.volumeConfirmation}</span></td>
               <td className="px-3 py-3"><span className={item.retestSignal === 'Retest – Possible' ? 'font-semibold text-cyan-200' : 'text-slate-500'}>{item.retestSignal}</span>{item.retestLevel !== undefined && <span className="ml-1 text-[10px] text-slate-500">({money(item.retestLevel)})</span>}</td>
+              <td className="px-3 py-3"><span className={item.retestQuality === 'High' ? 'font-bold text-emerald-300' : item.retestQuality === 'Good' ? 'font-semibold text-cyan-200' : item.retestQuality === 'Developing' ? 'text-amber-200' : 'text-slate-500'}>{item.retestQuality}{item.retestQualityScore !== undefined && <span className="ml-1 text-[10px] text-slate-500">({item.retestQualityScore}/100)</span>}</span></td>
               <td className="px-3 py-3"><span className={item.breakoutFailureSignal === 'Failed' ? 'font-bold text-rose-300' : item.breakoutFailureSignal === 'Holding' ? 'font-semibold text-emerald-300' : 'text-slate-500'}>{item.breakoutFailureSignal}</span></td>
               <td className="px-3 py-3"><span className={item.consolidationBreakoutSignal === 'Breakout' ? 'font-bold text-emerald-300' : 'text-slate-500'}>{item.consolidationBreakoutSignal}</span></td>
               <td className="px-3 py-3"><span className={item.volumeDryUpSignal === 'Volume Dry-up' ? 'font-semibold text-cyan-200' : 'text-slate-500'}>{item.volumeDryUpSignal}</span></td>
@@ -664,6 +693,7 @@ export const SwingScannerView: React.FC = () => {
         <li>Breakout Strength हे सर्व उपलब्ध 5D/10D/20D breakouts पैकी close संबंधित range high च्या किती टक्के वर आहे यावर ठरते: 1% किंवा जास्त Strong, 0.30% ते 0.99% Medium, आणि 0% ते 0.29% Weak. हे scanner चे descriptive thresholds आहेत, हमी किंवा prediction नाही.</li>
         <li>Volume Confirmation: latest Bhavcopy volume मागील 5 available Bhavcopy sessions च्या average पेक्षा 1.5x किंवा जास्त असल्यास Confirmed, 1.0x ते 1.49x Average, 1.0x पेक्षा कमी Low; पुरेसा volume data नसेल तर Unavailable.</li>
         <li>Retest Signal: आधीच्या पूर्ण 5/10/20-session range वर close breakout झाल्यानंतर latest low त्या breakout level च्या ±1.5% मध्ये येऊन close level वर/वर आणि दिवसाचा बदल positive असल्यास Retest – Possible. हा संभाव्य price retest आहे; buy/sell recommendation नाही.</li>
+        <li>Retest Quality: फक्त Retest – Possible असल्यास 0–100 score दाखवतो. Breakout level पासून low चे अंतर (40 points), low पासून close पर्यंतची recovery (30 points), आणि latest volume मागील 5 sessions च्या average पेक्षा कमी/जवळ असल्यास volume score (30 points) मिळतो. 75+ High, 55–74 Good, 55 पेक्षा कमी Developing. हा descriptive score आहे; future performance ची हमी नाही.</li>
         <li>Breakout Failure: आधीच्या 5/10/20-session close breakout नंतरच्या पुढील 3 actual Bhavcopy sessions तपासल्या जातात. कोणताही close breakout level खाली गेला तर Failed; तिन्ही closes level वर/वर असतील तर Holding; 3 sessions पूर्ण नसतील किंवा row missing असेल तर Not Confirmed. हा descriptive alert आहे, buy/sell recommendation नाही.</li>
         <li>Consolidation Breakout: latest आधीच्या 5 actual Bhavcopy sessions चा high-low range त्याआधीच्या 5 sessions च्या range पेक्षा किमान 20% कमी आणि latest close च्या 8% पर्यंत असावा. Latest close त्या 5-session base च्या high पेक्षा strictly वर असल्यास Breakout; 10 पूर्ण sessions नसल्यास Insufficient data. हा descriptive alert आहे, buy/sell recommendation नाही.</li>
         <li>Volume Dry-up: latest आधीच्या 5 actual Bhavcopy sessions चा average volume त्याआधीच्या 5 sessions च्या average पेक्षा कमी असल्यास Volume Dry-up; समान किंवा जास्त असल्यास Volume Normal. दोन्ही 5-session groups मधील सर्व 10 daily volume values आणि dates आवश्यक आहेत; अन्यथा Insufficient data. हा descriptive signal आहे, accumulation किंवा price direction ची खात्री नाही.</li>
