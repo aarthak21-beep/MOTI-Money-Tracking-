@@ -14,7 +14,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const loadScannerData = async <T,>(scanner: string): Promise<T | null> => {
-  const result = await request<{ data: T | null }>(`/api/data?scanner=${encodeURIComponent(scanner)}`);
+  const result = await request<{ data: T | null; legacyMigrationBlocked?: boolean }>(`/api/data?scanner=${encodeURIComponent(scanner)}`);
+  if (scanner === 'swing' && result.legacyMigrationBlocked) {
+    // A clear is global: remove stale browser-only copies on every device
+    // before the screen can attempt the one-time legacy migration.
+    try { localStorage.removeItem('moti_nse_daily_reports_v1'); } catch { /* storage may be unavailable */ }
+  }
   return result.data;
 };
 
