@@ -315,14 +315,47 @@ export const SwingScannerView: React.FC = () => {
       const todayRow = latestRows.find(r => r.symbol === symbol && r.pctChange !== undefined);
       const pctToday = todayRow?.pctChange ?? latest.pctChange;
       const hasMediumBreakout = breakoutRanges.some(r => (r.days === 10 || r.days === 20) && r.breakout);
-      const hasBoxSetup = breakoutRanges.some(r => (r.days === 5 || r.days === 10 || r.days === 20) && (r.breakout || r.inside));
-      const setup = (weeklyChange ?? 0) > 10 || (pctToday ?? 0) > 5
+      const mediumBoxes = breakoutRanges.filter(r => r.days === 10 || r.days === 20);
+      const nearBreakout = mediumBoxes.some(r =>
+        r.enough && r.boxHigh !== undefined && latest.close !== undefined &&
+        latest.close <= r.boxHigh && latest.close >= r.boxHigh * 0.97
+      );
+
+      // Detect a tightening base only from actual daily Bhavcopy sessions.
+      // Compare the latest 5-session range with the preceding 5-session range.
+      const dailyBhavcopy = bhavcopyRows
+        .filter(r => r.high !== undefined && r.low !== undefined && r.close !== undefined && r.date < (latestBhavcopy?.date || ''))
+        .slice(-10);
+      const recentBase = dailyBhavcopy.slice(-5);
+      const priorBase = dailyBhavcopy.slice(0, 5);
+      const rangeWidth = (rows: DailyRow[]) => rows.length === 5
+        ? (Math.max(...rows.map(r => r.high!)) - Math.min(...rows.map(r => r.low!)))
+        : undefined;
+      const recentWidth = rangeWidth(recentBase);
+      const priorWidth = rangeWidth(priorBase);
+      const recentHigh = recentBase.length === 5 ? Math.max(...recentBase.map(r => r.high!)) : undefined;
+      const recentLow = recentBase.length === 5 ? Math.min(...recentBase.map(r => r.low!)) : undefined;
+      const basePosition = recentHigh !== undefined && recentLow !== undefined && recentHigh > recentLow && latest.close !== undefined
+        ? (latest.close - recentLow) / (recentHigh - recentLow)
+        : undefined;
+      const tighteningBase = recentWidth !== undefined && priorWidth !== undefined && priorWidth > 0 &&
+        recentWidth < priorWidth * 0.8 && latest.close !== undefined &&
+        recentWidth / latest.close <= 0.08 && (basePosition ?? 0) >= 0.6;
+      const weekly = weeklyChange ?? 0;
+      const today = pctToday ?? 0;
+      const strongSetup = hasMediumBreakout && weekly >= 3 && (volume ?? 0) >= 1.5 && today <= 5;
+      const accumulationSetup = tighteningBase && weekly <= 8 && today <= 5 && (volume === undefined || volume <= 1.3);
+      const breakoutWatch = nearBreakout || (mediumBoxes.some(r => r.inside) && (basePosition ?? 0) >= 0.6);
+
+      const setup = weekly > 10 || today > 5
         ? 'Avoid / Extended'
-        : (weeklyChange ?? -Infinity) >= 3 && (volume ?? 0) >= 1.5 && hasMediumBreakout
+        : strongSetup
           ? 'Strong Setup'
-          : hasBoxSetup || (weeklyChange ?? 0) >= 2
+          : breakoutWatch
             ? 'Breakout Watch'
-            : 'Breakout Watch';
+            : accumulationSetup
+              ? 'Accumulation / Base'
+              : 'No Setup';
       return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, breakoutRanges, sources: sourceSet, pctToday, qualifiedBefore, setup };
     }).filter((item): item is NonNullable<typeof item> =>
       item !== null &&
