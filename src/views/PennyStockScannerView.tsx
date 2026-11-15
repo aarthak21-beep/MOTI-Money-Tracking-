@@ -111,7 +111,6 @@ const scoreRow = (row: PennyRow): PennyRow => {
   if (row.pledge !== undefined && row.pledge > 20) risks.push('High promoter pledge');
   if (row.operatingCashFlow !== undefined && row.operatingCashFlow < 0) risks.push('Negative operating cash flow');
   if (row.pe !== undefined && row.pe < 0) risks.push('Negative P/E / loss-making');
-  const coverage = possible;
   const normalized = possible ? Math.round(score / possible * 100) : 0;
   const availableMetrics = [row.salesGrowth,row.profitGrowth,row.roe,row.roce,row.debtEquity,row.promoterHolding,row.pledge,row.operatingCashFlow,row.epsGrowth,row.pe].filter(v => v !== undefined).length;
   const status = availableMetrics < 4 ? 'Insufficient Data' : risks.length >= 3 || normalized < 40 ? 'Risky / Avoid' : normalized >= 70 ? 'Strong Fundamentals' : 'Improving Fundamentals';
