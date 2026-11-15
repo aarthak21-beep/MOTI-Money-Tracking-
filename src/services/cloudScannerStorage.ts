@@ -17,8 +17,22 @@ export const loadScannerData = async <T,>(scanner: string): Promise<T | null> =>
   const result = await request<{ data: T | null }>(`/api/data?scanner=${encodeURIComponent(scanner)}`);
   return result.data;
 };
+
+// The API stores one complete JSON snapshot per scanner. Serialize writes so an
+// older, slower request cannot finish after a newer snapshot and roll data back.
+const scannerSaveQueues = new Map<string, Promise<void>>();
+
 export const saveScannerData = async <T,>(scanner: string, data: T): Promise<void> => {
-  await request('/api/data', { method: 'PUT', body: JSON.stringify({ scanner, data }) });
+  const previous = scannerSaveQueues.get(scanner) || Promise.resolve();
+  const next = previous.catch(() => undefined).then(async () => {
+    await request('/api/data', { method: 'PUT', body: JSON.stringify({ scanner, data }) });
+  });
+  scannerSaveQueues.set(scanner, next);
+  try {
+    await next;
+  } finally {
+    if (scannerSaveQueues.get(scanner) === next) scannerSaveQueues.delete(scanner);
+  }
 };
 export const deleteScannerData = async (scanner: string): Promise<void> => saveScannerData(scanner, []);
 
