@@ -155,6 +155,7 @@ export default {
 
 
     if (url.pathname === '/api/nifty-options/history') {
+      // Keep the original table for a safe, one-time migration of existing daily snapshots.
       await env.MOTI_DB.prepare(`
         CREATE TABLE IF NOT EXISTS nifty_options_history (
           snapshot_date TEXT PRIMARY KEY NOT NULL,
@@ -163,14 +164,63 @@ export default {
           updated_at TEXT NOT NULL
         )
       `).run();
+      // New history key: one row per trading date AND option expiry.
+      await env.MOTI_DB.prepare(`
+        CREATE TABLE IF NOT EXISTS nifty_options_history_by_expiry (
+          snapshot_date TEXT NOT NULL,
+          expiry_date TEXT NOT NULL,
+          spot REAL NOT NULL,
+          data_json TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (snapshot_date, expiry_date)
+        )
+      `).run();
+
+      // Import any legacy snapshots that are not already present in the new table.
+      const legacy = await env.MOTI_DB.prepare(
+        'SELECT snapshot_date, spot, data_json, updated_at FROM nifty_options_history ORDER BY snapshot_date DESC LIMIT 30'
+      ).all();
+      for (const old of (legacy.results || [])) {
+        try {
+          const oldRows = JSON.parse(old.data_json);
+          if (!Array.isArray(oldRows)) continue;
+          const byExpiry = new Map();
+          for (const row of oldRows) {
+            const expiry = String(row?.expiry || '').trim();
+            if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(expiry)) continue;
+            const list = byExpiry.get(expiry) || [];
+            list.push(row);
+            byExpiry.set(expiry, list);
+          }
+          for (const [expiry, expiryRows] of byExpiry) {
+            await env.MOTI_DB.prepare(
+              'INSERT INTO nifty_options_history_by_expiry (snapshot_date, expiry_date, spot, data_json, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(snapshot_date, expiry_date) DO NOTHING'
+            ).bind(old.snapshot_date, expiry, old.spot, JSON.stringify(expiryRows), old.updated_at || new Date().toISOString()).run();
+          }
+        } catch {
+          // Leave malformed legacy data untouched; valid snapshots continue to migrate.
+        }
+      }
 
       if (request.method === 'GET') {
-        const result = await env.MOTI_DB.prepare(
-          'SELECT snapshot_date, spot, data_json FROM nifty_options_history ORDER BY snapshot_date DESC LIMIT 30'
-        ).all();
+        const result = await env.MOTI_DB.prepare(`
+          SELECT snapshot_date, expiry_date, spot, data_json
+          FROM nifty_options_history_by_expiry
+          WHERE snapshot_date IN (
+            SELECT DISTINCT snapshot_date FROM nifty_options_history_by_expiry
+            ORDER BY snapshot_date DESC LIMIT 30
+          )
+          ORDER BY snapshot_date DESC, expiry_date ASC
+        `).all();
         const snapshots = (result.results || []).flatMap(row => {
-          try { return [{ date: row.snapshot_date, spot: row.spot, rows: JSON.parse(row.data_json) }]; }
-          catch { return []; }
+          try {
+            return [{
+              date: row.snapshot_date,
+              expiry: row.expiry_date,
+              spot: row.spot,
+              rows: JSON.parse(row.data_json)
+            }];
+          } catch { return []; }
         });
         return response({ snapshots }, 200, origin);
       }
@@ -182,23 +232,39 @@ export default {
         try { payload = await request.json(); }
         catch { return response({ error: 'Invalid JSON body' }, 400, origin); }
         const snapshot = payload.snapshot;
-        if (!snapshot || typeof snapshot.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(snapshot.date)
+        if (!snapshot || typeof snapshot.date !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshot.date)
           || typeof snapshot.spot !== 'number' || !Number.isFinite(snapshot.spot)
-          || !Array.isArray(snapshot.rows)) {
+          || !Array.isArray(snapshot.rows) || snapshot.rows.length === 0) {
           return response({ error: 'Invalid NIFTY option snapshot' }, 400, origin);
         }
-        const json = JSON.stringify(snapshot.rows);
-        if (new TextEncoder().encode(json).byteLength > 4 * 1024 * 1024) {
-          return response({ error: 'Snapshot exceeds 4 MB' }, 413, origin);
+        const byExpiry = new Map();
+        for (const row of snapshot.rows) {
+          const expiry = String(row?.expiry || '').trim();
+          if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(expiry)) {
+            return response({ error: 'Every option row must include a valid expiry date.' }, 400, origin);
+          }
+          const list = byExpiry.get(expiry) || [];
+          list.push(row);
+          byExpiry.set(expiry, list);
         }
         const updatedAt = new Date().toISOString();
-        await env.MOTI_DB.prepare(
-          'INSERT INTO nifty_options_history (snapshot_date, spot, data_json, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(snapshot_date) DO UPDATE SET spot = excluded.spot, data_json = excluded.data_json, updated_at = excluded.updated_at'
-        ).bind(snapshot.date, snapshot.spot, json, updatedAt).run();
-        await env.MOTI_DB.prepare(
-          'DELETE FROM nifty_options_history WHERE snapshot_date NOT IN (SELECT snapshot_date FROM nifty_options_history ORDER BY snapshot_date DESC LIMIT 30)'
-        ).run();
-        return response({ ok: true, date: snapshot.date, updatedAt }, 200, origin);
+        for (const [expiry, expiryRows] of byExpiry) {
+          const json = JSON.stringify(expiryRows);
+          if (new TextEncoder().encode(json).byteLength > 4 * 1024 * 1024) {
+            return response({ error: 'Snapshot exceeds 4 MB' }, 413, origin);
+          }
+          await env.MOTI_DB.prepare(
+            'INSERT INTO nifty_options_history_by_expiry (snapshot_date, expiry_date, spot, data_json, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(snapshot_date, expiry_date) DO UPDATE SET spot = excluded.spot, data_json = excluded.data_json, updated_at = excluded.updated_at'
+          ).bind(snapshot.date, expiry, snapshot.spot, json, updatedAt).run();
+        }
+        await env.MOTI_DB.prepare(`
+          DELETE FROM nifty_options_history_by_expiry
+          WHERE snapshot_date NOT IN (
+            SELECT DISTINCT snapshot_date FROM nifty_options_history_by_expiry
+            ORDER BY snapshot_date DESC LIMIT 30
+          )
+        `).run();
+        return response({ ok: true, date: snapshot.date, expiriesSaved: byExpiry.size, updatedAt }, 200, origin);
       }
       return response({ error: 'Method not allowed' }, 405, origin);
     }
