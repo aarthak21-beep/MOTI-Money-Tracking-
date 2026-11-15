@@ -184,10 +184,12 @@ export const SmartMoneyScreenerView: React.FC = () => {
       const recent = history.slice(-3);
       let highVolumeDays = 0;
       let tightHighVolumeDays = 0;
+      let footprintSampleDays = 0;
       recent.forEach((day, offset) => {
         const historyIndex = history.length - recent.length + offset;
         const baseline = history.slice(Math.max(0, historyIndex - 5), historyIndex);
         if (baseline.length < 3) return;
+        footprintSampleDays++;
         const baselineVolume = baseline.reduce((sum, item) => sum + item.volume, 0) / baseline.length;
         const ratio = baselineVolume > 0 ? day.volume / baselineVolume : 0;
         const previousDay = history[historyIndex - 1];
@@ -202,11 +204,11 @@ export const SmartMoneyScreenerView: React.FC = () => {
       const footprintBase = history.length >= 4 ? history[history.length - 4].close : undefined;
       const footprintChange3d = footprintBase && footprintBase > 0 ? (r.close - footprintBase) / footprintBase * 100 : undefined;
       const volumeComponent = volumeRatio === undefined ? 0 : Math.min(35, Math.max(0, (volumeRatio - 1) / 1.5 * 35));
-      const repeatComponent = highVolumeDays / 3 * 30;
-      const absorptionComponent = tightHighVolumeDays / 3 * 25;
+      const repeatComponent = footprintSampleDays ? highVolumeDays / footprintSampleDays * 30 : 0;
+      const absorptionComponent = footprintSampleDays ? tightHighVolumeDays / footprintSampleDays * 25 : 0;
       const stabilityComponent = footprintChange3d === undefined ? 0 : Math.max(0, 10 - Math.max(0, Math.abs(footprintChange3d) - 2) * 3.33);
       const footprintScore = Math.round(Math.min(100, volumeComponent + repeatComponent + absorptionComponent + stabilityComponent));
-      return { ...r, turnoverValue, avgVolume, volumeRatio, change, trend5d, delivery, accumulation, distribution, breakout, signal, score: Math.round(score), availableScore, highVolumeDays, tightHighVolumeDays, footprintChange3d, footprintScore };
+      return { ...r, turnoverValue, avgVolume, volumeRatio, change, trend5d, delivery, accumulation, distribution, breakout, signal, score: Math.round(score), availableScore, highVolumeDays, tightHighVolumeDays, footprintSampleDays, footprintChange3d, footprintScore };
     }).filter(r => r.close >= 500 && r.close <= 3000 && r.turnoverValue >= 10000000)
       .sort((a, b) => b.score - a.score);
   }, [rows]);
@@ -281,7 +283,7 @@ export const SmartMoneyScreenerView: React.FC = () => {
         <div><h2 className="font-bold text-white">MOTI Institutional Footprint Detector</h2><p className="mt-1 text-xs text-slate-400">असामान्य Volume, सलग सक्रिय दिवस आणि कमी Price movement यांवर आधारित संभाव्य accumulation footprint.</p></div>
         <span className="rounded-lg bg-cyan-300/10 px-3 py-1.5 text-xs font-bold text-cyan-200">Footprint Score / 100</span>
       </div>
-      {analytics.filter(r => r.footprintScore > 0).length === 0 ? <p className="py-6 text-center text-xs text-slate-500">Footprint तपासण्यासाठी प्रत्येक शेअरचा किमान ४ ट्रेडिंग दिवसांचा Bhavcopy इतिहास आवश्यक आहे.</p> : <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[780px] text-left text-xs"><thead className="border-b border-white/10 text-slate-400"><tr>{['Rank','Symbol','Footprint Score','High-Volume Days','Tight High-Volume Days','Latest Volume Ratio','3D Price Change','Reading'].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead><tbody>{analytics.filter(r => r.footprintScore > 0).slice().sort((a,b) => b.footprintScore-a.footprintScore).slice(0,10).map((r,i) => <tr key={r.symbol} className="border-b border-white/[0.06] last:border-0"><td className="px-3 py-3 font-bold text-cyan-200">#{i+1}</td><td className="px-3 py-3 font-bold text-white">{r.symbol}</td><td className="px-3 py-3 font-bold text-cyan-200">{r.footprintScore}/100</td><td className="px-3 py-3 text-slate-300">{r.highVolumeDays}/3</td><td className="px-3 py-3 text-slate-300">{r.tightHighVolumeDays}/3</td><td className="px-3 py-3 text-slate-300">{r.volumeRatio === undefined ? '—' : r.volumeRatio.toFixed(2)+'x'}</td><td className="px-3 py-3 text-slate-300">{pct(r.footprintChange3d)}</td><td className="px-3 py-3 text-slate-300">{r.footprintScore >= 65 ? 'Strong watch' : r.footprintScore >= 40 ? 'Developing' : 'Early signal'}</td></tr>)}</tbody></table></div>}
+      {analytics.filter(r => r.footprintScore > 0).length === 0 ? <p className="py-6 text-center text-xs text-slate-500">Footprint तपासण्यासाठी प्रत्येक शेअरचा किमान ४ ट्रेडिंग दिवसांचा Bhavcopy इतिहास आवश्यक आहे.</p> : <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[780px] text-left text-xs"><thead className="border-b border-white/10 text-slate-400"><tr>{['Rank','Symbol','Footprint Score','High-Volume Days','Tight High-Volume Days','Latest Volume Ratio','3D Price Change','Reading'].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead><tbody>{analytics.filter(r => r.footprintScore > 0).slice().sort((a,b) => b.footprintScore-a.footprintScore).slice(0,10).map((r,i) => <tr key={r.symbol} className="border-b border-white/[0.06] last:border-0"><td className="px-3 py-3 font-bold text-cyan-200">#{i+1}</td><td className="px-3 py-3 font-bold text-white">{r.symbol}</td><td className="px-3 py-3 font-bold text-cyan-200">{r.footprintScore}/100</td><td className="px-3 py-3 text-slate-300">{r.highVolumeDays}/{r.footprintSampleDays}</td><td className="px-3 py-3 text-slate-300">{r.tightHighVolumeDays}/{r.footprintSampleDays}</td><td className="px-3 py-3 text-slate-300">{r.volumeRatio === undefined ? '—' : r.volumeRatio.toFixed(2)+'x'}</td><td className="px-3 py-3 text-slate-300">{pct(r.footprintChange3d)}</td><td className="px-3 py-3 text-slate-300">{r.footprintScore >= 65 ? 'Strong watch' : r.footprintScore >= 40 ? 'Developing' : 'Early signal'}</td></tr>)}</tbody></table></div>}
       <p className="mt-3 text-[11px] leading-relaxed text-slate-500">स्कोअर हा केवळ संशोधनासाठीचा volume/price pattern आहे; तो FII/DII किंवा संस्थात्मक खरेदीची ओळख पटवत नाही. Delivery data नसल्यास त्याचा वापर होत नाही. किमान इतिहास अपुरा असल्यास संकेत कमकुवत/अपूर्ण असू शकतात.</p>
     </section>
     <section className="rounded-2xl border border-white/10 bg-[#0b1421] p-4 sm:p-5">
