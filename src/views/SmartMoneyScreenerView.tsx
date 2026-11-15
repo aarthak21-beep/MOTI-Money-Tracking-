@@ -212,6 +212,32 @@ export const SmartMoneyScreenerView: React.FC = () => {
     }).filter(r => r.close >= 500 && r.close <= 3000 && r.turnoverValue >= 10000000)
       .sort((a, b) => b.score - a.score);
   }, [rows]);
+  const deliveryMap = useMemo(() => {
+    const groups = groupBySymbol(rows);
+    return analytics.map(stock => {
+      const history = (groups.get(stock.symbol) || []).map(day => ({
+        delivery: day.deliveryPct ?? (day.deliveryQty !== undefined && day.volume > 0 ? day.deliveryQty / day.volume * 100 : undefined),
+        deliveryQty: day.deliveryQty
+      })).filter(item => item.delivery !== undefined);
+      const recent = history.slice(-5);
+      const latest = recent[recent.length - 1];
+      const previous = recent[recent.length - 2];
+      const averageDelivery = recent.length ? recent.reduce((sum, item) => sum + (item.delivery || 0), 0) / recent.length : undefined;
+      let risingDays = 0;
+      for (let i = recent.length - 1; i > 0; i--) {
+        if ((recent[i].delivery || 0) > (recent[i - 1].delivery || 0)) risingDays++;
+        else break;
+      }
+      const deliveryChange = latest && previous ? (latest.delivery || 0) - (previous.delivery || 0) : undefined;
+      const qtyChange = latest?.deliveryQty !== undefined && previous?.deliveryQty !== undefined && previous.deliveryQty > 0
+        ? (latest.deliveryQty / previous.deliveryQty - 1) * 100 : undefined;
+      const score = latest && averageDelivery !== undefined
+        ? Math.round(Math.min(100, Math.max(0, averageDelivery * 0.55 + Math.max(0, Math.min(25, (deliveryChange || 0) * 2.5)) + Math.max(0, Math.min(20, risingDays * 10))))
+        : 0;
+      const watch = recent.length >= 3 && (latest?.delivery || 0) >= 50 && (averageDelivery || 0) >= 45 && risingDays >= 2;
+      return { ...stock, deliveryDays: recent.length, latestDelivery: latest?.delivery, averageDelivery, deliveryChange, qtyChange, risingDays, deliveryScore: score, deliveryWatch: watch };
+    }).filter(stock => stock.deliveryDays > 0).sort((a, b) => b.deliveryScore - a.deliveryScore);
+  }, [rows, analytics]);
   const superTen = useMemo(() => analytics.slice().sort((a, b) => b.score - a.score).slice(0, 10), [analytics]);
   const powerSignals = useMemo(() => {
     const groups = groupBySymbol(rows);
@@ -277,6 +303,14 @@ export const SmartMoneyScreenerView: React.FC = () => {
     <section className="rounded-2xl border border-amber-300/20 bg-[#0b1421] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-white">MOTI SUPER 10</h2><p className="mt-1 text-xs text-slate-400">Bhavcopy मधील उपलब्ध भाव, Volume, ५ दिवसांची सरासरी आणि Turnover यावर आधारित क्रमवारी. Score सोबत उपलब्ध गुणांची कमाल मर्यादा दाखवली आहे.</p></div><span className="rounded-lg bg-amber-300/10 px-3 py-1.5 text-xs font-bold text-amber-200">MOTI Score</span></div>
       {superTen.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">पात्र शेअर्स दिसण्यासाठी NSE Bhavcopy CSV import करा.</p> : <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="border-b border-white/10 text-slate-400"><tr>{['Rank','Symbol','Date','Series','Open','High','Low','Close','Prev Close','Volume','5D Avg Volume','Volume Ratio','Turnover','1D Change','5D Change',...(hasDelivery ? ['Delivery %'] : []),'MOTI Score'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}</tr></thead><tbody>{superTen.map((r,i) => <tr key={r.symbol} className="border-b border-white/[0.06] last:border-0"><td className="px-2 py-2 font-bold text-amber-200">#{i+1}</td><td className="px-2 py-2 font-bold text-white">{r.symbol}</td><td className="px-2 py-2 text-slate-300">{r.date || '—'}</td><td className="px-2 py-2 text-slate-300">{r.series}</td><td className="px-2 py-2 text-slate-300">{fmt(r.open)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.high)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.low)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.close)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.prevClose)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.volume)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.avgVolume)}</td><td className="px-2 py-2 text-slate-300">{r.volumeRatio === undefined ? '—' : r.volumeRatio.toFixed(2)+'x'}</td><td className="px-2 py-2 text-slate-300">{fmt(r.turnoverValue)}</td><td className="px-2 py-2 text-slate-300">{pct(r.change)}</td><td className="px-2 py-2 text-slate-300">{pct(r.trend5d)}</td>{hasDelivery && <td className="px-2 py-2 text-slate-300">{pct(r.delivery)}</td>}<td className="px-2 py-2 font-bold text-amber-200">{r.score}/{r.availableScore || 0}</td></tr>)}</tbody></table></div>}
+    </section>
+    <section className="rounded-2xl border border-emerald-300/20 bg-[#0b1421] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><h2 className="font-bold text-white">MOTI Delivery Accumulation Map</h2><p className="mt-1 text-xs text-slate-400">शेवटच्या ५ उपलब्ध दिवसांतील Delivery %, त्यातील वाढ आणि सलग वाढणारे दिवस यावर आधारित निरीक्षण.</p></div>
+        <span className="rounded-lg bg-emerald-300/10 px-3 py-1.5 text-xs font-bold text-emerald-200">Delivery Watch</span>
+      </div>
+      {deliveryMap.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">Delivery Accumulation Map साठी अपलोड केलेल्या CSV मध्ये Delivery % किंवा Delivery Quantity असणे आवश्यक आहे. NSE फाइलमध्ये हे कॉलम नसल्यास Delivery डेटा असलेली Bhavcopy अपलोड करा.</p> : <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[850px] text-left text-xs"><thead className="border-b border-white/10 text-slate-400"><tr>{['Rank','Symbol','Latest Delivery %','5D Avg Delivery %','Delivery % Change','Rising Days','Delivery Qty Change','Delivery Score','Reading'].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead><tbody>{deliveryMap.slice(0, 15).map((r,i) => <tr key={r.symbol} className="border-b border-white/[0.06] last:border-0"><td className="px-3 py-3 font-bold text-emerald-200">#{i+1}</td><td className="px-3 py-3 font-bold text-white">{r.symbol}</td><td className="px-3 py-3 text-slate-300">{pct(r.latestDelivery)}</td><td className="px-3 py-3 text-slate-300">{pct(r.averageDelivery)}</td><td className="px-3 py-3 text-slate-300">{r.deliveryChange === undefined ? '—' : (r.deliveryChange > 0 ? '+' : '') + r.deliveryChange.toFixed(1) + ' pp'}</td><td className="px-3 py-3 text-slate-300">{r.risingDays}</td><td className="px-3 py-3 text-slate-300">{r.qtyChange === undefined ? '—' : (r.qtyChange > 0 ? '+' : '') + r.qtyChange.toFixed(1) + '%'}</td><td className="px-3 py-3 font-bold text-emerald-200">{r.deliveryScore}/100</td><td className="px-3 py-3 text-slate-300">{r.deliveryWatch ? 'Accumulation Watch' : r.deliveryDays < 3 ? 'More data needed' : r.latestDelivery !== undefined && r.latestDelivery >= 50 ? 'High delivery' : 'Normal / monitor'}</td></tr>)}</tbody></table></div>}
+      <p className="mt-3 text-[11px] leading-relaxed text-slate-500">Accumulation Watch साठी किमान ३ उपलब्ध Delivery दिवस, सरासरी Delivery किमान ४५%, नवीनतम Delivery किमान ५०% आणि सलग २ वाढी आवश्यक आहेत. हा ऐतिहासिक Delivery pattern आहे; तो संस्थात्मक खरेदी किंवा पुढील भाववाढीचा पुरावा नाही.</p>
     </section>
     <section className="rounded-2xl border border-cyan-300/20 bg-[#0b1421] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
