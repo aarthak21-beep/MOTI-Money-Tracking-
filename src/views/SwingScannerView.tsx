@@ -247,6 +247,15 @@ export const SwingScannerView: React.FC = () => {
   )).sort(), [records]);
   const latestDate = useMemo(() => bhavcopySessionDates[bhavcopySessionDates.length - 1] || '', [bhavcopySessionDates]);
   const latestRows = useMemo(() => records.filter(r => r.date === latestDate), [records, latestDate]);
+  const latestRowsBySymbol = useMemo(() => {
+    const grouped = new Map<string, DailyRow[]>();
+    for (const row of latestRows) {
+      const rows = grouped.get(row.symbol);
+      if (rows) rows.push(row);
+      else grouped.set(row.symbol, [row]);
+    }
+    return grouped;
+  }, [latestRows]);
   // Build the symbol index once. Filtering the full 30k-row history separately
   // for every symbol made scanner entry scale as records × symbols.
   const recordsBySymbol = useMemo(() => {
@@ -268,8 +277,7 @@ export const SwingScannerView: React.FC = () => {
     return symbols.map(symbol => {
       const symbolRows = recordsBySymbol.get(symbol) || [];
       const bhavcopyRows = symbolRows
-        .filter(r => r.sources.includes('bhavcopy') && r.high !== undefined && r.low !== undefined && r.close !== undefined)
-        .sort((a, b) => a.date.localeCompare(b.date));
+        .filter(r => r.sources.includes('bhavcopy') && r.high !== undefined && r.low !== undefined && r.close !== undefined);
       const latestBhavcopy = bhavcopyRows[bhavcopyRows.length - 1];
       if (!latestBhavcopy) return null;
       const latest = latestBhavcopy;
@@ -311,7 +319,7 @@ export const SwingScannerView: React.FC = () => {
       const volume = latest.volume !== undefined && averagePreviousVolume !== undefined && averagePreviousVolume > 0
         ? latest.volume / averagePreviousVolume
         : undefined;
-      const sourceSet = Array.from(new Set(latestRows.filter(r => r.symbol === symbol).flatMap(r => r.sources)));
+      const sourceSet = Array.from(new Set((latestRowsBySymbol.get(symbol) || []).flatMap(r => r.sources)));
       const series = latest.series || [...symbolRows].reverse().find(r => r.sources.includes('bhavcopy') && r.series)?.series;
       const pctToday = latest.pctChange;
 
@@ -365,7 +373,7 @@ export const SwingScannerView: React.FC = () => {
       (item.series === 'EQ' || item.series === 'BE') &&
       item.close !== undefined && item.close >= 300 && item.close <= 3000
     ).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
-  }, [recordsBySymbol, latestRows, latestDate, bhavcopySessionDates]);
+  }, [recordsBySymbol, latestRowsBySymbol, latestDate, bhavcopySessionDates]);
 
   const sortedCandidates = useMemo(() => [...candidates].sort((a, b) => {
     const direction = sortConfig.direction === 'asc' ? 1 : -1;
