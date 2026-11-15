@@ -392,6 +392,45 @@ export const NiftyOptionsScannerView: React.FC = () => {
     covering: momentumAlerts.filter(x => x.signal === 'SHORT COVERING').length,
     unwinding: momentumAlerts.filter(x => x.signal === 'LONG UNWINDING').length,
   }), [momentumAlerts]);
+  // Daily-only historical signal evaluation using three consecutive upload dates.
+  const dailyAccuracy = useMemo(() => {
+    const byExpiry = new Map<string, DailySnapshot[]>();
+    for (const snapshot of history) for (const expiry of new Set(snapshot.rows.map(r => r.expiry).filter(Boolean))) {
+      const list = byExpiry.get(expiry) || [];
+      list.push({ ...snapshot, rows: snapshot.rows.filter(r => r.expiry === expiry) });
+      byExpiry.set(expiry, list);
+    }
+    const stats: Record<string, { total: number; correct: number; moveSum: number }> = {
+      'LONG BUILDUP': { total: 0, correct: 0, moveSum: 0 }, 'SHORT BUILDUP': { total: 0, correct: 0, moveSum: 0 },
+      'SHORT COVERING': { total: 0, correct: 0, moveSum: 0 }, 'LONG UNWINDING': { total: 0, correct: 0, moveSum: 0 },
+    };
+    for (const snapshots of byExpiry.values()) {
+      const ordered = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
+      for (let i = 1; i < ordered.length - 1; i++) {
+        const prev = new Map(ordered[i - 1].rows.map(r => [String(r.strike) + '|' + r.type, r]));
+        const next = new Map(ordered[i + 1].rows.map(r => [String(r.strike) + '|' + r.type, r]));
+        for (const current of ordered[i].rows) {
+          const old = prev.get(String(current.strike) + '|' + current.type);
+          const future = next.get(String(current.strike) + '|' + current.type);
+          if (!old || !future || old.ltp <= 0 || current.ltp <= 0 || future.ltp === current.ltp) continue;
+          const up = current.ltp > old.ltp, down = current.ltp < old.ltp;
+          const oiUp = current.oi > old.oi, oiDown = current.oi < old.oi;
+          const signal = up && oiUp ? 'LONG BUILDUP' : down && oiUp ? 'SHORT BUILDUP' : up && oiDown ? 'SHORT COVERING' : down && oiDown ? 'LONG UNWINDING' : '';
+          if (!signal) continue;
+          const move = (future.ltp - current.ltp) / current.ltp * 100;
+          const bullish = signal === 'LONG BUILDUP' || signal === 'SHORT COVERING';
+          stats[signal].total++;
+          stats[signal].moveSum += move;
+          if (bullish ? move > 0 : move < 0) stats[signal].correct++;
+        }
+      }
+    }
+    const signals = Object.entries(stats).map(([signal, v]) => ({ signal, ...v, accuracy: v.total ? v.correct / v.total * 100 : 0, avgMove: v.total ? v.moveSum / v.total : 0 }));
+    const total = signals.reduce((n, x) => n + x.total, 0);
+    const correct = signals.reduce((n, x) => n + x.correct, 0);
+    return { signals, total, correct, accuracy: total ? correct / total * 100 : 0 };
+  }, [history]);
+
   const handleUpload = async (file?: File) => {
     if (!file) return;
     setLoading(true); setError(''); setMessage('');
@@ -459,6 +498,18 @@ export const NiftyOptionsScannerView: React.FC = () => {
         <button onClick={downloadTemplate} className="inline-flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-3 text-xs font-bold text-slate-200 hover:bg-white/5"><Download className="h-4 w-4" /> CSV Template</button>
       </div>
       <p className="mt-2 text-[10px] text-slate-400">NSE वरचा अचूक Spot भरून मग CSV upload करा. रिकामा ठेवल्यास CE-PE premium parity वरून अंदाज वापरला जाईल. Full Option Chain CSV मध्ये सर्व strikes scan होतात; single-strike CSV मध्ये फक्त तोच strike वाचता येतो.</p>
+    </div>
+
+    <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
+      <h2 className="text-sm font-bold text-white">Daily Signal Accuracy · CSV History Based</h2>
+      <p className="mt-1 text-[11px] text-slate-400">कालच्या OI + Premium signal नंतर पुढील upload-day ला त्याच contract चा premium कोणत्या दिशेने बदलला ते मोजले आहे. Intraday data नाही.</p>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Historical Accuracy</p><p className="mt-1 text-xl font-black text-white">{dailyAccuracy.total ? dailyAccuracy.accuracy.toFixed(1) + '%' : '—'}</p></div>
+        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Correct Outcomes</p><p className="mt-1 text-xl font-black text-emerald-300">{dailyAccuracy.correct} / {dailyAccuracy.total}</p></div>
+        <div className="col-span-2 rounded-lg bg-[#080f1b] p-3 sm:col-span-1"><p className="text-[10px] text-slate-400">History Requirement</p><p className="mt-1 text-sm font-bold text-white">3 daily snapshots</p></div>
+      </div>
+      <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[650px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Signal','Evaluated','Correct','Accuracy','Next-day Avg Premium Δ'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{dailyAccuracy.signals.map(x => <tr key={x.signal}><td className="px-3 py-2 font-bold text-white">{x.signal}</td><td className="px-3 py-2">{x.total}</td><td className="px-3 py-2 text-emerald-300">{x.correct}</td><td className="px-3 py-2">{x.total ? x.accuracy.toFixed(1) + '%' : '—'}</td><td className={'px-3 py-2 ' + (x.avgMove > 0 ? 'text-emerald-300' : x.avgMove < 0 ? 'text-rose-300' : 'text-slate-300')}>{x.total ? (x.avgMove > 0 ? '+' : '') + x.avgMove.toFixed(2) + '%' : '—'}</td></tr>)}</tbody></table></div>
+      <p className="mt-2 text-[10px] leading-5 text-slate-500">Accuracy म्हणजे पुढील upload-day ला premium signal च्या दिशेने हलला का. हा historical descriptive score आहे; profitable trades किंवा future returns ची हमी नाही. प्रत्येक expiry साठी सलग 3 daily snapshots लागतात.</p>
     </div>
 
     {message && <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-200">{message}</div>}
