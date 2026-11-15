@@ -142,8 +142,18 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const [history, setHistory] = useState<DailySnapshot[]>(() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as DailySnapshot[]; } catch { return []; } });
   useEffect(() => {
     let active = true;
-    loadScannerData<OptionRow[]>('nifty-options').then(data => {
-      if (active && data) { setRows(data); localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+    loadScannerData<OptionRow[]>('nifty-options').then(async data => {
+      if (!active || !data) return;
+      // Remove expired/near-expiry chain rows from cloud storage (< 7 days left).
+      // Historical daily snapshots are intentionally kept separately.
+      const eligibleRows = data.filter(row => isEligiblePositionalExpiry(row.expiry));
+      if (eligibleRows.length !== data.length) {
+        await saveScannerData('nifty-options', eligibleRows);
+      }
+      if (active) {
+        setRows(eligibleRows);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(eligibleRows));
+      }
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud data load failed.'); });
     loadNiftyOptionsHistory<DailySnapshot>().then(async cloudHistory => {
       if (!active) return;
@@ -261,7 +271,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
 
       // Keep other expiries already uploaded today; replace only expiries present in this CSV.
       const cloudRows = await loadScannerData<OptionRow[]>('nifty-options');
-      const existingRows = cloudRows || rows;
+      const existingRows = (cloudRows || rows).filter(row => isEligiblePositionalExpiry(row.expiry));
       const uploadedExpiries = new Set(parsed.map(r => r.expiry));
       const mergedByContract = new Map<string, OptionRow>();
       for (const row of existingRows) {
