@@ -407,6 +407,20 @@ export const SwingScannerView: React.FC = () => {
         : undefined;
       const recentWidth = rangeWidth(recentBase);
       const priorWidth = rangeWidth(priorBase);
+      const recentVolumes = recentBase.map(row => row.volume);
+      const priorVolumes = priorBase.map(row => row.volume);
+      const recentAverageVolume = recentVolumes.length === 5 && recentVolumes.every(v => v !== undefined)
+        ? recentVolumes.reduce((sum, value) => sum + value!, 0) / 5
+        : undefined;
+      const priorAverageVolume = priorVolumes.length === 5 && priorVolumes.every(v => v !== undefined)
+        ? priorVolumes.reduce((sum, value) => sum + value!, 0) / 5
+        : undefined;
+      const volumeDryUpSignal = !baseHasTenSessions || recentAverageVolume === undefined ||
+        priorAverageVolume === undefined || priorAverageVolume <= 0
+        ? 'Insufficient data'
+        : recentAverageVolume < priorAverageVolume
+          ? 'Volume Dry-up'
+          : 'Volume Normal';
       const recentHigh = recentBase.length === 5 ? Math.max(...recentBase.map(r => r.high!)) : undefined;
       const recentLow = recentBase.length === 5 ? Math.min(...recentBase.map(r => r.low!)) : undefined;
       const basePosition = recentHigh !== undefined && recentLow !== undefined && recentHigh > recentLow && latest.close !== undefined
@@ -441,7 +455,7 @@ export const SwingScannerView: React.FC = () => {
             : accumulationSetup
               ? 'Accumulation / Base'
               : 'No Setup';
-      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, volumeConfirmation, breakoutStrength, bestBreakoutMargin, retestSignal, retestLevel, breakoutFailureSignal, consolidationBreakoutSignal, breakoutRanges, sources: sourceSet, pctToday, qualifiedBefore, setup };
+      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, volumeConfirmation, breakoutStrength, bestBreakoutMargin, retestSignal, retestLevel, breakoutFailureSignal, consolidationBreakoutSignal, volumeDryUpSignal, breakoutRanges, sources: sourceSet, pctToday, qualifiedBefore, setup };
     }).filter((item): item is NonNullable<typeof item> =>
       item !== null &&
       item.qualifiedBefore &&
@@ -473,6 +487,7 @@ export const SwingScannerView: React.FC = () => {
         case 'retestSignal': return item.retestSignal;
         case 'breakoutFailureSignal': return item.breakoutFailureSignal;
         case 'consolidationBreakoutSignal': return item.consolidationBreakoutSignal;
+        case 'volumeDryUpSignal': return item.volumeDryUpSignal;
         case 'breakout': return rangeScore(item, 'breakout');
         case 'darvas': return rangeScore(item, 'darvas');
         case 'pctToday': return item.pctToday ?? Number.NEGATIVE_INFINITY;
@@ -616,7 +631,7 @@ export const SwingScannerView: React.FC = () => {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-left text-xs">
           <thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400">
-            <tr>{[{label:'Stock',key:'symbol'},{label:'Setup',key:'setup'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Breakout Strength',key:'breakoutStrength'},{label:'Volume Confirmation',key:'volumeConfirmation'},{label:'Retest Signal',key:'retestSignal'},{label:'Breakout Failure',key:'breakoutFailureSignal'},{label:'Consolidation Breakout',key:'consolidationBreakoutSignal'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
+            <tr>{[{label:'Stock',key:'symbol'},{label:'Setup',key:'setup'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Breakout Strength',key:'breakoutStrength'},{label:'Volume Confirmation',key:'volumeConfirmation'},{label:'Retest Signal',key:'retestSignal'},{label:'Breakout Failure',key:'breakoutFailureSignal'},{label:'Consolidation Breakout',key:'consolidationBreakoutSignal'},{label:'Volume Dry-up',key:'volumeDryUpSignal'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
           </thead>
           <tbody className="divide-y divide-[#1e2e4f]/60">
             {visibleCandidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
@@ -630,6 +645,7 @@ export const SwingScannerView: React.FC = () => {
               <td className="px-3 py-3"><span className={item.retestSignal === 'Retest – Possible' ? 'font-semibold text-cyan-200' : 'text-slate-500'}>{item.retestSignal}</span>{item.retestLevel !== undefined && <span className="ml-1 text-[10px] text-slate-500">({money(item.retestLevel)})</span>}</td>
               <td className="px-3 py-3"><span className={item.breakoutFailureSignal === 'Failed' ? 'font-bold text-rose-300' : item.breakoutFailureSignal === 'Holding' ? 'font-semibold text-emerald-300' : 'text-slate-500'}>{item.breakoutFailureSignal}</span></td>
               <td className="px-3 py-3"><span className={item.consolidationBreakoutSignal === 'Breakout' ? 'font-bold text-emerald-300' : 'text-slate-500'}>{item.consolidationBreakoutSignal}</span></td>
+              <td className="px-3 py-3"><span className={item.volumeDryUpSignal === 'Volume Dry-up' ? 'font-semibold text-cyan-200' : 'text-slate-500'}>{item.volumeDryUpSignal}</span></td>
               <td className="px-3 py-3"><div className="space-y-1">{item.breakoutRanges.map(r => <div key={r.days}><span className="text-slate-400">{r.days}D:</span> {r.enough ? r.breakout ? <span className="font-bold text-emerald-300">Breakout</span> : <span className="text-slate-300">No breakout</span> : <span className="text-slate-500">Need {r.days} daily records</span>}</div>)}</div></td>
               <td className="px-3 py-3"><div className="space-y-1">{item.breakoutRanges.map(r => <div key={r.days}><span className="text-slate-400">{r.days}D:</span> {r.enough ? <><span className={r.breakout ? 'font-bold text-emerald-300' : 'text-slate-300'}>{r.breakout ? 'Box breakout' : r.inside ? 'Inside box' : 'Below box'}</span><span className="ml-1 text-[10px] text-slate-500">({money(r.boxLow)}–{money(r.boxHigh)})</span></> : <span className="text-slate-500">Need {r.days} daily records</span>}</div>)}</div></td>
               <td className="px-3 py-3 text-slate-200">{pct(item.pctToday)}</td>
@@ -650,6 +666,7 @@ export const SwingScannerView: React.FC = () => {
         <li>Retest Signal: आधीच्या पूर्ण 5/10/20-session range वर close breakout झाल्यानंतर latest low त्या breakout level च्या ±1.5% मध्ये येऊन close level वर/वर आणि दिवसाचा बदल positive असल्यास Retest – Possible. हा संभाव्य price retest आहे; buy/sell recommendation नाही.</li>
         <li>Breakout Failure: आधीच्या 5/10/20-session close breakout नंतरच्या पुढील 3 actual Bhavcopy sessions तपासल्या जातात. कोणताही close breakout level खाली गेला तर Failed; तिन्ही closes level वर/वर असतील तर Holding; 3 sessions पूर्ण नसतील किंवा row missing असेल तर Not Confirmed. हा descriptive alert आहे, buy/sell recommendation नाही.</li>
         <li>Consolidation Breakout: latest आधीच्या 5 actual Bhavcopy sessions चा high-low range त्याआधीच्या 5 sessions च्या range पेक्षा किमान 20% कमी आणि latest close च्या 8% पर्यंत असावा. Latest close त्या 5-session base च्या high पेक्षा strictly वर असल्यास Breakout; 10 पूर्ण sessions नसल्यास Insufficient data. हा descriptive alert आहे, buy/sell recommendation नाही.</li>
+        <li>Volume Dry-up: latest आधीच्या 5 actual Bhavcopy sessions चा average volume त्याआधीच्या 5 sessions च्या average पेक्षा कमी असल्यास Volume Dry-up; समान किंवा जास्त असल्यास Volume Normal. दोन्ही 5-session groups मधील सर्व 10 daily volume values आणि dates आवश्यक आहेत; अन्यथा Insufficient data. हा descriptive signal आहे, accumulation किंवा price direction ची खात्री नाही.</li>
         <li>Volume analysis साठी फक्त Bhavcopy वापरली जाते: शेवटच्या उपलब्ध Bhavcopy session चा volume ÷ त्याआधीच्या 5 Bhavcopy sessions चा average. 5 जुने sessions किंवा volume data नसेल तर — दिसेल. Volume Gainers CSV या गणनेत वापरली जात नाही.</li>
         <li>Bhavcopy ZIP मधील रोजचे EQ/BE OHLCV रेकॉर्ड 5/10/20 Range Breakout आणि Darvas-style Box साठी वापरले जातात. जुन्या CSV-only डेटासाठी Top 20 appearances हा fallback आहे; त्या नोंदी सलग exchange sessions असतीलच असे नाही.</li>
         <li>NSE Cash Market Bhavcopy ZIP पूर्ण Cash Market universe मधील उपलब्ध EQ/BE records साठवण्यासाठी आहे. जुने Top 20/Volume Gainers/Advances reports स्वतंत्रपणे काम करत राहतात.</li>
