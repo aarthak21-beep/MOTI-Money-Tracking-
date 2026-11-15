@@ -345,6 +345,33 @@ export const NiftyOptionsScannerView: React.FC = () => {
       bearish: allExpiryAnalytics.filter(x => x.bias === 'BEARISH').length,
       neutral: allExpiryAnalytics.filter(x => x.bias === 'NEUTRAL').length };
   }, [allExpiryAnalytics]);
+  const momentumAlerts = useMemo(() => {
+    // Compare every eligible expiry against its latest prior-day snapshot.
+    return expiries.flatMap(expiry => {
+      const snapshots = history
+        .filter(h => h.expiry === expiry || (!h.expiry && h.rows.some(r => r.expiry === expiry)))
+        .filter(h => h.date < localDateKey())
+        .sort((a, b) => b.date.localeCompare(a.date));
+      const previous = snapshots[0];
+      if (!previous) return [];
+      const oldMap = new Map(previous.rows.filter(r => r.expiry === expiry).map(r => [`${r.strike}-${r.type}`, r]));
+      return rows.filter(r => r.expiry === expiry).flatMap(r => {
+        const old = oldMap.get(`${r.strike}-${r.type}`);
+        if (!old) return [];
+        const priceUp = r.ltp > old.ltp, priceDown = r.ltp < old.ltp;
+        const oiUp = r.oi > old.oi, oiDown = r.oi < old.oi;
+        const signal = priceUp && oiUp ? 'LONG BUILDUP' : priceDown && oiUp ? 'SHORT BUILDUP' : priceUp && oiDown ? 'SHORT COVERING' : priceDown && oiDown ? 'LONG UNWINDING' : '';
+        if (!signal) return [];
+        return [{ ...r, previousDate: previous.date, previousLtp: old.ltp, previousOi: old.oi, priceChangePct: old.ltp > 0 ? (r.ltp - old.ltp) / old.ltp * 100 : 0, oiDelta: r.oi - old.oi, signal, signalType: signal === 'LONG BUILDUP' || signal === 'SHORT COVERING' ? 'bullish' : 'bearish' }];
+      });
+    }).sort((a, b) => Math.abs(b.oiDelta) - Math.abs(a.oiDelta));
+  }, [expiries, rows, history]);
+  const momentumSummary = useMemo(() => ({
+    long: momentumAlerts.filter(x => x.signal === 'LONG BUILDUP').length,
+    short: momentumAlerts.filter(x => x.signal === 'SHORT BUILDUP').length,
+    covering: momentumAlerts.filter(x => x.signal === 'SHORT COVERING').length,
+    unwinding: momentumAlerts.filter(x => x.signal === 'LONG UNWINDING').length,
+  }), [momentumAlerts]);
   const handleUpload = async (file?: File) => {
     if (!file) return;
     setLoading(true); setError(''); setMessage('');
@@ -449,6 +476,19 @@ export const NiftyOptionsScannerView: React.FC = () => {
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Combined CE Change OI</p><p className="mt-1 font-bold text-white">{fmt(overallMarketDirection.ceChange)} contracts</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Combined PE Change OI</p><p className="mt-1 font-bold text-white">{fmt(overallMarketDirection.peChange)} contracts</p></div></div>
       <div className="mt-3 space-y-2">{allExpiryAnalytics.map(item=><div key={item.expiry} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#080f1b] px-3 py-2"><span className="text-xs font-bold text-white">{item.expiry}</span><span className="text-[10px] text-slate-400">PCR {item.pcr.toFixed(2)} · CE Δ {fmt(item.ceChange)} · PE Δ {fmt(item.peChange)}</span><span className={'text-[10px] font-black '+(item.bias==='BULLISH'?'text-emerald-200':item.bias==='BEARISH'?'text-rose-200':'text-amber-200')}>{item.bias}</span></div>)}</div>
       <p className="mt-3 text-[10px] text-amber-200/80">Directional read हा OI-आधारित अंदाज आहे. Option buying करण्यापूर्वी price action, liquidity, spread, IV आणि risk तपासा.</p>
+    </section>
+
+    <section className="rounded-2xl border border-amber-300/20 bg-[#171827] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200">MOTI PRO · Price + OI Momentum</p><h2 className="mt-1 text-lg font-black text-white">Four OI Build-up / Unwinding Signals · All Expiries</h2></div><span className="rounded-full border border-amber-300/30 px-3 py-1 text-[10px] font-bold text-amber-100">PRIOR SNAPSHOT BASED</span></div>
+      <p className="mt-2 text-[11px] text-slate-400">प्रत्येक CE/PE strike चा सध्याचा LTP आणि OI मागील उपलब्ध prior-day snapshot शी compare केला आहे. सर्व eligible expiries एकत्र दाखवल्या आहेत.</p>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-lg bg-emerald-300/10 p-3"><p className="text-[10px] text-emerald-200">Long Buildup</p><p className="mt-1 text-xl font-black text-white">{momentumSummary.long}</p><p className="text-[9px] text-slate-400">Price ↑ · OI ↑</p></div>
+        <div className="rounded-lg bg-rose-300/10 p-3"><p className="text-[10px] text-rose-200">Short Buildup</p><p className="mt-1 text-xl font-black text-white">{momentumSummary.short}</p><p className="text-[9px] text-slate-400">Price ↓ · OI ↑</p></div>
+        <div className="rounded-lg bg-cyan-300/10 p-3"><p className="text-[10px] text-cyan-200">Short Covering</p><p className="mt-1 text-xl font-black text-white">{momentumSummary.covering}</p><p className="text-[9px] text-slate-400">Price ↑ · OI ↓</p></div>
+        <div className="rounded-lg bg-amber-300/10 p-3"><p className="text-[10px] text-amber-200">Long Unwinding</p><p className="mt-1 text-xl font-black text-white">{momentumSummary.unwinding}</p><p className="text-[9px] text-slate-400">Price ↓ · OI ↓</p></div>
+      </div>
+      {!momentumAlerts.length ? <p className="mt-3 rounded-lg bg-[#080f1b] p-3 text-xs text-amber-100">अजून prior-day comparison उपलब्ध नाही किंवा स्पष्ट चारपैकी कोणताही बदल आढळला नाही. किमान दोन वेगवेगळ्या दिवसांचे snapshots आवश्यक आहेत.</p> : <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Expiry','Strike','Type','Signal','Price Δ %','OI Δ','Prior Date'].map(x=><th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-slate-700">{momentumAlerts.slice(0,30).map(r=><tr key={r.expiry + r.strike + r.type}><td className="px-3 py-2 text-slate-300">{r.expiry}</td><td className="px-3 py-2 font-bold text-white">{fmt(r.strike)}</td><td className="px-3 py-2">{r.type}</td><td className={'px-3 py-2 font-bold '+(r.signalType==='bullish'?'text-emerald-200':'text-rose-200')}>{r.signal}</td><td className="px-3 py-2">{r.priceChangePct>=0?'+':''}{fmt(r.priceChangePct)}%</td><td className="px-3 py-2">{r.oiDelta>=0?'+':''}{fmt(r.oiDelta)}</td><td className="px-3 py-2 text-slate-400">{r.previousDate}</td></tr>)}</tbody></table></div>}
+      <p className="mt-3 text-[10px] text-amber-200/80">Formula: Long Buildup = Price ↑ + OI ↑; Short Buildup = Price ↓ + OI ↑; Short Covering = Price ↑ + OI ↓; Long Unwinding = Price ↓ + OI ↓. हे historical snapshot comparison alerts आहेत, live alerts किंवा BUY/SELL आदेश नाहीत.</p>
     </section>
 
     <section className="rounded-2xl border border-fuchsia-300/20 bg-[#101326] p-4 sm:p-5">
