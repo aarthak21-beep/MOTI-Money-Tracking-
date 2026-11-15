@@ -319,6 +319,27 @@ export const SwingScannerView: React.FC = () => {
       const volume = latest.volume !== undefined && averagePreviousVolume !== undefined && averagePreviousVolume > 0
         ? latest.volume / averagePreviousVolume
         : undefined;
+      // Breakout strength is based on how far the latest close clears the strongest available range high.
+      // Volume confirmation is shown separately so the two signals remain easy to interpret.
+      const breakoutMargins = breakoutRanges
+        .filter(r => r.breakout && r.boxHigh !== undefined && latest.close !== undefined && r.boxHigh > 0)
+        .map(r => ({ days: r.days, margin: ((latest.close! / r.boxHigh!) - 1) * 100 }))
+        .sort((a, b) => b.margin - a.margin);
+      const bestBreakoutMargin = breakoutMargins[0]?.margin;
+      const breakoutStrength = bestBreakoutMargin === undefined
+        ? 'No breakout'
+        : bestBreakoutMargin >= 1
+          ? 'Strong'
+          : bestBreakoutMargin >= 0.3
+            ? 'Medium'
+            : 'Weak';
+      const volumeConfirmation = volume === undefined
+        ? 'Unavailable'
+        : volume >= 1.5
+          ? 'Confirmed'
+          : volume >= 1
+            ? 'Average'
+            : 'Low';
       const sourceSet = Array.from(new Set((latestRowsBySymbol.get(symbol) || []).flatMap(r => r.sources)));
       const series = latest.series || [...symbolRows].reverse().find(r => r.sources.includes('bhavcopy') && r.series)?.series;
       const pctToday = latest.pctChange;
@@ -366,7 +387,7 @@ export const SwingScannerView: React.FC = () => {
             : accumulationSetup
               ? 'Accumulation / Base'
               : 'No Setup';
-      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, breakoutRanges, sources: sourceSet, pctToday, qualifiedBefore, setup };
+      return { symbol, series, close: latest.close, weeklyChange, volumeMultiple: volume, volumeConfirmation, breakoutStrength, bestBreakoutMargin, breakoutRanges, sources: sourceSet, pctToday, qualifiedBefore, setup };
     }).filter((item): item is NonNullable<typeof item> =>
       item !== null &&
       item.qualifiedBefore &&
@@ -393,6 +414,8 @@ export const SwingScannerView: React.FC = () => {
         case 'close': return item.close ?? Number.NEGATIVE_INFINITY;
         case 'weeklyChange': return item.weeklyChange ?? Number.NEGATIVE_INFINITY;
         case 'volumeMultiple': return item.volumeMultiple ?? Number.NEGATIVE_INFINITY;
+        case 'breakoutStrength': return item.bestBreakoutMargin ?? Number.NEGATIVE_INFINITY;
+        case 'volumeConfirmation': return item.volumeMultiple ?? Number.NEGATIVE_INFINITY;
         case 'breakout': return rangeScore(item, 'breakout');
         case 'darvas': return rangeScore(item, 'darvas');
         case 'pctToday': return item.pctToday ?? Number.NEGATIVE_INFINITY;
@@ -536,7 +559,7 @@ export const SwingScannerView: React.FC = () => {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-left text-xs">
           <thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400">
-            <tr>{[{label:'Stock',key:'symbol'},{label:'Setup',key:'setup'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
+            <tr>{[{label:'Stock',key:'symbol'},{label:'Setup',key:'setup'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Breakout Strength',key:'breakoutStrength'},{label:'Volume Confirmation',key:'volumeConfirmation'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
           </thead>
           <tbody className="divide-y divide-[#1e2e4f]/60">
             {visibleCandidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
@@ -545,6 +568,8 @@ export const SwingScannerView: React.FC = () => {
               <td className="px-3 py-3 text-white">{money(item.close)}</td>
               <td className={'px-3 py-3 font-bold ' + ((item.weeklyChange ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{pct(item.weeklyChange)}</td>
               <td className="px-3 py-3 text-cyan-200">{item.volumeMultiple === undefined ? '—' : item.volumeMultiple.toFixed(2) + 'x'}</td>
+              <td className="px-3 py-3"><span className={item.breakoutStrength === 'Strong' ? 'font-bold text-emerald-300' : item.breakoutStrength === 'Medium' ? 'font-semibold text-amber-200' : item.breakoutStrength === 'Weak' ? 'text-orange-300' : 'text-slate-400'}>{item.breakoutStrength}</span>{item.bestBreakoutMargin !== undefined && <span className="ml-1 text-[10px] text-slate-500">(+{item.bestBreakoutMargin.toFixed(2)}%)</span>}</td>
+              <td className="px-3 py-3"><span className={item.volumeConfirmation === 'Confirmed' ? 'font-bold text-emerald-300' : item.volumeConfirmation === 'Average' ? 'text-amber-200' : item.volumeConfirmation === 'Low' ? 'text-orange-300' : 'text-slate-500'}>{item.volumeConfirmation}</span></td>
               <td className="px-3 py-3"><div className="space-y-1">{item.breakoutRanges.map(r => <div key={r.days}><span className="text-slate-400">{r.days}D:</span> {r.enough ? r.breakout ? <span className="font-bold text-emerald-300">Breakout</span> : <span className="text-slate-300">No breakout</span> : <span className="text-slate-500">Need {r.days} daily records</span>}</div>)}</div></td>
               <td className="px-3 py-3"><div className="space-y-1">{item.breakoutRanges.map(r => <div key={r.days}><span className="text-slate-400">{r.days}D:</span> {r.enough ? <><span className={r.breakout ? 'font-bold text-emerald-300' : 'text-slate-300'}>{r.breakout ? 'Box breakout' : r.inside ? 'Inside box' : 'Below box'}</span><span className="ml-1 text-[10px] text-slate-500">({money(r.boxLow)}–{money(r.boxHigh)})</span></> : <span className="text-slate-500">Need {r.days} daily records</span>}</div>)}</div></td>
               <td className="px-3 py-3 text-slate-200">{pct(item.pctToday)}</td>
@@ -560,6 +585,8 @@ export const SwingScannerView: React.FC = () => {
       <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] leading-5 text-slate-400">
         <li>डेटा फक्त तू upload केलेल्या NSE reports मधून येतो; scanner live NSE prices fetch करत नाही.</li>
         <li>Reports D1 cloud database मध्ये save होतात; वेगळ्या browser/device वरूनही त्याच account ने history मिळते.</li>
+        <li>Breakout Strength हे सर्व उपलब्ध 5D/10D/20D breakouts पैकी close संबंधित range high च्या किती टक्के वर आहे यावर ठरते: 1% किंवा जास्त Strong, 0.30% ते 0.99% Medium, आणि 0% ते 0.29% Weak. हे scanner चे descriptive thresholds आहेत, हमी किंवा prediction नाही.</li>
+        <li>Volume Confirmation: latest Bhavcopy volume मागील 5 available Bhavcopy sessions च्या average पेक्षा 1.5x किंवा जास्त असल्यास Confirmed, 1.0x ते 1.49x Average, 1.0x पेक्षा कमी Low; पुरेसा volume data नसेल तर Unavailable.</li>
         <li>Volume analysis साठी फक्त Bhavcopy वापरली जाते: शेवटच्या उपलब्ध Bhavcopy session चा volume ÷ त्याआधीच्या 5 Bhavcopy sessions चा average. 5 जुने sessions किंवा volume data नसेल तर — दिसेल. Volume Gainers CSV या गणनेत वापरली जात नाही.</li>
         <li>Bhavcopy ZIP मधील रोजचे EQ/BE OHLCV रेकॉर्ड 5/10/20 Range Breakout आणि Darvas-style Box साठी वापरले जातात. जुन्या CSV-only डेटासाठी Top 20 appearances हा fallback आहे; त्या नोंदी सलग exchange sessions असतीलच असे नाही.</li>
         <li>NSE Cash Market Bhavcopy ZIP पूर्ण Cash Market universe मधील उपलब्ध EQ/BE records साठवण्यासाठी आहे. जुने Top 20/Volume Gainers/Advances reports स्वतंत्रपणे काम करत राहतात.</li>
