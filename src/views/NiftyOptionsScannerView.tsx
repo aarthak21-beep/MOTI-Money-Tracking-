@@ -198,6 +198,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const [stopPct, setStopPct] = useState(20);
   const [targetPct, setTargetPct] = useState(35);
   const [lotSize, setLotSize] = useState(65);
+  const [capital, setCapital] = useState(6500);
   const [expiryChoice, setExpiryChoice] = useState('');
   const [tradeContractKey, setTradeContractKey] = useState('');
   const [expiryGroup, setExpiryGroup] = useState<'next' | 'two-weeks' | 'three-plus'>('next');
@@ -261,7 +262,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
     return rangeRows.filter(r => r.type === type).sort((a, b) => b.changeOi - a.changeOi).slice(0, 5);
   }, [chain, rangeRows, summary]);
   const tradeContracts = useMemo(() => rangeRows.filter(r => r.ltp > 0).slice().sort((a, b) => Math.abs(a.strike - summary.spot) - Math.abs(b.strike - summary.spot) || a.type.localeCompare(b.type)), [rangeRows, summary.spot]);
-  const tradeLotRows = tradeContracts.map(r => { const perLotRisk = r.ltp * (stopPct / 100) * lotSize; return { ...r, perLotRisk, maxLots: perLotRisk > 0 ? Math.floor(1500 / perLotRisk) : 0 }; }).filter(r => r.maxLots > 0 && r.perLotRisk <= 1500);
+  const tradeLotRows = tradeContracts.map(r => { const perLotRisk = r.ltp * (stopPct / 100) * lotSize; const premiumPerLot = r.ltp * lotSize; const riskLots = perLotRisk > 0 ? Math.floor(1500 / perLotRisk) : 0; const capitalLots = premiumPerLot > 0 ? Math.floor(capital / premiumPerLot) : 0; return { ...r, perLotRisk, premiumPerLot, maxLots: Math.min(riskLots, capitalLots) }; }).filter(r => r.maxLots > 0 && r.perLotRisk <= 1500 && r.premiumPerLot <= capital);
   const selectedTradeContract = tradeLotRows.find(r => `${r.expiry}|${r.strike}|${r.type}` === tradeContractKey) || null;
   const proRadar = useMemo(() => {
     if (!chain.length || !summary.spot) return [];
@@ -423,38 +424,41 @@ export const NiftyOptionsScannerView: React.FC = () => {
           </select>
         </label>
         <div className="flex flex-wrap items-end gap-4 text-xs text-slate-300">
+          <label>Capital ₹ <input type="number" min="1" max="100000000" value={capital} onChange={e => setCapital(Math.max(1, Number(e.target.value) || 1))} className="ml-2 w-24 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
           <label>Lot size <input type="number" min="1" max="10000" value={lotSize} onChange={e => setLotSize(Math.max(1, Number(e.target.value) || 1))} className="ml-2 w-20 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
           <label>Stop-loss % <input type="number" min="1" max="80" value={stopPct} onChange={e => setStopPct(Number(e.target.value))} className="ml-2 w-20 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
           <label>Target % <input type="number" min="1" max="200" value={targetPct} onChange={e => setTargetPct(Number(e.target.value))} className="ml-2 w-20 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
         </div>
       </div>
       {tradeLotRows.length > 0 && stopPct > 0 && stopPct <= 80 && lotSize > 0 && <div className="mt-4 overflow-x-auto">
-        <p className="mb-2 text-xs font-bold text-white">₹1,500 Risk Cap · Strike-wise Lot Availability</p>
-        <table className="w-full min-w-[560px] text-left text-[11px]">
-          <thead className="text-slate-400"><tr><th className="p-2">Strike</th><th className="p-2">Type</th><th className="p-2">LTP</th><th className="p-2">Risk / lot</th><th className="p-2">Max lots</th></tr></thead>
+        <p className="mb-2 text-xs font-bold text-white">Capital ₹{fmt(capital)} + ₹1,500 Risk Cap · Strike-wise Lot Availability</p>
+        <table className="w-full min-w-[650px] text-left text-[11px]">
+          <thead className="text-slate-400"><tr><th className="p-2">Strike</th><th className="p-2">Type</th><th className="p-2">LTP</th><th className="p-2">Premium / lot</th><th className="p-2">Risk / lot</th><th className="p-2">Max lots</th></tr></thead>
           <tbody>{tradeLotRows.map(r => <tr key={r.expiry + r.strike + r.type} className="border-t border-slate-700/60 text-slate-200">
-            <td className="p-2 font-bold">{fmt(r.strike)}</td><td className="p-2">{r.type}</td><td className="p-2">₹{fmt(r.ltp)}</td><td className="p-2">₹{fmt(r.perLotRisk)}</td><td className="p-2 font-bold">{r.maxLots}</td>
+            <td className="p-2 font-bold">{fmt(r.strike)}</td><td className="p-2">{r.type}</td><td className="p-2">₹{fmt(r.ltp)}</td><td className="p-2">₹{fmt(r.premiumPerLot)}</td><td className="p-2">₹{fmt(r.perLotRisk)}</td><td className="p-2 font-bold">{r.maxLots}</td>
           </tr>)}</tbody>
         </table>
-        <p className="mt-1 text-[10px] text-slate-500">इथे फक्त ₹1,500 किंवा कमी अंदाजित SL risk असलेले strikes दाखवले आहेत. Strike निवडल्यावर वर सविस्तर Entry / SL / Target दिसेल.</p>
+        <p className="mt-1 text-[10px] text-slate-500">इथे फक्त तुझ्या capital मध्ये premium परवडणारे आणि प्रति lot SL risk ₹1,500 च्या आत असलेले strikes दाखवले आहेत.</p>
       </div>}
       {selectedTradeContract && stopPct > 0 && stopPct <= 80 && targetPct > 0 && targetPct <= 200 && lotSize > 0 ? (() => {
         const entry = selectedTradeContract.ltp;
         const stop = entry * (1 - stopPct / 100);
         const target = entry * (1 + targetPct / 100);
         const riskPerLot = (entry - stop) * lotSize;
-        const maxLots = riskPerLot > 0 ? Math.floor(1500 / riskPerLot) : 0;
+        const premiumPerLot = entry * lotSize;
+        const maxLots = Math.min(riskPerLot > 0 ? Math.floor(1500 / riskPerLot) : 0, premiumPerLot > 0 ? Math.floor(capital / premiumPerLot) : 0);
         return <div className="mt-4">
           <div className="mb-3 flex flex-wrap items-center gap-2 text-xs"><span className="rounded bg-[#080f1b] px-3 py-2 text-white">{selectedTradeContract.expiry} · {fmt(selectedTradeContract.strike)} {selectedTradeContract.type}</span><span className="rounded bg-amber-300/10 px-3 py-2 font-bold text-amber-200">OI read: {summary.bias} · BUY signal नाही</span></div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Entry · CSV LTP</p><p className="mt-1 font-bold text-white">₹{fmt(entry)}</p></div>
             <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Stop-loss · {stopPct}%</p><p className="mt-1 font-bold text-rose-300">₹{fmt(stop)}</p></div>
             <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Target · {targetPct}%</p><p className="mt-1 font-bold text-emerald-300">₹{fmt(target)}</p></div>
+            <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Premium / lot</p><p className="mt-1 font-bold text-white">₹{fmt(premiumPerLot)}</p></div>
             <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Risk / lot</p><p className="mt-1 font-bold text-white">₹{fmt(riskPerLot)}</p></div>
           </div>
-          <div className="mt-3 rounded-lg border border-cyan-300/20 bg-cyan-300/5 p-3"><p className="text-xs text-slate-300">₹1,500 Risk cap · Lot size {lotSize}</p><p className="mt-1 text-lg font-black text-white">{maxLots} max lot(s)</p><p className="text-[10px] text-slate-400">{maxLots > 0 ? `Estimated premium risk: ₹${fmt(maxLots * riskPerLot)} (excluding charges and slippage)` : 'एका lot चा stop-loss risk ₹1,000 पेक्षा जास्त आहे; risk cap मध्ये lot बसत नाही.'}</p></div>
+          <div className="mt-3 rounded-lg border border-cyan-300/20 bg-cyan-300/5 p-3"><p className="text-xs text-slate-300">Capital ₹{fmt(capital)} · ₹1,500 Risk cap · Lot size {lotSize}</p><p className="mt-1 text-lg font-black text-white">{maxLots} max lot(s)</p><p className="text-[10px] text-slate-400">{maxLots > 0 ? `Premium required: ₹${fmt(maxLots * premiumPerLot)} · Estimated SL risk: ₹${fmt(maxLots * riskPerLot)} (excluding charges and slippage)` : `एका lot साठी premium ₹${fmt(premiumPerLot)} लागेल किंवा SL risk ₹${fmt(riskPerLot)} आहे; capital / risk cap मध्ये lot बसत नाही.`}</p></div>
         </div>;
-      })() : selectedTradeContract ? <p className="mt-3 text-xs text-rose-300">SL 1–80%, Target 1–200% आणि Lot size 1 पेक्षा जास्त ठेवा.</p> : <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs text-amber-100">{tradeContracts.length ? 'वरील यादीतून CE किंवा PE contract निवडा. निवडल्यावर uploaded LTP वरून Entry, SL, Target आणि Max lots मोजले जातील. OI bias WAIT असला तरी calculation दिसेल.' : rows.length ? 'या expiry मध्ये Spot ± ₹600 range मध्ये LTP असलेले contracts उपलब्ध नाहीत. दुसरी expiry निवडा किंवा पूर्ण Option Chain CSV upload करा.' : 'सुरुवात करण्यासाठी option-chain CSV upload कर.'}</div>}
+      })() : selectedTradeContract ? <p className="mt-3 text-xs text-rose-300">SL 1–80%, Target 1–200% आणि Lot size 1 पेक्षा जास्त ठेवा.</p> : <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs text-amber-100">{tradeContracts.length ? 'तुझ्या capital आणि ₹1,500 risk cap मध्ये बसणारा CE किंवा PE contract वर निवडा.' : rows.length ? 'या expiry मध्ये Spot ± ₹600 range मध्ये LTP असलेले contracts उपलब्ध नाहीत. दुसरी expiry निवडा किंवा पूर्ण Option Chain CSV upload करा.' : 'सुरुवात करण्यासाठी option-chain CSV upload कर.'}</div>}
       <div className="mt-4 flex items-start gap-2 rounded-lg bg-[#080f1b] p-3 text-[11px] leading-5 text-slate-400"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /> हे फक्त indicative गणित आहे; WAIT म्हणजे directional confirmation नाही. Live premium feed, bid-ask spread, IV/Greeks आणि liquidity तपासल्याशिवाय प्रत्यक्ष ट्रेड करू नका. Option buying मध्ये premium पूर्ण गमावण्याचा धोका असतो.</div>
     </div>
     <div className="flex items-center justify-between text-[10px] text-slate-500"><span><CalendarClock className="mr-1 inline h-3 w-3" /> Current data cloud + browser · History last 30 daily snapshots saved in Cloudflare D1</span><button onClick={clearData} className="underline hover:text-white">Clear option data</button></div>
