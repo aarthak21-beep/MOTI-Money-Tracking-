@@ -238,6 +238,33 @@ export const SmartMoneyScreenerView: React.FC = () => {
       return { ...stock, deliveryDays: recent.length, latestDelivery: latest?.delivery, averageDelivery, deliveryChange, qtyChange, risingDays, deliveryScore: score, deliveryWatch: watch };
     }).filter(stock => stock.deliveryDays > 0).sort((a, b) => b.deliveryScore - a.deliveryScore);
   }, [rows, analytics]);
+  const preBreakoutRadar = useMemo(() => {
+    const groups = groupBySymbol(rows);
+    return analytics.map(stock => {
+      const history = groups.get(stock.symbol) || [];
+      const prior = history.slice(-6, -1);
+      const resistance = prior.length ? Math.max(...prior.map(day => day.high ?? day.close)) : undefined;
+      const support = prior.length ? Math.min(...prior.map(day => day.low ?? day.close)) : undefined;
+      const rangePct = resistance !== undefined && support !== undefined && support > 0
+        ? (resistance - support) / support * 100 : undefined;
+      const distanceToResistance = resistance !== undefined && resistance > 0
+        ? (resistance - stock.close) / resistance * 100 : undefined;
+      const volumeRatio = stock.volumeRatio;
+      const nearResistance = distanceToResistance !== undefined && distanceToResistance >= -0.5 && distanceToResistance <= 3;
+      const tightRange = rangePct !== undefined && rangePct <= 5;
+      const volumeBuilding = volumeRatio !== undefined && volumeRatio >= 1.2;
+      const positiveTrend = stock.trend5d !== undefined && stock.trend5d > 0;
+      const score = Math.round(
+        (nearResistance ? Math.max(0, 30 - Math.max(0, distanceToResistance || 0) * 8) : 0) +
+        (tightRange ? Math.max(0, 25 - (rangePct || 0) * 3) : 0) +
+        (volumeBuilding ? Math.min(25, (volumeRatio! - 1) * 16) : 0) +
+        (positiveTrend ? Math.min(20, Math.max(0, stock.trend5d! * 4)) : 0)
+      );
+      const confirmed = resistance !== undefined && stock.close > resistance && volumeRatio !== undefined && volumeRatio >= 1.5;
+      const stage = confirmed ? 'Breakout Confirmed' : score >= 65 ? 'Near Breakout' : score >= 40 ? 'Early Watch' : 'Low setup';
+      return { ...stock, resistance, rangePct, distanceToResistance, preBreakoutScore: Math.min(100, score), preBreakoutStage: stage, preBreakoutEligible: score >= 30 || confirmed };
+    }).filter(stock => stock.preBreakoutEligible).sort((a, b) => b.preBreakoutScore - a.preBreakoutScore);
+  }, [rows, analytics]);
   const superTen = useMemo(() => analytics.slice().sort((a, b) => b.score - a.score).slice(0, 10), [analytics]);
   const powerSignals = useMemo(() => {
     const groups = groupBySymbol(rows);
@@ -303,6 +330,14 @@ export const SmartMoneyScreenerView: React.FC = () => {
     <section className="rounded-2xl border border-amber-300/20 bg-[#0b1421] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-white">MOTI SUPER 10</h2><p className="mt-1 text-xs text-slate-400">Bhavcopy मधील उपलब्ध भाव, Volume, ५ दिवसांची सरासरी आणि Turnover यावर आधारित क्रमवारी. Score सोबत उपलब्ध गुणांची कमाल मर्यादा दाखवली आहे.</p></div><span className="rounded-lg bg-amber-300/10 px-3 py-1.5 text-xs font-bold text-amber-200">MOTI Score</span></div>
       {superTen.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">पात्र शेअर्स दिसण्यासाठी NSE Bhavcopy CSV import करा.</p> : <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="border-b border-white/10 text-slate-400"><tr>{['Rank','Symbol','Date','Series','Open','High','Low','Close','Prev Close','Volume','5D Avg Volume','Volume Ratio','Turnover','1D Change','5D Change',...(hasDelivery ? ['Delivery %'] : []),'MOTI Score'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}</tr></thead><tbody>{superTen.map((r,i) => <tr key={r.symbol} className="border-b border-white/[0.06] last:border-0"><td className="px-2 py-2 font-bold text-amber-200">#{i+1}</td><td className="px-2 py-2 font-bold text-white">{r.symbol}</td><td className="px-2 py-2 text-slate-300">{r.date || '—'}</td><td className="px-2 py-2 text-slate-300">{r.series}</td><td className="px-2 py-2 text-slate-300">{fmt(r.open)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.high)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.low)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.close)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.prevClose)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.volume)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.avgVolume)}</td><td className="px-2 py-2 text-slate-300">{r.volumeRatio === undefined ? '—' : r.volumeRatio.toFixed(2)+'x'}</td><td className="px-2 py-2 text-slate-300">{fmt(r.turnoverValue)}</td><td className="px-2 py-2 text-slate-300">{pct(r.change)}</td><td className="px-2 py-2 text-slate-300">{pct(r.trend5d)}</td>{hasDelivery && <td className="px-2 py-2 text-slate-300">{pct(r.delivery)}</td>}<td className="px-2 py-2 font-bold text-amber-200">{r.score}/{r.availableScore || 0}</td></tr>)}</tbody></table></div>}
+    </section>
+    <section className="rounded-2xl border border-violet-300/20 bg-[#0b1421] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><h2 className="font-bold text-white">MOTI Pre-Breakout Radar</h2><p className="mt-1 text-xs text-slate-400">Resistance जवळील भाव, घट्ट trading range, वाढता volume आणि ५ दिवसांचा trend यावर आधारित संभाव्य setup.</p></div>
+        <span className="rounded-lg bg-violet-300/10 px-3 py-1.5 text-xs font-bold text-violet-200">Early Signal</span>
+      </div>
+      {preBreakoutRadar.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">Pre-Breakout setup शोधण्यासाठी किमान ६ दिवसांचा Bhavcopy इतिहास उपयोगी ठरतो. अजून पात्र setup आढळले नाहीत.</p> : <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[900px] text-left text-xs"><thead className="border-b border-white/10 text-slate-400"><tr>{['Rank','Symbol','Radar Score','Stage','Close','Resistance','Resistance पासून अंतर','5D Range','Volume Ratio','5D Change'].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead><tbody>{preBreakoutRadar.slice(0, 15).map((r,i) => <tr key={r.symbol} className="border-b border-white/[0.06] last:border-0"><td className="px-3 py-3 font-bold text-violet-200">#{i+1}</td><td className="px-3 py-3 font-bold text-white">{r.symbol}</td><td className="px-3 py-3 font-bold text-violet-200">{r.preBreakoutScore}/100</td><td className="px-3 py-3 text-slate-300">{r.preBreakoutStage}</td><td className="px-3 py-3 text-slate-300">₹{fmt(r.close)}</td><td className="px-3 py-3 text-slate-300">{r.resistance === undefined ? '—' : '₹' + fmt(r.resistance)}</td><td className="px-3 py-3 text-slate-300">{r.distanceToResistance === undefined ? '—' : r.distanceToResistance.toFixed(1) + '%'}</td><td className="px-3 py-3 text-slate-300">{pct(r.rangePct)}</td><td className="px-3 py-3 text-slate-300">{r.volumeRatio === undefined ? '—' : r.volumeRatio.toFixed(2) + 'x'}</td><td className="px-3 py-3 text-slate-300">{pct(r.trend5d)}</td></tr>)}</tbody></table></div>}
+      <p className="mt-3 text-[11px] leading-relaxed text-slate-500">Breakout Confirmed म्हणजे मागील ५ दिवसांच्या high पेक्षा close वर आणि volume किमान १.५ पट; हे केवळ Bhavcopy-आधारित तांत्रिक confirmation आहे. Gap-up किंवा intraday breakout तपासलेला नाही. Score हा संभाव्यता क्रमवारीचा heuristic आहे, हमी किंवा buy/sell call नाही.</p>
     </section>
     <section className="rounded-2xl border border-emerald-300/20 bg-[#0b1421] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
