@@ -293,21 +293,22 @@ export const SwingScannerView: React.FC = () => {
           inside: enough && latest.close !== undefined && boxHigh !== undefined && boxLow !== undefined && latest.close <= boxHigh && latest.close >= boxLow
         };
       });
-      const latestVolume = latestRows.find(r => r.symbol === symbol && r.volumeMultiple !== undefined);
-      // Prefer NSE Volume Gainers' published multiple. Otherwise calculate from
-      // today's Bhavcopy volume against the average of the previous 5 Bhavcopy sessions.
-      const previousBhavcopyVolumes = symbolRows
-        .filter(r => r.sources.includes('bhavcopy') && r.date < latest.date && r.volume !== undefined)
-        .sort((a, b) => a.date.localeCompare(b.date))
+      // Bhavcopy is the sole source for volume analysis. Use the latest available
+      // Bhavcopy session for this symbol and compare it with the prior 5 Bhavcopy sessions.
+      const bhavcopyRows = symbolRows
+        .filter(r => r.sources.includes('bhavcopy') && r.volume !== undefined)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const latestBhavcopy = bhavcopyRows[bhavcopyRows.length - 1];
+      const previousBhavcopyVolumes = bhavcopyRows
+        .filter(r => r.date < (latestBhavcopy?.date || ''))
         .slice(-5)
         .map(r => r.volume as number);
       const averagePreviousVolume = previousBhavcopyVolumes.length === 5
         ? previousBhavcopyVolumes.reduce((sum, value) => sum + value, 0) / 5
         : undefined;
-      const bhavcopyVolumeMultiple = latest.sources.includes('bhavcopy') && latest.volume !== undefined && averagePreviousVolume
-        ? latest.volume / averagePreviousVolume
+      const volume = latestBhavcopy?.volume !== undefined && averagePreviousVolume && averagePreviousVolume > 0
+        ? latestBhavcopy.volume / averagePreviousVolume
         : undefined;
-      const volume = latestVolume?.volumeMultiple ?? bhavcopyVolumeMultiple;
       const sourceSet = Array.from(new Set(latestRows.filter(r => r.symbol === symbol).flatMap(r => r.sources)));
       const latestSeries = [...symbolRows].reverse().find(r => r.series)?.series;
       const series = latestRows.find(r => r.symbol === symbol && r.series)?.series || latestSeries;
@@ -553,7 +554,7 @@ export const SwingScannerView: React.FC = () => {
       <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] leading-5 text-slate-400">
         <li>डेटा फक्त तू upload केलेल्या NSE reports मधून येतो; scanner live NSE prices fetch करत नाही.</li>
         <li>Reports D1 cloud database मध्ये save होतात; वेगळ्या browser/device वरूनही त्याच account ने history मिळते.</li>
-        <li>Volume Gainers report मधील NSE 1-week volume multiple थेट दाखवला जातो; तो उपलब्ध नसेल तर Bhavcopy मधील आजचा volume मागील 5 उपलब्ध Bhavcopy sessions च्या average शी तुलना करून दाखवला जातो. 5 जुने sessions नसतील तर — दिसेल.</li>
+        <li>Volume analysis साठी फक्त Bhavcopy वापरली जाते: शेवटच्या उपलब्ध Bhavcopy session चा volume ÷ त्याआधीच्या 5 Bhavcopy sessions चा average. 5 जुने sessions किंवा volume data नसेल तर — दिसेल. Volume Gainers CSV या गणनेत वापरली जात नाही.</li>
         <li>Bhavcopy ZIP मधील रोजचे EQ/BE OHLCV रेकॉर्ड 5/10/20 Range Breakout आणि Darvas-style Box साठी वापरले जातात. जुन्या CSV-only डेटासाठी Top 20 appearances हा fallback आहे; त्या नोंदी सलग exchange sessions असतीलच असे नाही.</li>
         <li>NSE Cash Market Bhavcopy ZIP पूर्ण Cash Market universe मधील उपलब्ध EQ/BE records साठवण्यासाठी आहे. जुने Top 20/Volume Gainers/Advances reports स्वतंत्रपणे काम करत राहतात.</li>
         <li>नवीन stock लिस्टमध्ये येण्यासाठी EQ/BE series, त्या दिवसाचा बदल किमान +4% आणि किंमत ₹300–₹3,000 आवश्यक आहे. एकदा आलेला stock रोज +4% राहण्याची गरज नाही; तो ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहतो. रेंजच्या बाहेर तात्पुरता लपतो आणि परत रेंजमध्ये आल्यावर पुन्हा दिसतो.</li>
