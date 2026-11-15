@@ -8,7 +8,7 @@ type OptionRow = {
 };
 const STORAGE_KEY = 'moti_nifty_options_chain_v1';
 const HISTORY_KEY = 'moti_nifty_options_history_v1';
-type DailySnapshot = { date: string; spot: number; rows: Array<{ expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number }> };
+type DailySnapshot = { date: string; spot: number; rows: Array<{ expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number; changeOi?: number; volume?: number }> };
 const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
 const number = (v?: string) => {
   if (!v || v.trim() === '-' || v.trim() === '—') return 0;
@@ -191,14 +191,15 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const latestSnapshot = history.length ? [...history].sort((a, b) => b.date.localeCompare(a.date))[0] : null;
   const previousRows = useMemo(() => previousSnapshot?.rows.filter(r => r.expiry === selectedExpiry) || [], [previousSnapshot, selectedExpiry]);
   const priorByContract = useMemo(() => new Map(previousRows.map(r => [`${r.strike}-${r.type}`, r])), [previousRows]);
-  const priceOiSignals = useMemo(() => chain.filter(r => r.type === 'CE' || r.type === 'PE').map(r => {
+  const priceOiSignals = useMemo(() => chain.map(r => {
     const old = priorByContract.get(`${r.strike}-${r.type}`);
-    if (!old) return { ...r, signal: 'NEW / NO PRIOR DATA', signalType: 'neutral', oldLtp: undefined as number | undefined, oldOi: undefined as number | undefined };
+    if (!old) return { ...r, signal: 'NO PRIOR SNAPSHOT', signalType: 'neutral', oldLtp: undefined as number | undefined, oldOi: undefined as number | undefined, priceChangePct: undefined as number | undefined, oiDeltaSinceSnapshot: undefined as number | undefined, confidence: 'LOW · NO PRIOR DATA' };
     const priceUp = r.ltp > old.ltp; const priceDown = r.ltp < old.ltp;
     const oiUp = r.oi > old.oi; const oiDown = r.oi < old.oi;
     const signal = priceUp && oiUp ? 'LONG BUILDUP' : priceDown && oiUp ? 'SHORT BUILDUP' : priceUp && oiDown ? 'SHORT COVERING' : priceDown && oiDown ? 'LONG UNWINDING' : 'NO CLEAR CHANGE';
     const signalType = priceUp && oiUp || priceUp && oiDown ? 'bullish' : priceDown && oiUp || priceDown && oiDown ? 'bearish' : 'neutral';
-    return { ...r, signal, signalType, oldLtp: old.ltp, oldOi: old.oi };
+    const priceChangePct = old.ltp > 0 ? (r.ltp - old.ltp) / old.ltp * 100 : 0;
+    return { ...r, signal, signalType, oldLtp: old.ltp, oldOi: old.oi, priceChangePct, oiDeltaSinceSnapshot: r.oi - old.oi, confidence: r.volume > 0 ? 'MEDIUM · PRIOR + VOLUME' : 'LOW · LOW VOLUME' };
   }), [chain, priorByContract]);
   const pcrHistory = useMemo(() => [...history].sort((a, b) => a.date.localeCompare(b.date)).map(h => { const ce = h.rows.filter(r => r.expiry === selectedExpiry && r.type === 'CE').reduce((s, r) => s + r.oi, 0); const pe = h.rows.filter(r => r.expiry === selectedExpiry && r.type === 'PE').reduce((s, r) => s + r.oi, 0); return { date: h.date, pcr: ce ? pe / ce : 0 }; }).filter(x => x.pcr > 0).slice(-7), [history, selectedExpiry]);
   const strikeStats = useMemo(() => {
@@ -234,8 +235,9 @@ export const NiftyOptionsScannerView: React.FC = () => {
       const signal = priceOiSignals.find(r => r.strike === option.strike && r.type === option.type);
       const momentumScore = signal?.signal === 'LONG BUILDUP' || signal?.signal === 'SHORT COVERING' ? 20 : 0;
       const biasScore = 20;
-      const score = Math.min(100, Math.round(nearAtmScore + pcrScore + oiScore + volumeScore + momentumScore + biasScore));
-      return { ...option, score, distance, signal: signal?.signal || 'PRIOR SNAPSHOT नाही' };
+      const rawScore = Math.round(nearAtmScore + pcrScore + oiScore + volumeScore + momentumScore + biasScore);
+      const score = signal?.oldLtp === undefined ? Math.min(60, rawScore) : Math.min(100, rawScore);
+      return { ...option, score, distance, signal: signal?.signal || 'PRIOR SNAPSHOT नाही', hasPriorSnapshot: signal?.oldLtp !== undefined };
     }).sort((a, b) => b.score - a.score).slice(0, 3);
   }, [chain, rangeRows, summary, priceOiSignals]);
   const handleUpload = async (file?: File) => {
@@ -250,7 +252,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
       await saveScannerData('nifty-options', parsed);
       setRows(parsed);
       const snapshotDate = new Date().toLocaleDateString('en-CA');
-      const snapshot: DailySnapshot = { date: snapshotDate, spot: parsed[0]?.spot || 0, rows: parsed.map(r => ({ expiry: r.expiry, strike: r.strike, type: r.type, ltp: r.ltp, oi: r.oi })) };
+      const snapshot: DailySnapshot = { date: snapshotDate, spot: parsed[0]?.spot || 0, rows: parsed.map(r => ({ expiry: r.expiry, strike: r.strike, type: r.type, ltp: r.ltp, oi: r.oi, changeOi: r.changeOi, volume: r.volume })) };
       await saveNiftyOptionsSnapshot(snapshot);
       const cloudHistory = await loadNiftyOptionsHistory<DailySnapshot>();
       const nextHistory = [...cloudHistory].sort((a, b) => a.date.localeCompare(b.date)).slice(-30);
@@ -297,11 +299,11 @@ export const NiftyOptionsScannerView: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">MOTI PRO · Options Radar</p><h2 className="mt-1 text-xl font-black text-white">CE / PE Opportunity Radar</h2></div><span className="rounded-full border border-violet-300/30 px-3 py-1 text-[10px] font-bold text-violet-200">CSV DATA MODE</span></div>
       <p className="mt-2 text-xs text-slate-400">PCR, OI change, volume, ATM जवळीक आणि मागील snapshot मधील Price + OI संकेत यांवर आधारित heuristic score. Live API जोडलेला नाही.</p>
       {summary.bias === 'WAIT' || !proRadar.length ? <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-sm text-amber-100">सध्या स्पष्ट CE / PE setup नाही. नवीन Option Chain CSV upload करा किंवा पुढील snapshot मिळाल्यावर पुन्हा तपासा.</div> : <div className="mt-4 grid gap-3 md:grid-cols-3">
-        {proRadar.map((option, index) => { const stop = option.ltp * (1 - stopPct / 100); const target = option.ltp * (1 + targetPct / 100); const stage = option.score >= 80 ? 'STRONG SETUP' : option.score >= 65 ? 'GOOD SETUP' : option.score >= 50 ? 'WATCH' : 'LOW CONFIDENCE'; return <div key={option.expiry + option.strike + option.type} className="rounded-xl border border-slate-600/60 bg-[#0b1424] p-4">
+        {proRadar.map((option, index) => { const stop = option.ltp * (1 - stopPct / 100); const target = option.ltp * (1 + targetPct / 100); const stage = !option.hasPriorSnapshot ? 'DATA INCOMPLETE · WATCH' : option.score >= 80 ? 'STRONG SETUP' : option.score >= 65 ? 'GOOD SETUP' : option.score >= 50 ? 'WATCH' : 'LOW CONFIDENCE'; return <div key={option.expiry + option.strike + option.type} className="rounded-xl border border-slate-600/60 bg-[#0b1424] p-4">
           <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-violet-200">#{index + 1} · {option.type}</span><span className="text-[10px] font-bold text-slate-300">{stage}</span></div>
           <p className="mt-2 text-xl font-black text-white">{fmt(option.strike)} {option.type}</p><p className="mt-1 text-xs text-slate-400">Radar Score <b className="text-violet-200">{option.score}/100</b> · LTP ₹{fmt(option.ltp)}</p>
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><span className="text-slate-500">Entry reference</span><p className="font-bold text-white">₹{fmt(option.ltp)}</p></div><div><span className="text-slate-500">Stop reference</span><p className="font-bold text-rose-300">₹{fmt(stop)}</p></div><div><span className="text-slate-500">Target reference</span><p className="font-bold text-emerald-300">₹{fmt(target)}</p></div><div><span className="text-slate-500">ATM पासून अंतर</span><p className="font-bold text-white">{fmt(option.distance)}%</p></div></div>
-          <p className="mt-3 border-t border-slate-700 pt-2 text-[10px] text-slate-400">Price + OI: {option.signal}</p></div>; })}
+          <p className="mt-3 border-t border-slate-700 pt-2 text-[10px] text-slate-400">Price + OI: {option.signal} · {option.hasPriorSnapshot ? 'Prior snapshot available' : 'No prior snapshot; score capped at 60'}</p></div>; })}
       </div>}
       <p className="mt-3 text-[10px] text-amber-200/80">हे फक्त CSV मधील उपलब्ध डेटावरचे संकेत आहेत; Entry/SL/Target indicative आहेत. Live premium feed, bid-ask spread, IV/Greeks आणि liquidity तपासल्याशिवाय प्रत्यक्ष ट्रेड करू नका.</p>
     </section>
@@ -315,7 +317,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-bold text-white">Daily Snapshot History · Last 30 uploads</h2><p className="mt-1 text-[11px] text-slate-400">प्रत्येक दिवसाचा upload snapshot याच browser मध्ये जतन होतो. त्याच दिवशी पुन्हा upload केल्यास त्या दिवसाचा snapshot update होतो.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-xs text-slate-300">{history.length} days saved</span></div>
       {latestSnapshot ? <div className="mt-3 grid gap-3 sm:grid-cols-3"><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest upload date</p><p className="mt-1 text-sm font-bold text-white">{latestSnapshot.date}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest Spot</p><p className="mt-1 text-sm font-bold text-white">₹{fmt(latestSnapshot.spot)}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Previous snapshot</p><p className="mt-1 text-sm font-bold text-white">{previousSnapshot?.date || 'अजून उपलब्ध नाही'}</p></div></div> : <p className="mt-3 text-xs text-amber-200">पहिला CSV upload केल्यानंतर Daily History सुरू होईल.</p>}
-      {previousSnapshot && <><p className="mt-3 text-[11px] text-slate-300">Previous snapshot पासून NIFTY Spot बदल: <b className={latestSnapshot!.spot >= previousSnapshot.spot ? 'text-emerald-300' : 'text-rose-300'}>{latestSnapshot!.spot >= previousSnapshot.spot ? '+' : ''}{fmt(latestSnapshot!.spot - previousSnapshot.spot)} points</b>. खालील contract classification मागील snapshot च्या LTP आणि OI वर आधारित आहे.</p><div className="mt-3 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Type','Strike','Old LTP','New LTP','OI Δ','Price + OI Read'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{priceOiSignals.filter(r => r.oldLtp !== undefined).slice(0, 30).map(r => <tr key={r.expiry + r.strike + r.type}><td className="px-3 py-2 font-bold text-white">{r.type}</td><td className="px-3 py-2">{fmt(r.strike)}</td><td className="px-3 py-2">₹{fmt(r.oldLtp!)}</td><td className="px-3 py-2">₹{fmt(r.ltp)}</td><td className="px-3 py-2">{fmt(r.oi - r.oldOi!)}</td><td className={'px-3 py-2 font-bold ' + (r.signalType === 'bullish' ? 'text-emerald-300' : r.signalType === 'bearish' ? 'text-rose-300' : 'text-amber-200')}>{r.signal}</td></tr>)}</tbody></table></div></>}
+      {previousSnapshot && <><p className="mt-3 text-[11px] text-slate-300">Previous snapshot पासून NIFTY Spot बदल: <b className={latestSnapshot!.spot >= previousSnapshot.spot ? 'text-emerald-300' : 'text-rose-300'}>{latestSnapshot!.spot >= previousSnapshot.spot ? '+' : ''}{fmt(latestSnapshot!.spot - previousSnapshot.spot)} points</b>. प्रत्येक CE/PE contract स्वतंत्रपणे मागील snapshot च्या LTP आणि OI शी compare केला आहे. आजचा Change in OI आणि Volume हे NSE CSV मधून घेतले आहेत.</p><div className="mt-3 overflow-x-auto"><table className="w-full min-w-[900px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Type','Strike','Price Δ %','OI Δ vs Prior','Today Chg OI','Today Volume','Price + OI Read','Confidence'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{[...priceOiSignals].sort((a, b) => b.volume - a.volume).slice(0, 30).map(r => <tr key={r.expiry + r.strike + r.type}><td className="px-3 py-2 font-bold text-white">{r.type}</td><td className="px-3 py-2">{fmt(r.strike)}</td><td className="px-3 py-2">{r.priceChangePct === undefined ? '—' : (r.priceChangePct >= 0 ? '+' : '') + fmt(r.priceChangePct) + '%'}</td><td className="px-3 py-2">{r.oiDeltaSinceSnapshot === undefined ? '—' : fmt(r.oiDeltaSinceSnapshot)}</td><td className="px-3 py-2">{fmt(r.changeOi)}</td><td className="px-3 py-2">{fmt(r.volume)}</td><td className={'px-3 py-2 font-bold ' + (r.signalType === 'bullish' ? 'text-emerald-300' : r.signalType === 'bearish' ? 'text-rose-300' : 'text-amber-200')}>{r.signal}</td><td className="px-3 py-2 text-amber-200">{r.confidence}</td></tr>)}</tbody></table></div></>}}
       {pcrHistory.length > 0 && <div className="mt-3"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Selected expiry PCR history</p><div className="flex flex-wrap gap-2">{pcrHistory.map(p => <span key={p.date} className="rounded-lg bg-[#080f1b] px-3 py-2 text-[11px] text-slate-300">{p.date}: <b className="text-white">{p.pcr.toFixed(2)}</b></span>)}</div></div>}
     </div>
 
