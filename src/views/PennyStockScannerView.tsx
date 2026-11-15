@@ -14,7 +14,7 @@ const STORAGE_KEY = 'moti_penny_stock_v1';
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 const parseNum = (value?: string): number | undefined => {
   if (!value?.trim() || ['-', 'na', 'n/a', 'null', ''].includes(value.trim().toLowerCase())) return undefined;
-  const cleaned = value.replace(/[,₹%\\s]/g, '').replace(/%$/, '');
+  const cleaned = value.replace(/[,₹%\s]/g, '').replace(/%$/, '');
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : undefined;
 };
@@ -29,7 +29,7 @@ const splitLine = (line: string, delimiter: string) => {
   cells.push(value.trim()); return cells;
 };
 const readCsv = (raw: string) => {
-  const lines = raw.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(x => x.trim());
+  const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(x => x.trim());
   if (lines.length < 2) throw new Error('CSV मध्ये header आणि किमान एक data row आवश्यक आहे.');
   const delimiter = (lines[0].match(/;/g) || []).length > (lines[0].match(/,/g) || []).length ? ';' : ',';
   const headers = splitLine(lines[0], delimiter).map(norm);
@@ -60,7 +60,7 @@ const parseFundamentals = (raw: string): PennyRow[] => {
     };
     const symbolRaw = get('symbol') || get('company');
     if (!symbolRaw) return null;
-    const symbol = symbolRaw.trim().toUpperCase().replace(/\\s+/g, '');
+    const symbol = symbolRaw.trim().toUpperCase().replace(/\s+/g, '');
     if (!/^[A-Z0-9&._-]{1,40}$/.test(symbol)) return null;
     const values = {
       price: parseNum(get('price')), salesGrowth: parseNum(get('salesGrowth')),
@@ -168,7 +168,7 @@ export const PennyStockScannerView: React.FC = () => {
   const results = useMemo(() => rows.filter(row => (!query || row.symbol.toLowerCase().includes(query.toLowerCase()) || (row.company || '').toLowerCase().includes(query.toLowerCase()))).filter(row => row.price === undefined || row.price <= 50).sort((a,b) => b.score-a.score),[rows,query]);
   const handleExport = () => {
     const headers = ['Symbol','Company','Price','Score','Coverage','Status','Sales Growth','Profit Growth','ROE','ROCE','Debt Equity','Promoter Holding','Pledge','Operating Cash Flow','EPS Growth','PE','Risk Flags'];
-    const csv = [headers.join(','), ...results.map(r => [r.symbol,r.company || '',r.price ?? '',r.score,r.coverage,r.status,r.salesGrowth ?? '',r.profitGrowth ?? '',r.roe ?? '',r.roce ?? '',r.debtEquity ?? '',r.promoterHolding ?? '',r.pledge ?? '',r.operatingCashFlow ?? '',r.epsGrowth ?? '',r.pe ?? '',r.risks.join('; ')].map(v => '"' + String(v).replace(/"/g,'""') + '"').join(','))].join('\\n');
+    const csv = [headers.join(','), ...results.map(r => [r.symbol,r.company || '',r.price ?? '',r.score,r.coverage,r.status,r.salesGrowth ?? '',r.profitGrowth ?? '',r.roe ?? '',r.roce ?? '',r.debtEquity ?? '',r.promoterHolding ?? '',r.pledge ?? '',r.operatingCashFlow ?? '',r.epsGrowth ?? '',r.pe ?? '',r.risks.join('; ')].map(v => '"' + String(v).replace(/"/g,'""') + '"').join(','))].join('\n');
     const url = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
     const a = document.createElement('a'); a.href=url; a.download='moti-penny-stock-analysis.csv'; a.click(); URL.revokeObjectURL(url);
   };
