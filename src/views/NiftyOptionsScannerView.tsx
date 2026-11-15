@@ -262,7 +262,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
   }, [chain, rangeRows, summary]);
   const tradeContracts = useMemo(() => rangeRows.filter(r => r.ltp > 0).slice().sort((a, b) => Math.abs(a.strike - summary.spot) - Math.abs(b.strike - summary.spot) || a.type.localeCompare(b.type)), [rangeRows, summary.spot]);
   const selectedTradeContract = tradeContracts.find(r => `${r.expiry}|${r.strike}|${r.type}` === tradeContractKey) || null;
-  const tradeLotRows = tradeContracts.map(r => { const perLotRisk = r.ltp * (stopPct / 100) * lotSize; return { ...r, perLotRisk, maxLots: perLotRisk > 0 ? Math.floor(1500 / perLotRisk) : 0 }; });
+  const tradeLotRows = tradeContracts.map(r => { const perLotRisk = r.ltp * (stopPct / 100) * lotSize; return { ...r, perLotRisk, maxLots: perLotRisk > 0 ? Math.floor(1500 / perLotRisk) : 0 }; }).filter(r => r.maxLots > 0 && r.perLotRisk <= 1500);
   const proRadar = useMemo(() => {
     if (!chain.length || !summary.spot || summary.bias === 'WAIT') return [];
     const type: 'CE' | 'PE' = summary.bias === 'BULLISH' ? 'CE' : 'PE';
@@ -429,11 +429,11 @@ export const NiftyOptionsScannerView: React.FC = () => {
         <p className="mb-2 text-xs font-bold text-white">₹1,500 Risk Cap · Strike-wise Lot Availability</p>
         <table className="w-full min-w-[560px] text-left text-[11px]">
           <thead className="text-slate-400"><tr><th className="p-2">Strike</th><th className="p-2">Type</th><th className="p-2">LTP</th><th className="p-2">Risk / lot</th><th className="p-2">Max lots</th></tr></thead>
-          <tbody>{tradeLotRows.map(r => <tr key={r.expiry + r.strike + r.type} className={r.maxLots > 0 ? "border-t border-slate-700/60 text-slate-200" : "border-t border-slate-700/60 text-slate-500"}>
+          <tbody>{tradeLotRows.map(r => <tr key={r.expiry + r.strike + r.type} className="border-t border-slate-700/60 text-slate-200">
             <td className="p-2 font-bold">{fmt(r.strike)}</td><td className="p-2">{r.type}</td><td className="p-2">₹{fmt(r.ltp)}</td><td className="p-2">₹{fmt(r.perLotRisk)}</td><td className="p-2 font-bold">{r.maxLots}</td>
           </tr>)}</tbody>
         </table>
-        <p className="mt-1 text-[10px] text-slate-500">0 lots म्हणजे एका lot चा अंदाजित SL risk ₹1,500 पेक्षा जास्त. Strike निवडल्यावर वर सविस्तर Entry / SL / Target दिसेल.</p>
+        <p className="mt-1 text-[10px] text-slate-500">इथे फक्त ₹1,500 किंवा कमी अंदाजित SL risk असलेले strikes दाखवले आहेत. Strike निवडल्यावर वर सविस्तर Entry / SL / Target दिसेल.</p>
       </div>}
       {selectedTradeContract && stopPct > 0 && stopPct <= 80 && targetPct > 0 && targetPct <= 200 && lotSize > 0 ? (() => {
         const entry = selectedTradeContract.ltp;
