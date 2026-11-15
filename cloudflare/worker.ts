@@ -219,6 +219,15 @@ export default {
           PRIMARY KEY (scanner, chunk_key)
         )
       `).run();
+      if (scanner === 'swing') {
+        await env.MOTI_DB.prepare(`
+          CREATE TABLE IF NOT EXISTS moti_scanner_data_state (
+            scanner TEXT PRIMARY KEY,
+            legacy_migration_blocked INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+          )
+        `).run();
+      }
       const row = await env.MOTI_DB.prepare(
         'SELECT data_json, updated_at FROM moti_scanner_data WHERE scanner = ?1'
       ).bind(scanner).first();
@@ -241,7 +250,15 @@ export default {
             String(a.date || '').localeCompare(String(b.date || '')) ||
             String(a.symbol || '').localeCompare(String(b.symbol || ''))
           );
-          return response({ scanner, data: data.length ? data : null, updatedAt: chunks.results?.[0]?.updated_at || row?.updated_at || null }, 200, origin);
+          const state = await env.MOTI_DB.prepare(
+            'SELECT legacy_migration_blocked FROM moti_scanner_data_state WHERE scanner = ?1'
+          ).bind('swing').first();
+          return response({
+            scanner,
+            data: data.length ? data : null,
+            legacyMigrationBlocked: state?.legacy_migration_blocked === 1,
+            updatedAt: chunks.results?.[0]?.updated_at || row?.updated_at || null
+          }, 200, origin);
         }
         return response({ scanner, data: row ? JSON.parse(row.data_json) : null, updatedAt: row?.updated_at || null }, 200, origin);
       } catch {
@@ -289,6 +306,16 @@ export default {
         await env.MOTI_DB.prepare(
           'DELETE FROM moti_scanner_data WHERE scanner = ?1'
         ).bind('swing').run();
+        await env.MOTI_DB.prepare(`
+          CREATE TABLE IF NOT EXISTS moti_scanner_data_state (
+            scanner TEXT PRIMARY KEY,
+            legacy_migration_blocked INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+          )
+        `).run();
+        await env.MOTI_DB.prepare(
+          'INSERT INTO moti_scanner_data_state (scanner, legacy_migration_blocked, updated_at) VALUES (?1, 1, ?2) ON CONFLICT(scanner) DO UPDATE SET legacy_migration_blocked = 1, updated_at = excluded.updated_at'
+        ).bind('swing', updatedAt).run();
         return response({ ok: true, scanner, cleared: true, updatedAt }, 200, origin);
       }
 
