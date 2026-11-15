@@ -254,7 +254,7 @@ export const SwingScannerView: React.FC = () => {
     return symbols.map(symbol => {
       const symbolRows = records.filter(r => r.symbol === symbol);
       const bhavcopyRows = symbolRows
-        .filter(r => r.sources.includes('bhavcopy') && r.volume !== undefined && r.high !== undefined && r.low !== undefined && r.close !== undefined)
+        .filter(r => r.sources.includes('bhavcopy') && r.high !== undefined && r.low !== undefined && r.close !== undefined)
         .sort((a, b) => a.date.localeCompare(b.date));
       const latestBhavcopy = bhavcopyRows[bhavcopyRows.length - 1];
       if (!latestBhavcopy) return null;
