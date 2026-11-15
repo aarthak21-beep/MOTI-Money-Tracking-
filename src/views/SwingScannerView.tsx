@@ -341,6 +341,7 @@ export const SwingScannerView: React.FC = () => {
             ? 'Average'
             : 'Low';
 
+      const bhavcopyByDate = new Map(bhavcopyRows.map(row => [row.date, row]));
       // A retest is only flagged after a prior confirmed close breakout on a
       // complete set of preceding market sessions. The latest candle must
       // revisit the breakout level (within 1.5%), close back above it, and
@@ -384,7 +385,6 @@ export const SwingScannerView: React.FC = () => {
       // Detect a tightening base only from actual daily Bhavcopy sessions.
       // Compare the latest 5-session range with the preceding 5-session range.
       const baseSessionDates = bhavcopySessionDates.filter(date => date < latest.date).slice(-10);
-      const bhavcopyByDate = new Map(bhavcopyRows.map(row => [row.date, row]));
       const dailyBhavcopy = baseSessionDates.map(date => bhavcopyByDate.get(date)).filter((row): row is DailyRow => !!row);
       const baseHasTenSessions = baseSessionDates.length === 10 && dailyBhavcopy.length === 10;
       const recentBase = baseHasTenSessions ? dailyBhavcopy.slice(-5) : [];
