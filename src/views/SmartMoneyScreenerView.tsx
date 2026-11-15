@@ -232,7 +232,7 @@ export const SmartMoneyScreenerView: React.FC = () => {
       const qtyChange = latest?.deliveryQty !== undefined && previous?.deliveryQty !== undefined && previous.deliveryQty > 0
         ? (latest.deliveryQty / previous.deliveryQty - 1) * 100 : undefined;
       const score = latest && averageDelivery !== undefined
-        ? Math.round(Math.min(100, Math.max(0, averageDelivery * 0.55 + Math.max(0, Math.min(25, (deliveryChange || 0) * 2.5)) + Math.max(0, Math.min(20, risingDays * 10))))
+        ? Math.round(Math.min(100, Math.max(0, averageDelivery * 0.55 + Math.max(0, Math.min(25, (deliveryChange || 0) * 2.5)) + Math.max(0, Math.min(20, risingDays * 10)))))
         : 0;
       const watch = recent.length >= 3 && (latest?.delivery || 0) >= 50 && (averageDelivery || 0) >= 45 && risingDays >= 2;
       return { ...stock, deliveryDays: recent.length, latestDelivery: latest?.delivery, averageDelivery, deliveryChange, qtyChange, risingDays, deliveryScore: score, deliveryWatch: watch };
