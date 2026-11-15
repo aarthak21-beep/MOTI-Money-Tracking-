@@ -312,6 +312,25 @@ export const NiftyOptionsScannerView: React.FC = () => {
       });
     });
   }, [expiries, rows, history, capital, lotSize, stopPct]);
+  const allExpiryAnalytics = useMemo(() => expiries.map(expiry => {
+    const expiryRows = rows.filter(r => r.expiry === expiry);
+    const spot = expiryRows[0]?.spot || 0;
+    const ceRows = expiryRows.filter(r => r.type === 'CE'), peRows = expiryRows.filter(r => r.type === 'PE');
+    const ceOi = ceRows.reduce((v,r)=>v+r.oi,0), peOi = peRows.reduce((v,r)=>v+r.oi,0);
+    const ceChange = ceRows.reduce((v,r)=>v+r.changeOi,0), peChange = peRows.reduce((v,r)=>v+r.changeOi,0);
+    const pcr = ceOi ? peOi/ceOi : 0;
+    const grouped = new Map<number,{strike:number;ceOi:number;peOi:number}>();
+    expiryRows.filter(r=>r.strike>=spot-600&&r.strike<=spot+600).forEach(r=>{const x=grouped.get(r.strike)||{strike:r.strike,ceOi:0,peOi:0};if(r.type==='CE')x.ceOi+=r.oi;else x.peOi+=r.oi;grouped.set(r.strike,x);});
+    const strikes=Array.from(grouped.values()), resistance=strikes.slice().sort((a,b)=>b.ceOi-a.ceOi)[0], support=strikes.slice().sort((a,b)=>b.peOi-a.peOi)[0];
+    const snapshots=history.filter(h=>h.expiry===expiry||(!h.expiry&&h.rows.some(r=>r.expiry===expiry))).sort((a,b)=>b.date.localeCompare(a.date));
+    const latest=snapshots[0], previous=snapshots.find(h=>h.date<(latest?.date||localDateKey()));
+    const oldMap=new Map((previous?.rows||[]).filter(r=>r.expiry===expiry).map(r=>[`${r.strike}-${r.type}`,r]));
+    const buildup={long:0,short:0,covering:0,unwinding:0};
+    if(previous)expiryRows.forEach(r=>{const old=oldMap.get(`${r.strike}-${r.type}`);if(!old)return;const up=r.ltp>old.ltp,down=r.ltp<old.ltp,oiUp=r.oi>old.oi,oiDown=r.oi<old.oi;if(up&&oiUp)buildup.long++;else if(down&&oiUp)buildup.short++;else if(up&&oiDown)buildup.covering++;else if(down&&oiDown)buildup.unwinding++;});
+    const oldCe=previous?.rows.filter(r=>r.expiry===expiry&&r.type==='CE').reduce((v,r)=>v+r.oi,0)||0,oldPe=previous?.rows.filter(r=>r.expiry===expiry&&r.type==='PE').reduce((v,r)=>v+r.oi,0)||0;
+    const previousPcr=oldCe?oldPe/oldCe:0,pcrTrend=previousPcr?(pcr>previousPcr?'UP':pcr<previousPcr?'DOWN':'FLAT'):'NO PRIOR DATA';
+    return {expiry,spot,ceChange,peChange,pcr,previousPcr,pcrTrend,resistance,support,buildup,hasPrevious:Boolean(previous),rowCount:expiryRows.length};
+  }).filter(x=>x.rowCount>0),[expiries,rows,history]);
   const handleUpload = async (file?: File) => {
     if (!file) return;
     setLoading(true); setError(''); setMessage('');
@@ -403,6 +422,22 @@ export const NiftyOptionsScannerView: React.FC = () => {
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Put / Call OI Ratio</p><p className="mt-1 text-xl font-black text-white">{summary.pcr ? summary.pcr.toFixed(2) : '—'}</p></div>
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Directional read (OI only)</p><p className={'mt-1 text-xl font-black ' + (summary.bias === 'BULLISH' ? 'text-emerald-300' : summary.bias === 'BEARISH' ? 'text-rose-300' : 'text-amber-300')}>{summary.bias}</p></div>
     </div>
+
+    <section className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-white">All Expiry Market Analysis</h2><p className="mt-1 text-[11px] text-slate-400">प्रत्येक eligible expiry चे Support / Resistance, Price + OI buildup आणि PCR trend. OI Contracts आणि Lots दोन्हीमध्ये.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-[10px] text-cyan-200">Lot size: {lotSize}</span></div>
+      {!allExpiryAnalytics.length?<p className="mt-3 text-xs text-amber-200">Eligible expiry data उपलब्ध नाही.</p>:<div className="mt-4 grid gap-3 xl:grid-cols-2">{allExpiryAnalytics.map(item=><div key={item.expiry} className="rounded-xl border border-slate-700 bg-[#080f1b] p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-black text-white">Expiry {item.expiry}</h3><span className="text-[10px] text-slate-400">Spot ₹{fmt(item.spot)}</span></div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-lg bg-rose-300/5 p-2"><p className="text-[10px] text-rose-200">Resistance · Highest CE OI</p><p className="mt-1 font-bold text-white">{item.resistance?fmt(item.resistance.strike):'—'}</p><p className="text-[10px] text-slate-400">{item.resistance?`${fmt(item.resistance.ceOi)} contracts · ${fmt(item.resistance.ceOi/lotSize)} lots`:'No data'}</p></div>
+          <div className="rounded-lg bg-emerald-300/5 p-2"><p className="text-[10px] text-emerald-200">Support · Highest PE OI</p><p className="mt-1 font-bold text-white">{item.support?fmt(item.support.strike):'—'}</p><p className="text-[10px] text-slate-400">{item.support?`${fmt(item.support.peOi)} contracts · ${fmt(item.support.peOi/lotSize)} lots`:'No data'}</p></div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-slate-800/70 p-2"><p className="text-[10px] text-slate-400">PCR Current / Previous</p><p className="font-bold text-white">{item.pcr.toFixed(2)} / {item.previousPcr?item.previousPcr.toFixed(2):'—'}</p><p className="text-[10px] text-slate-400">Trend: {item.pcrTrend}</p></div><div className="rounded-lg bg-slate-800/70 p-2"><p className="text-[10px] text-slate-400">OI Change CE / PE</p><p className="font-bold text-white">{fmt(item.ceChange)} / {fmt(item.peChange)}</p><p className="text-[10px] text-slate-400">{fmt(item.ceChange/lotSize)} / {fmt(item.peChange/lotSize)} lots</p></div></div>
+        <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">Price + OI Buildup {item.hasPrevious?'vs previous snapshot':'· prior snapshot आवश्यक'}</p>
+        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4"><div className="rounded bg-emerald-300/10 p-2"><span className="text-emerald-200">Long</span><p className="font-bold text-white">{item.buildup.long}</p></div><div className="rounded bg-rose-300/10 p-2"><span className="text-rose-200">Short</span><p className="font-bold text-white">{item.buildup.short}</p></div><div className="rounded bg-cyan-300/10 p-2"><span className="text-cyan-200">Covering</span><p className="font-bold text-white">{item.buildup.covering}</p></div><div className="rounded bg-amber-300/10 p-2"><span className="text-amber-200">Unwinding</span><p className="font-bold text-white">{item.buildup.unwinding}</p></div></div>
+        {!item.hasPrevious&&<p className="mt-2 text-[10px] text-amber-200">मागील snapshot नसल्यामुळे buildup उपलब्ध नाही. पुढील snapshot upload झाल्यावर तुलना होईल.</p>}
+      </div>)}</div>}
+      <p className="mt-3 text-[10px] text-slate-500">Support/Resistance = Spot ±600 मधील highest OI strikes; हमखास पातळी नाहीत. Buildup हा मागील snapshot विरुद्ध LTP आणि OI तुलना आहे. PCR एकट्याने ट्रेड सिग्नल नाही.</p>
+    </section>
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-bold text-white">Daily Snapshot History · Selected expiry</h2><p className="mt-1 text-[11px] text-slate-400">प्रत्येक Upload Date + Expiry स्वतंत्र Cloudflare history मध्ये जतन होते. त्याच दिवशी तीच expiry पुन्हा upload केल्यास फक्त त्या expiry चा snapshot update होतो; इतर expiry सुरक्षित राहतात.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-xs text-slate-300">{historyDays} days · {history.length} expiry snapshots</span></div>
