@@ -3,8 +3,13 @@ import { loadScannerData, saveScannerData, deleteScannerData } from '../services
 import { Activity, Upload, Download, Trash2, Search, ShieldAlert, FileSpreadsheet, Info } from 'lucide-react';
 
 type StockRow = {
-  date: string; symbol: string; series?: string; close: number; prevClose?: number; volume: number;
-  avgVolume?: number; deliveryQty?: number; deliveryPct?: number; high?: number; low?: number;
+  date: string; symbol: string; series: string; open?: number; high?: number; low?: number;
+  close: number; prevClose?: number; volume: number; turnover?: number;
+  deliveryQty?: number; deliveryPct?: number;
+};
+type SignalRow = StockRow & {
+  turnoverValue: number; avgVolume?: number; volumeRatio?: number; change?: number;
+  trend5d?: number; signal: string; score: number; superScore: number;
 };
 const KEY = 'moti_smart_money_screener_v1';
 const DB_NAME = 'moti_smart_money_db';
@@ -12,9 +17,7 @@ const STORE_NAME = 'datasets';
 const openDataDb = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
   if (!('indexedDB' in window)) { reject(new Error('या browser मध्ये IndexedDB उपलब्ध नाही.')); return; }
   const request = indexedDB.open(DB_NAME, 1);
-  request.onupgradeneeded = () => {
-    if (!request.result.objectStoreNames.contains(STORE_NAME)) request.result.createObjectStore(STORE_NAME);
-  };
+  request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains(STORE_NAME)) request.result.createObjectStore(STORE_NAME); };
   request.onsuccess = () => resolve(request.result);
   request.onerror = () => reject(request.error || new Error('IndexedDB उघडता आले नाही.'));
 });
@@ -36,124 +39,223 @@ const saveRowsToDb = async (rows: StockRow[]): Promise<void> => {
     tx.onabort = () => { db.close(); reject(tx.error || new Error('डेटा save रद्द झाला.')); };
   });
 };
-
-const csvTemplate = 'date,symbol,close,prevClose,volume,avgVolume,deliveryQty,deliveryPct,high,low\n2026-11-13,RELIANCE,1450,1438,2500000,1200000,1550000,62,1462,1432\n';
 const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
-const number = (v?: string) => { if (!v?.trim()) return undefined; const n = Number(v.replace(/[,₹%\s]/g, '')); return Number.isFinite(n) ? n : undefined; };
+const number = (v?: string) => {
+  if (!v?.trim() || ['-', 'na', 'n/a', 'null'].includes(v.trim().toLowerCase())) return undefined;
+  const n = Number(v.replace(/[,₹%\s]/g, ''));
+  return Number.isFinite(n) ? n : undefined;
+};
+const splitCsv = (line: string, delimiter: string) => {
+  const out: string[] = []; let value = '', quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { if (quoted && line[i + 1] === '"') { value += '"'; i++; } else quoted = !quoted; }
+    else if (ch === delimiter && !quoted) { out.push(value.trim()); value = ''; }
+    else value += ch;
+  }
+  out.push(value.trim()); return out;
+};
+const parseDate = (value: string) => {
+  const v = value.trim();
+  if (!v) return '';
+  const dmy = v.match(/^(\d{2})[-/]([A-Za-z]{3})[-/](\d{4})$/);
+  if (dmy) return new Date(Date.parse(dmy[2] + ' ' + dmy[1] + ', ' + dmy[3])).toISOString().slice(0, 10);
+  const dmyNum = v.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
+  if (dmyNum) return dmyNum[3] + '-' + dmyNum[2] + '-' + dmyNum[1];
+  const parsed = Date.parse(v);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : v;
+};
 const parseCsv = (raw: string): StockRow[] => {
-  const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
+  const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
   if (lines.length < 2) throw new Error('CSV मध्ये header आणि किमान एक data row असणे आवश्यक आहे.');
-  const split = (line: string) => { const out: string[]=[]; let v='', q=false; for(let i=0;i<line.length;i++){const c=line[i]; if(c==='"'){if(q&&line[i+1]==='"'){v+='"';i++;}else q=!q;}else if(c===','&&!q){out.push(v.trim());v='';}else v+=c;}out.push(v.trim());return out; };
-  const headers = split(lines[0]).map(normalize);
+  const first = lines[0];
+  const delimiter = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : ',';
+  const headers = splitCsv(first, delimiter).map(normalize);
   const col = (...names: string[]) => headers.findIndex(h => names.includes(h));
   const idx = {
-    date: col('date','tradedate','date1'), symbol: col('symbol','tradingsymbol'), series: col('series'), close: col('close','closeprice','ltp','lastprice'),
-    prev: col('prevclose','previousclose'), volume: col('volume','tottrdqty','ttltrdqty','ttltrdqnty','totaltradedquantity','totalvolume'),
-    avg: col('avgvolume','averagevolume'), delivery: col('deliveryqty','delivqty','deliverablequantity'),
-    deliveryPct: col('deliverypct','delivper','deliverypercentage'), high: col('high','highprice'), low: col('low','lowprice')
+    date: col('date', 'tradedate', 'date1', 'traddt', 'bizdt'),
+    symbol: col('symbol', 'tradingsymbol', 'tckrsymb'),
+    series: col('series', 'sctysrs'),
+    open: col('open', 'openprice', 'opnpric'),
+    high: col('high', 'highprice', 'hghpric'),
+    low: col('low', 'lowprice', 'lwpric'),
+    close: col('close', 'closeprice', 'clspric', 'ltp', 'lastprice'),
+    prev: col('prevclose', 'previousclose', 'prvsclsgpric'),
+    volume: col('volume', 'tottrdqty', 'ttltrdqty', 'ttltrdqnty', 'totaltradedquantity', 'totalvolume', 'ttltradgvol'),
+    turnover: col('turnover', 'tottrdval', 'ttltrdval', 'totaltradedvalue', 'ttltrfval', 'totalturnover'),
+    delivery: col('deliveryqty', 'delivqty', 'deliverablequantity', 'dlyqty'),
+    deliveryPct: col('deliverypct', 'delivper', 'deliverypercentage', 'dlyper')
   };
-  if(idx.symbol<0 || idx.series<0 || idx.close<0 || idx.volume<0) throw new Error('Symbol, Series, Close/LTP आणि Volume columns आवश्यक आहेत. Series column आवश्यक आहे आणि फक्त EQ rows स्वीकारल्या जातील.');
-  const rows: StockRow[]=[];
-  for(const line of lines.slice(1)){const c=split(line); const symbol=(c[idx.symbol]||'').trim().toUpperCase(); const series=idx.series>=0?(c[idx.series]||'').trim().toUpperCase():''; const close=number(c[idx.close]); const volume=number(c[idx.volume]); if(series!=='EQ') continue; if(!/^[A-Z0-9&.-]{1,30}$/.test(symbol)||close===undefined||volume===undefined) continue;
-    rows.push({date:idx.date>=0?c[idx.date]:'',symbol,series:'EQ',close,prevClose:idx.prev>=0?number(c[idx.prev]):undefined,volume,avgVolume:idx.avg>=0?number(c[idx.avg]):undefined,deliveryQty:idx.delivery>=0?number(c[idx.delivery]):undefined,deliveryPct:idx.deliveryPct>=0?number(c[idx.deliveryPct]):undefined,high:idx.high>=0?number(c[idx.high]):undefined,low:idx.low>=0?number(c[idx.low]):undefined});
+  if (idx.symbol < 0 || idx.series < 0 || idx.close < 0 || idx.volume < 0) {
+    throw new Error('NSE Bhavcopy मधील Symbol/TckrSymb, Series/SctySrs, Close/ClsPric आणि Volume/TtlTradgVol columns सापडले नाहीत.');
   }
-  if(!rows.length) throw new Error('योग्य stock rows सापडल्या नाहीत. Template डाउनलोड करून columns तपासा.');
+  const rows: StockRow[] = [];
+  for (const line of lines.slice(1)) {
+    const c = splitCsv(line, delimiter);
+    const symbol = (c[idx.symbol] || '').trim().toUpperCase();
+    const series = (c[idx.series] || '').trim().toUpperCase();
+    const close = number(c[idx.close]), volume = number(c[idx.volume]);
+    if (series !== 'EQ' || !/^[A-Z0-9&.-]{1,30}$/.test(symbol) || close === undefined || volume === undefined) continue;
+    rows.push({
+      date: idx.date >= 0 ? parseDate(c[idx.date] || '') : '', symbol, series,
+      open: idx.open >= 0 ? number(c[idx.open]) : undefined,
+      high: idx.high >= 0 ? number(c[idx.high]) : undefined,
+      low: idx.low >= 0 ? number(c[idx.low]) : undefined,
+      close, prevClose: idx.prev >= 0 ? number(c[idx.prev]) : undefined, volume,
+      turnover: idx.turnover >= 0 ? number(c[idx.turnover]) : undefined,
+      deliveryQty: idx.delivery >= 0 ? number(c[idx.delivery]) : undefined,
+      deliveryPct: idx.deliveryPct >= 0 ? number(c[idx.deliveryPct]) : undefined
+    });
+  }
+  if (!rows.length) throw new Error('या Bhavcopy मधून EQ stock rows मिळाल्या नाहीत. Header किंवा Series तपासा.');
   return rows;
 };
-const pct = (n?: number) => n===undefined ? '—' : n.toFixed(1) + '%';
-const dateTime = (v: string) => { const n=Date.parse(v); return Number.isFinite(n)?n:undefined; };
-const dateKey = (r: StockRow) => { const n=dateTime(r.date||''); return n===undefined?(r.date||'').trim().toLowerCase():new Date(n).toISOString().slice(0,10); };
+const dateTime = (v: string) => { const n = Date.parse(v); return Number.isFinite(n) ? n : undefined; };
+const dateKey = (r: StockRow) => r.date || '';
 const mergeHistory = (oldRows: StockRow[], newRows: StockRow[]) => {
-  const map=new Map<string,StockRow>();
-  [...oldRows,...newRows].forEach((r,i)=>map.set(r.symbol+'|'+(dateKey(r)||('undated-'+i)),r));
-  return [...map.values()].sort((a,b)=>(dateTime(a.date||'')??Number.MAX_SAFE_INTEGER)-(dateTime(b.date||'')??Number.MAX_SAFE_INTEGER)||a.symbol.localeCompare(b.symbol));
+  const map = new Map<string, StockRow>();
+  [...oldRows, ...newRows].forEach((r, i) => map.set(r.symbol + '|' + (dateKey(r) || ('undated-' + i)), r));
+  return [...map.values()].sort((a, b) => (dateTime(a.date) ?? Number.MAX_SAFE_INTEGER) - (dateTime(b.date) ?? Number.MAX_SAFE_INTEGER) || a.symbol.localeCompare(b.symbol));
 };
-type TrendInfo = {label:string;detail:string;score:number};
-const buildTrends = (rows: StockRow[]) => {
-  const groups=new Map<string,StockRow[]>();
-  rows.filter(r=>r.series==='EQ').forEach(r=>{if(dateTime(r.date||'')===undefined)return;const a=groups.get(r.symbol)||[];a.push(r);groups.set(r.symbol,a);});
-  const out=new Map<string,TrendInfo>();
-  groups.forEach((all,symbol)=>{
-    const a=[...all].sort((x,y)=>(dateTime(x.date)||0)-(dateTime(y.date)||0)).slice(-5);
-    if(a.length<5){out.set(symbol,{label:'इतिहास अपुरा',detail:a.length+'/5 दिवस उपलब्ध',score:0});return;}
-    const d=(r:StockRow)=>r.deliveryPct??(r.deliveryQty!==undefined&&r.volume>0?r.deliveryQty/r.volume*100:undefined);
-    const ds=a.map(d).filter((x):x is number=>x!==undefined), first=a.slice(0,2).map(d).filter((x):x is number=>x!==undefined), last=a.slice(-2).map(d).filter((x):x is number=>x!==undefined);
-    const avg=ds.length?ds.reduce((x,y)=>x+y,0)/ds.length:undefined;
-    const rise=first.length&&last.length?last.reduce((x,y)=>x+y,0)/last.length-first.reduce((x,y)=>x+y,0)/first.length:undefined;
-    const move=a[0].close>0?(a[4].close-a[0].close)/a[0].close*100:undefined;
-    const hi=Math.max(...a.map(r=>r.high??r.close)),lo=Math.min(...a.map(r=>r.low??r.close)),range=lo>0?(hi-lo)/lo*100:undefined;
-    const v1=a.slice(0,3).reduce((s,r)=>s+r.volume,0)/3,v2=a.slice(-2).reduce((s,r)=>s+r.volume,0)/2,vol=v1>0?v2/v1:undefined;
-    if(avg===undefined||rise===undefined)out.set(symbol,{label:'डिलिव्हरी डेटा अपुरा',detail:'५ दिवसांचा Delivery % किंवा Qty आवश्यक',score:0});
-    else if(avg<35&&(move??0)<=-2&&(vol??0)>=1.1)out.set(symbol,{label:'वितरणाचा इशारा',detail:'सरासरी डिलिव्हरी '+avg.toFixed(1)+'% · व्हॉल्यूम '+(vol?.toFixed(2)??'—')+'x',score:1});
-    else if(avg>=50&&rise>=5&&(range??99)<=8&&(move??99)>=-4&&(move??99)<=8)out.set(symbol,{label:'संभाव्य मजबूत संचय',detail:'डिलिव्हरी '+rise.toFixed(1)+' टक्के-पॉइंट वाढ · भाव बदल '+pct(move),score:3});
-    else if(avg>=45&&rise>=3&&(range??99)<=10&&(move??99)>=-6&&(move??99)<=10)out.set(symbol,{label:'संभाव्य संचय',detail:'डिलिव्हरी '+rise.toFixed(1)+' टक्के-पॉइंट वाढ · भाव बदल '+pct(move),score:2});
-    else out.set(symbol,{label:'ठोस कल नाही',detail:'सरासरी डिलिव्हरी '+avg.toFixed(1)+'% · ५ दिवसांचा भाव बदल '+pct(move),score:0});
-  });
-  return out;
+const pct = (n?: number) => n === undefined ? '—' : n.toFixed(1) + '%';
+const fmt = (n?: number) => n === undefined ? '—' : n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const groupBySymbol = (rows: StockRow[]) => {
+  const groups = new Map<string, StockRow[]>();
+  rows.filter(r => r.series === 'EQ').forEach(r => { const a = groups.get(r.symbol) || []; a.push(r); groups.set(r.symbol, a); });
+  groups.forEach(a => a.sort((x, y) => (dateTime(x.date) ?? 0) - (dateTime(y.date) ?? 0)));
+  return groups;
 };
 export const SmartMoneyScreenerView: React.FC = () => {
-  const [rows,setRows]=useState<StockRow[]>([]);
+  const [rows, setRows] = useState<StockRow[]>([]);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('ALL');
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   useEffect(() => {
     let active = true;
     (async () => {
       try {
         const cloudSaved = await loadScannerData<StockRow[]>('smart-money');
-        let saved = cloudSaved || await readSavedRows();
+        let saved = cloudSaved ?? await readSavedRows();
+        if (!cloudSaved && saved.length) await saveScannerData('smart-money', saved);
         if (!saved.length) {
           const legacy = localStorage.getItem(KEY);
           if (legacy) {
             const parsed = JSON.parse(legacy) as StockRow[];
             if (Array.isArray(parsed) && parsed.length) {
-              await saveRowsToDb(parsed);
-              localStorage.removeItem(KEY);
-              saved = parsed;
-              if (active) setMessage('जुना CSV डेटा IndexedDB मध्ये सुरक्षितपणे हलवला.');
+              saved = parsed.map(r => ({ ...r, series: (r.series || '').toUpperCase() }));
+              await saveRowsToDb(saved); localStorage.removeItem(KEY);
+              await saveScannerData('smart-money', saved);
             }
           }
         }
-        if (!cloudSaved && saved.length) await saveScannerData('smart-money', saved);
         if (active) setRows(saved);
       } catch {
-        if (active) setError('Saved data load/migrate करता आला नाही. CSV पुन्हा import करून पाहा.');
+        if (active) setError('Saved data load करता आला नाही. Cloud connection तपासा.');
       }
     })();
     return () => { active = false; };
   }, []);
-  const [query,setQuery]=useState(''); const [filter,setFilter]=useState('ALL'); const [error,setError]=useState(''); const [message,setMessage]=useState('');
-  const enriched=useMemo(()=>{
-    const eqRows=rows.filter(r=>r.series==='EQ');
-    const trends=buildTrends(eqRows), latest=new Map<string,StockRow>();
-    eqRows.forEach(r=>latest.set(r.symbol,r));
-    return [...latest.values()].filter(r=>r.close>=500&&r.close<=3000&&(r.close*r.volume)>=10000000).map(r=>{
-      const turnover=r.close*r.volume;
-      const volumeRatio=r.avgVolume&&r.avgVolume>0?r.volume/r.avgVolume:undefined;
-      const change=r.prevClose&&r.prevClose>0?(r.close-r.prevClose)/r.prevClose*100:undefined;
-      const accumulation=(r.deliveryPct!==undefined&&r.deliveryPct>=50?2:0)+(volumeRatio!==undefined&&volumeRatio>=1.5?2:0)+(change!==undefined&&change>=-1&&change<=2?1:0);
-      const distribution=(r.deliveryPct!==undefined&&r.deliveryPct<35?1:0)+(volumeRatio!==undefined&&volumeRatio>=1.5?2:0)+(change!==undefined&&change<=-2?2:0);
-      const breakout=(r.high!==undefined&&r.close>=r.high*0.995?2:0)+(volumeRatio!==undefined&&volumeRatio>=1.5?2:0)+(change!==undefined&&change>=2?1:0);
-      const best=Math.max(accumulation,distribution,breakout),signal=best<3?'WATCH':best===accumulation?'ACCUMULATION':best===distribution?'DISTRIBUTION':'BREAKOUT';
-      return {...r,turnover,volumeRatio,change,accumulation,distribution,breakout,signal,score:best,trend:trends.get(r.symbol)||{label:'इतिहास अपुरा',detail:'दिनांकासह ५ दिवसांचा डेटा अपलोड करा',score:0}};
-    }).sort((a,b)=>b.trend.score-a.trend.score||b.score-a.score);
-  },[rows]);
-  const superTen=useMemo(()=>enriched.map(r=>{const deliveryScore=r.deliveryPct===undefined?0:Math.min(25,Math.max(0,(r.deliveryPct-30)/30*25));const volumeScore=r.volumeRatio===undefined?0:Math.min(20,Math.max(0,(r.volumeRatio-0.8)/1.2*20));const accumulationScore=r.accumulation/5*20;const trendScore=r.trend.score/3*20;const priceScore=r.change===undefined?0:(r.change>=-1&&r.change<=3?15:r.change>3?Math.max(0,15-(r.change-3)*2):Math.max(0,15-(Math.abs(r.change+1)*2)));const penalty=r.signal==='DISTRIBUTION'?20:0;return {...r,superScore:Math.max(0,Math.min(100,Math.round(deliveryScore+volumeScore+accumulationScore+trendScore+priceScore-penalty))) };}).sort((a,b)=>b.superScore-a.superScore).slice(0,10),[enriched]);
-  const powerSignals=useMemo(()=>{const groups=new Map<string,StockRow[]>();rows.forEach(r=>{if(dateTime(r.date||'')===undefined)return;const a=groups.get(r.symbol)||[];a.push(r);groups.set(r.symbol,a);});const out=new Map<string,{qualified:boolean;detail:string}>();groups.forEach((all,symbol)=>{const a=[...all].sort((x,y)=>(dateTime(x.date||'')||0)-(dateTime(y.date||'')||0)).slice(-6);if(a.length<6){out.set(symbol,{qualified:false,detail:'POWER STOCK साठी ६ ट्रेडिंग दिवसांचा इतिहास आवश्यक'});return;}const d=(r:StockRow)=>r.deliveryPct??(r.deliveryQty!==undefined&&r.volume>0?r.deliveryQty/r.volume*100:undefined);const prior=a.slice(0,5),today=a[5],avgVol=prior.reduce((s,r)=>s+r.volume,0)/5,resistance=Math.max(...prior.map(r=>r.high??r.close)),priorDelivery=prior.slice(-2).map(d).filter((v):v is number=>v!==undefined),todayDelivery=d(today),priceMove=prior[0].close>0?(today.close-prior[0].close)/prior[0].close*100:undefined;const volumeOK=avgVol>0&&today.volume>=avgVol*1.5,breakoutOK=today.close>resistance,priceOK=priceMove!==undefined&&priceMove>0,deliveryOK=todayDelivery!==undefined&&todayDelivery>=50&&priorDelivery.length===2&&todayDelivery>=priorDelivery.reduce((s,v)=>s+v,0)/2+3;const qualified=volumeOK&&breakoutOK&&priceOK&&deliveryOK;out.set(symbol,{qualified,detail:qualified?'५ दिवसांच्या सरासरीपेक्षा १.५x Volume · ५ दिवसांचा High breakout · भाव मजबूत · Delivery वाढलेली':'अटी: Volume १.५x, मागील ५ दिवसांचा High breakout, सकारात्मक भावबदल आणि Delivery ≥५०% व वाढती'});});return out;},[rows]);const visible=enriched.filter(r=>r.symbol.includes(query.trim().toUpperCase())&&(filter==='ALL'||(filter==='POWER_STOCK'?(powerSignals.get(r.symbol)?.qualified??false):r.signal===filter)));
-  const upload=async(file?:File)=>{if(!file)return;setError('');setMessage('');try{const parsed=parseCsv(await file.text()),merged=mergeHistory(rows,parsed);await saveScannerData('smart-money',merged);setRows(merged);setMessage(parsed.length+' नवीन/अपडेटेड नोंदी जोडल्या. एकूण '+merged.length+' दिवसनिहाय नोंदी सेव्ह झाल्या.');}catch(e){setError(e instanceof Error?e.message:'CSV import/save करता आला नाही.');}};
-  const download=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvTemplate],{type:'text/csv;charset=utf-8'}));a.download='moti-smart-money-template.csv';a.click();URL.revokeObjectURL(a.href);};
-  const removeStock=async(symbol:string)=>{if(!window.confirm(symbol+' ची Smart Money मधील सर्व दिवसांची नोंद कायमची delete करायची?'))return;setError('');setMessage('');try{const updated=rows.filter(r=>r.symbol!==symbol);await saveScannerData('smart-money',updated);setRows(updated);setMessage(symbol+' ची सर्व इतिहासासह नोंद delete केली.');}catch{setError(symbol+' delete करता आला नाही. पुन्हा प्रयत्न करा.');}};
-  const clear=async()=>{if(window.confirm('Smart Money Screener चा saved CSV data delete करायचा?')){try{await deleteScannerData('smart-money');localStorage.removeItem(KEY);setRows([]);setMessage('Saved data delete केला.');}catch{setError('Saved data delete करता आला नाही.');}}};
+  const analytics = useMemo(() => {
+    const groups = groupBySymbol(rows);
+    const latest: StockRow[] = [];
+    groups.forEach(history => { if (history.length) latest.push(history[history.length - 1]); });
+    return latest.map(r => {
+      const history = groups.get(r.symbol) || [];
+      const previous = history.slice(0, -1);
+      const prior5 = previous.slice(-5);
+      const avgVolume = prior5.length ? prior5.reduce((s, x) => s + x.volume, 0) / prior5.length : undefined;
+      const volumeRatio = avgVolume && avgVolume > 0 ? r.volume / avgVolume : undefined;
+      const change = r.prevClose && r.prevClose > 0 ? (r.close - r.prevClose) / r.prevClose * 100 : undefined;
+      const trendBase = history.length >= 5 ? history[history.length - 5].close : undefined;
+      const trend5d = trendBase && trendBase > 0 ? (r.close - trendBase) / trendBase * 100 : undefined;
+      const turnoverValue = r.turnover ?? r.close * r.volume;
+      const delivery = r.deliveryPct ?? (r.deliveryQty !== undefined && r.volume > 0 ? r.deliveryQty / r.volume * 100 : undefined);
+      const accumulation = (volumeRatio !== undefined && volumeRatio >= 1.5 ? 2 : 0) + (change !== undefined && change >= -1 && change <= 2 ? 1 : 0) + (delivery !== undefined && delivery >= 50 ? 2 : 0);
+      const distribution = (volumeRatio !== undefined && volumeRatio >= 1.5 ? 2 : 0) + (change !== undefined && change <= -2 ? 2 : 0) + (delivery !== undefined && delivery < 35 ? 1 : 0);
+      const breakout = (r.high !== undefined && r.close >= r.high * 0.995 ? 2 : 0) + (volumeRatio !== undefined && volumeRatio >= 1.5 ? 2 : 0) + (change !== undefined && change >= 2 ? 1 : 0);
+      const best = Math.max(accumulation, distribution, breakout);
+      const signal = best < 3 ? 'WATCH' : best === accumulation ? 'ACCUMULATION' : best === distribution ? 'DISTRIBUTION' : 'BREAKOUT';
+      const availableScore = (volumeRatio !== undefined ? 30 : 0) + (change !== undefined ? 20 : 0) + (trend5d !== undefined ? 20 : 0) + (delivery !== undefined ? 30 : 0);
+      const score = (volumeRatio !== undefined ? Math.min(30, Math.max(0, (volumeRatio - 0.8) / 1.2 * 30) : 0)
+        + (change !== undefined ? Math.max(0, 20 - Math.abs(change - 1) * 3) : 0)
+        + (trend5d !== undefined ? Math.max(0, Math.min(20, 10 + trend5d * 2)) : 0)
+        + (delivery !== undefined ? Math.min(30, Math.max(0, (delivery - 30) / 30 * 30)) : 0);
+      return { ...r, turnoverValue, avgVolume, volumeRatio, change, trend5d, delivery, accumulation, distribution, breakout, signal, score: Math.round(score), availableScore };
+    }).filter(r => r.close >= 500 && r.close <= 3000 && r.turnoverValue >= 10000000)
+      .sort((a, b) => b.score - a.score);
+  }, [rows]);
+  const superTen = useMemo(() => analytics.slice().sort((a, b) => b.score - a.score).slice(0, 10), [analytics]);
+  const powerSignals = useMemo(() => {
+    const groups = groupBySymbol(rows);
+    const out = new Map<string, { qualified: boolean; detail: string }>();
+    groups.forEach((history, symbol) => {
+      const a = history.slice(-6);
+      if (a.length < 6) { out.set(symbol, { qualified: false, detail: '६ ट्रेडिंग दिवसांचा डेटा आवश्यक' }); return; }
+      const prior = a.slice(0, 5), today = a[5];
+      const avgVol = prior.reduce((s, r) => s + r.volume, 0) / 5;
+      const resistance = Math.max(...prior.map(r => r.high ?? r.close));
+      const priceOK = today.close > resistance && today.close > prior[0].close;
+      const volumeOK = avgVol > 0 && today.volume >= avgVol * 1.5;
+      const delivery = today.deliveryPct ?? (today.deliveryQty !== undefined && today.volume > 0 ? today.deliveryQty / today.volume * 100 : undefined);
+      const deliveryOK = delivery === undefined || delivery >= 50;
+      const qualified = priceOK && volumeOK && deliveryOK;
+      out.set(symbol, { qualified, detail: delivery === undefined ? '६ दिवसांचा भाव + Volume breakout (Bhavcopy data)' : 'भाव + Volume breakout आणि Delivery confirmation' });
+    });
+    return out;
+  }, [rows]);
+  const visible = analytics.filter(r => r.symbol.includes(query.trim().toUpperCase()) &&
+    (filter === 'ALL' || (filter === 'POWER_STOCK' ? powerSignals.get(r.symbol)?.qualified : r.signal === filter)));
+  const hasDelivery = analytics.some(r => r.delivery !== undefined);
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setError(''); setMessage('');
+    try {
+      const parsed = parseCsv(await file.text());
+      const merged = mergeHistory(rows, parsed);
+      await saveScannerData('smart-money', merged);
+      setRows(merged);
+      setMessage(parsed.length + ' EQ नोंदी वाचल्या. एकूण ' + merged.length + ' दिवसनिहाय नोंदी सेव्ह झाल्या.');
+    } catch (e) { setError(e instanceof Error ? e.message : 'CSV import/save करता आला नाही.'); }
+  };
+  const download = () => {
+    const template = 'date,symbol,series,open,high,low,close,prevClose,volume,turnover\n2026-11-13,RELIANCE,EQ,1440,1462,1432,1450,1438,2500000,3625000000\n';
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([template], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'moti-smart-money-template.csv'; a.click(); URL.revokeObjectURL(a.href);
+  };
+  const removeStock = async (symbol: string) => {
+    if (!window.confirm(symbol + ' ची Smart Money मधील सर्व दिवसांची नोंद delete करायची?')) return;
+    try { const updated = rows.filter(r => r.symbol !== symbol); await saveScannerData('smart-money', updated); setRows(updated); setMessage(symbol + ' ची सर्व इतिहासासह नोंद delete केली.'); }
+    catch { setError(symbol + ' delete करता आला नाही.'); }
+  };
+  const clear = async () => {
+    if (!window.confirm('Smart Money Screener चा saved CSV data delete करायचा?')) return;
+    try { await deleteScannerData('smart-money'); localStorage.removeItem(KEY); setRows([]); setMessage('Saved data delete केला.'); }
+    catch { setError('Saved data delete करता आला नाही.'); }
+  };
+  const cards = [
+    { label: 'Stocks Loaded', value: analytics.length, key: 'ALL' },
+    { label: 'Accumulation', value: analytics.filter(r => r.signal === 'ACCUMULATION').length, key: 'ACCUMULATION' },
+    { label: 'Distribution', value: analytics.filter(r => r.signal === 'DISTRIBUTION').length, key: 'DISTRIBUTION' },
+    { label: 'Breakout Watch', value: analytics.filter(r => r.signal === 'BREAKOUT').length, key: 'BREAKOUT' },
+    { label: 'POWER STOCK', value: analytics.filter(r => powerSignals.get(r.symbol)?.qualified).length, key: 'POWER_STOCK' }
+  ];
   return <div className="space-y-5">
     <section className="rounded-2xl border border-emerald-300/20 bg-gradient-to-br from-[#10251f] via-[#0b1724] to-[#101827] p-5 sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2 text-emerald-300"><Activity className="h-5 w-5"/><span className="text-xs font-bold uppercase tracking-[.18em]">MOTI · Swing / Positional</span></div><h1 className="mt-2 text-2xl font-black text-white sm:text-3xl">Smart Money Screener</h1><p className="mt-2 max-w-2xl text-sm text-slate-300">₹५००–₹३,००० भावपट्टा आणि किमान ₹१ कोटी दैनिक टर्नओव्हर असलेल्या शेअर्समध्ये Accumulation, Distribution आणि Volume Breakout चे संभाव्य संकेत शोधा. हा intraday scanner नाही.</p></div><span className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-3 py-1.5 text-xs font-semibold text-emerald-200">CSV based · Beta</span></div>
-      <div className="mt-5 flex flex-wrap gap-2"><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-emerald-300 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-emerald-200"><Upload className="h-4 w-4"/>Import stock CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={e=>{void upload(e.target.files?.[0]);e.currentTarget.value='';}}/></label><button onClick={download} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-white/10"><Download className="h-4 w-4"/>CSV Template</button>{rows.length>0&&<button onClick={clear} className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 px-3 py-2.5 text-sm text-rose-200 hover:bg-rose-300/10"><Trash2 className="h-4 w-4"/>Clear</button>}</div>
-      {message&&<p className="mt-3 text-xs text-emerald-300">{message}</p>}{error&&<p className="mt-3 text-xs text-rose-300">{error}</p>}
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2 text-emerald-300"><Activity className="h-5 w-5"/><span className="text-xs font-bold uppercase tracking-[.18em]">MOTI · Swing / Positional</span></div><h1 className="mt-2 text-2xl font-black text-white sm:text-3xl">Smart Money Screener</h1><p className="mt-2 max-w-2xl text-sm text-slate-300">NSE Bhavcopy मधील EQ शेअर्सचे भाव, Volume आणि Turnover वापरून संभाव्य संचय व breakout संकेत. ₹५००–₹३,००० भावपट्टा आणि किमान ₹१ कोटी दैनिक टर्नओव्हर.</p></div><span className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-3 py-1.5 text-xs font-semibold text-emerald-200">NSE Bhavcopy · Beta</span></div>
+      <div className="mt-5 flex flex-wrap gap-2"><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-emerald-300 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-emerald-200"><Upload className="h-4 w-4"/>Import NSE Bhavcopy CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={e => { void upload(e.target.files?.[0]); e.currentTarget.value = ''; }}/></label><button onClick={download} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-white/10"><Download className="h-4 w-4"/>CSV Template</button>{rows.length > 0 && <button onClick={() => void clear()} className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 px-3 py-2.5 text-sm text-rose-200 hover:bg-rose-300/10"><Trash2 className="h-4 w-4"/>Clear</button>}</div>
+      {message && <p className="mt-3 text-xs text-emerald-300">{message}</p>}{error && <p className="mt-3 text-xs text-rose-300">{error}</p>}
     </section>
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{[{label:'Stocks Loaded',value:String(enriched.length),filter:'ALL'},{label:'Accumulation',value:String(enriched.filter(r=>r.signal==='ACCUMULATION').length),filter:'ACCUMULATION'},{label:'Distribution',value:String(enriched.filter(r=>r.signal==='DISTRIBUTION').length),filter:'DISTRIBUTION'},{label:'Breakout Watch',value:String(enriched.filter(r=>r.signal==='BREAKOUT').length),filter:'BREAKOUT'},{label:'POWER STOCK',value:String(enr    <section className="rounded-2xl border border-amber-300/20 bg-[#0b1421] p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-white">MOTI SUPER 10</h2><p className="mt-1 text-xs text-slate-400">Delivery, Volume, संचय, ५ दिवसांचा ट्रेंड आणि भावाच्या स्थिरतेवर आधारित सर्वोच्च १० स्कोअर. हा ranking संकेत आहे; खरेदीची खात्री नाही.</p></div><span className="rounded-lg bg-amber-300/10 px-3 py-1.5 text-xs font-bold text-amber-200">0–100 Score</span></div>{superTen.length===0?<p className="py-6 text-center text-xs text-slate-500">पात्र शेअर्स दिसण्यासाठी CSV डेटा import करा.</p>:<div className="mt-3 overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="border-b border-white/10 text-slate-400"><tr>{['Rank','Symbol','Date','Series','Close','Prev Close','Volume','Avg Volume','Delivery Qty','Delivery %','High','Low','Turnover','Volume Ratio','5-Day Trend','MOTI Score'].map(h=><th key={h} className="px-2 py-2 font-semibold">{h}</th>)}</tr></thead><tbody>{superTen.map((r,i)=><tr key={r.symbol} className="border-b border-white/[0.06] last:border-0"><td className="px-2 py-2 font-bold text-amber-200">#{i+1}</td><td className="px-2 py-2 font-bold text-white">{r.symbol}</td><td className="px-2 py-2 text-slate-300">{r.date||'—'}</td><td className="px-2 py-2 text-slate-300">{r.series||'—'}</td><td className="px-2 py-2 text-slate-300">₹{r.close.toLocaleString('en-IN')}</td><td className="px-2 py-2 text-slate-300">{r.prevClose===undefined?'—':'₹'+r.prevClose.toLocaleString('en-IN')}</td><td className="px-2 py-2 text-slate-300">{r.volume.toLocaleString('en-IN')}</td><td className="px-2 py-2 text-slate-300">{r.avgVolume===undefined?'—':r.avgVolume.toLocaleString('en-IN')}</td><td className="px-2 py-2 text-slate-300">{r.deliveryQty===undefined?'—':r.deliveryQty.toLocaleString('en-IN')}</td><td className="px-2 py-2 text-slate-300">{pct(r.deliveryPct)}</td><td className="px-2 py-2 text-slate-300">{r.high===undefined?'—':'₹'+r.high}</td><td className="px-2 py-2 text-slate-300">{r.low===undefined?'—':'₹'+r.low}</td><td className="px-2 py-2 text-slate-300">₹{(r.turnover/10000000).toFixed(2)} Cr</td><td className="px-2 py-2 text-slate-300">{r.volumeRatio===undefined?'—':r.volumeRatio.toFixed(2)+'x'}</td><td className="px-2 py-2 text-slate-300">{r.trend.label}</td><td className="px-2 py-2 font-bold text-amber-200">{r.superScore}/100</td></tr>)}</tbody></table></div>}</section>
-iched.filter(r=>powerSignals.get(r.symbol)?.qualified).length),filter:'POWER_STOCK'}].map(x=><button type="button" key={x.label} onClick={()=>{setFilter(x.filter);setQuery('');}} aria-pressed={filter===x.filter} className={`rounded-xl border p-4 text-left transition hover:border-emerald-300/50 hover:bg-emerald-300/[0.07] focus:outline-none focus:ring-2 focus:ring-emerald-300/60 ${filter===x.filter?'border-emerald-300/60 bg-emerald-300/10':'border-white/10 bg-[#0b1421]'}`}><p className="text-xs text-slate-400">{x.label}</p><p className="mt-1 text-2xl font-bold text-white">{x.value}</p><p className="mt-1 text-[10px] text-emerald-300/80">{filter===x.filter?'निवडलेले':'यादी पाहण्यासाठी क्लिक करा'}</p></button>)}</div>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{cards.map(c => <button key={c.key} onClick={() => { setFilter(c.key); setQuery(''); }} className={`rounded-xl border p-4 text-left transition ${filter === c.key ? 'border-emerald-300/60 bg-emerald-300/10' : 'border-white/10 bg-[#0b1421]'}`}><p className="text-xs text-slate-400">{c.label}</p><p className="mt-1 text-2xl font-bold text-white">{c.value}</p><p className="mt-1 text-[10px] text-emerald-300/80">यादी पाहण्यासाठी क्लिक करा</p></button>)}</div>
+    <section className="rounded-2xl border border-amber-300/20 bg-[#0b1421] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-white">MOTI SUPER 10</h2><p className="mt-1 text-xs text-slate-400">Bhavcopy मधील उपलब्ध भाव, Volume, ५ दिवसांची सरासरी आणि Turnover यावर आधारित क्रमवारी. Score सोबत उपलब्ध गुणांची कमाल मर्यादा दाखवली आहे.</p></div><span className="rounded-lg bg-amber-300/10 px-3 py-1.5 text-xs font-bold text-amber-200">MOTI Score</span></div>
+      {superTen.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">पात्र शेअर्स दिसण्यासाठी NSE Bhavcopy CSV import करा.</p> : <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="border-b border-white/10 text-slate-400"><tr>{['Rank','Symbol','Date','Series','Open','High','Low','Close','Prev Close','Volume','5D Avg Volume','Volume Ratio','Turnover','1D Change','5D Change',...(hasDelivery ? ['Delivery %'] : []),'MOTI Score'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}</tr></thead><tbody>{superTen.map((r,i) => <tr key={r.symbol} className="border-b border-white/[0.06] last:border-0"><td className="px-2 py-2 font-bold text-amber-200">#{i+1}</td><td className="px-2 py-2 font-bold text-white">{r.symbol}</td><td className="px-2 py-2 text-slate-300">{r.date || '—'}</td><td className="px-2 py-2 text-slate-300">{r.series}</td><td className="px-2 py-2 text-slate-300">{fmt(r.open)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.high)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.low)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.close)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.prevClose)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.volume)}</td><td className="px-2 py-2 text-slate-300">{fmt(r.avgVolume)}</td><td className="px-2 py-2 text-slate-300">{r.volumeRatio === undefined ? '—' : r.volumeRatio.toFixed(2)+'x'}</td><td className="px-2 py-2 text-slate-300">{fmt(r.turnoverValue)}</td><td className="px-2 py-2 text-slate-300">{pct(r.change)}</td><td className="px-2 py-2 text-slate-300">{pct(r.trend5d)}</td>{hasDelivery && <td className="px-2 py-2 text-slate-300">{pct(r.delivery)}</td>}<td className="px-2 py-2 font-bold text-amber-200">{r.score}/{r.availableScore || 0}</td></tr>)}</tbody></table></div>}
+    </section>
     <section className="rounded-2xl border border-white/10 bg-[#0b1421] p-4 sm:p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold text-white">Smart Money Signals</h2><p className="mt-1 text-xs text-slate-400">फक्त नवीनतम अपलोड केलेला भाव ₹५००–₹३,००० आणि अंदाजे दैनिक टर्नओव्हर किमान ₹१ कोटी असलेले शेअर्स दाखवले जातात. टर्नओव्हर = Close × Volume. फक्त EQ Series स्टॉक्स. POWER STOCK साठी ६ दिवसांचा डेटा, मागील ५ दिवसांच्या सरासरीपेक्षा १.५x Volume, मागील ५ दिवसांचा High breakout, सकारात्मक भावबदल आणि वाढती Delivery आवश्यक.</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search symbol" className="w-full rounded-lg border border-white/10 bg-[#070d18] py-2 pl-9 pr-3 text-sm text-white outline-none focus:border-emerald-300/40 sm:w-40"/></div><select value={filter} onChange={e=>setFilter(e.target.value)} className="rounded-lg border border-white/10 bg-[#070d18] px-3 py-2 text-sm text-white"><option value="ALL">All signals</option><option value="ACCUMULATION">Accumulation</option><option value="DISTRIBUTION">Distribution</option><option value="BREAKOUT">Breakout</option><option value="WATCH">Watch</option><option value="POWER_STOCK">POWER STOCK</option></select></div></div>
-      {visible.length===0?<div className="py-12 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-slate-600"/><p className="mt-3 text-sm font-semibold text-slate-300">अजून CSV data नाही</p><p className="mt-1 text-xs text-slate-500">Template डाउनलोड करा किंवा तुमचा stock data CSV import करा.</p></div>:<div className="mt-4 overflow-x-auto"><table className="w-full min-w-[780px] text-left text-xs"><thead className="border-b border-white/10 text-slate-400"><tr>{['Symbol','Close','दैनिक टर्नओव्हर','Change','Volume vs Avg','Delivery %','Daily Signal','POWER STOCK','५ दिवसांचा ट्रेंड','Score','Delete'].map(h=><th key={h} className="px-3 py-3 font-semibold">{h}</th>)}</tr></thead><tbody>{visible.map((r,i)=><tr key={r.symbol+i} className="border-b border-white/[0.06] last:border-0"><td className="px-3 py-3 font-bold text-white">{r.symbol}<div className="text-[10px] font-normal text-slate-500">{r.date||'Date n/a'}</div></td><td className="px-3 py-3 text-slate-200">₹{r.close.toLocaleString('en-IN')}</td><td className="px-3 py-3 text-slate-300">₹{(r.turnover/10000000).toFixed(2)} Cr</td><td className={`px-3 py-3 font-semibold ${(r.change||0)>=0?'text-emerald-300':'text-rose-300'}`}>{pct(r.change)}</td><td className="px-3 py-3 text-slate-300">{r.volumeRatio===undefined?'—':`${r.volumeRatio.toFixed(2)}x`}</td><td className="px-3 py-3 text-slate-300">{pct(r.deliveryPct)}</td><td className="px-3 py-3"><span className={`rounded-md px-2 py-1 text-[10px] font-bold ${r.signal==='ACCUMULATION'?'bg-emerald-300/10 text-emerald-300':r.signal==='DISTRIBUTION'?'bg-rose-300/10 text-rose-300':r.signal==='BREAKOUT'?'bg-cyan-300/10 text-cyan-300':'bg-slate-700/50 text-slate-300'}`}>{r.signal}</span></td><td className="px-3 py-3">{powerSignals.get(r.symbol)?.qualified?<span className="rounded-md bg-amber-300/15 px-2 py-1 text-[10px] font-bold text-amber-200">POWER STOCK</span>:<span className="text-[10px] text-slate-500">—</span>}<div className="mt-1 text-[10px] text-slate-500">{powerSignals.get(r.symbol)?.detail||"डेटा अपुरा"}</div></td><td className="px-3 py-3 text-slate-300"><div className="font-semibold">{r.trend.label}</div><div className="mt-1 text-[10px] text-slate-500">{r.trend.detail}</div></td><td className="px-3 py-3 font-mono text-slate-300">{r.score}/5</td><td className="px-3 py-3"><button type="button" onClick={()=>void removeStock(r.symbol)} title={r.symbol+' delete करा'} aria-label={r.symbol+' ची सर्व नोंद delete करा'} className="inline-flex items-center gap-1 rounded-lg border border-rose-300/20 px-2 py-1.5 text-[10px] font-semibold text-rose-300 hover:bg-rose-300/10"><Trash2 className="h-3.5 w-3.5"/>Delete</button></td></tr>)}</tbody></table></div>}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold text-white">Smart Money Signals</h2><p className="mt-1 text-xs text-slate-400">फक्त नवीनतम EQ शेअर्स: ₹५००–₹३,००० भाव आणि किमान ₹१ कोटी टर्नओव्हर. Bhavcopy मध्ये Turnover असल्यास तोच वापरतो; नसल्यास Close × Volume अंदाज वापरतो.</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500"/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search symbol" className="w-full rounded-lg border border-white/10 bg-[#070d18] py-2 pl-9 pr-3 text-sm text-white outline-none sm:w-40"/></div><select value={filter} onChange={e => setFilter(e.target.value)} className="rounded-lg border border-white/10 bg-[#070d18] px-3 py-2 text-sm text-white"><option value="ALL">All signals</option><option value="ACCUMULATION">Accumulation</option><option value="DISTRIBUTION">Distribution</option><option value="BREAKOUT">Breakout</option><option value="WATCH">Watch</option><option value="POWER_STOCK">POWER STOCK</option></select></div></div>
+      {visible.length === 0 ? <div className="py-12 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-slate-600"/><p className="mt-3 text-sm font-semibold text-slate-300">{rows.length ? 'फिल्टरनुसार पात्र शेअर्स नाहीत' : 'अजून CSV data नाही'}</p><p className="mt-1 text-xs text-slate-500">{rows.length ? 'भावपट्टा, टर्नओव्हर किंवा निवडलेला signal तपासा.' : 'NSE मधून डाउनलोड केलेली पूर्ण Bhavcopy CSV अपलोड करा.'}</p></div> : <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[900px] text-left text-xs"><thead className="border-b border-white/10 text-slate-400"><tr>{['Symbol','Close','Turnover','1D Change','5D Avg Volume','Volume Ratio','Daily Signal','POWER STOCK','MOTI Score','Delete'].map(h => <th key={h} className="px-3 py-3 font-semibold">{h}</th>)}</tr></thead><tbody>{visible.map(r => <tr key={r.symbol} className="border-b border-white/[.06]"><td className="px-3 py-3 font-bold text-white">{r.symbol}<div className="text-[10px] font-normal text-slate-500">{r.date || 'Date n/a'}</div></td><td className="px-3 py-3 text-slate-200">₹{fmt(r.close)}</td><td className="px-3 py-3 text-slate-300">₹{(r.turnoverValue/10000000).toFixed(2)} Cr</td><td className="px-3 py-3 text-slate-300">{pct(r.change)}</td><td className="px-3 py-3 text-slate-300">{fmt(r.avgVolume)}</td><td className="px-3 py-3 text-slate-300">{r.volumeRatio === undefined ? '—' : r.volumeRatio.toFixed(2)+'x'}</td><td className="px-3 py-3 text-slate-300">{r.signal}</td><td className="px-3 py-3 text-slate-300">{powerSignals.get(r.symbol)?.qualified ? 'POWER STOCK' : '—'}</td><td className="px-3 py-3 text-slate-300">{r.score}/{r.availableScore || 0}</td><td className="px-3 py-3"><button type="button" onClick={() => void removeStock(r.symbol)} className="inline-flex items-center gap-1 rounded-lg border border-rose-300/20 px-2 py-1.5 text-[10px] font-semibold text-rose-300"><Trash2 className="h-3.5 w-3.5"/>Delete</button></td></tr>)}</tbody></table></div>}
     </section>
-    <div className="rounded-xl border border-amber-300/15 bg-amber-300/[0.05] p-4"><div className="flex items-start gap-2"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-300"/><div><p className="text-xs font-bold text-amber-200">महत्त्वाची मर्यादा</p><p className="mt-1 text-xs leading-relaxed text-slate-300">हे heuristic संकेत आहेत; संस्थात्मक खरेदी/विक्रीचा पुरावा नाहीत किंवा buy/sell recommendation नाही. दैनिक टर्नओव्हरचा अंदाज Close × Volume ने काढला आहे; तुमच्या CSV मधील Volume हा traded quantity असणे आवश्यक आहे. Delivery %, volume आणि price action एकत्र तपासा. POWER STOCK हा स्वतंत्र confirmation filter आहे; ६ दिवसांचा इतिहास नसल्यास पात्रता तपासता येत नाही. Bulk/Block deal data या पहिल्या आवृत्तीत आपोआप जोडलेला नाही. CSV डेटा Cloudflare D1 मध्ये साठवला जातो. नवीन अपलोड जुना इतिहास न पुसता जोडतो; समान शेअर आणि तारीख पुन्हा अपलोड केल्यास नोंद अपडेट होते.</p></div></div></div>
-    <p className="flex items-center gap-2 text-[11px] text-slate-500"><Info className="h-3.5 w-3.5"/>आवश्यक CSV columns: Symbol, Series (फक्त EQ rows), Close/LTP, Volume. ५ दिवसांचा ट्रेंड काढण्यासाठी Date आणि Delivery % किंवा Delivery Qty आवश्यक; Avg Volume, Prev Close, High/Low अतिरिक्त मदत करतात.</p>
+    <div className="rounded-xl border border-amber-300/15 bg-amber-300/[.05] p-4"><div className="flex items-start gap-2"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-300"/><div><p className="text-xs font-bold text-amber-200">महत्त्वाची मर्यादा</p><p className="mt-1 text-xs leading-relaxed text-slate-300">Delivery Qty/% सामान्य NSE Bhavcopy मध्ये नसल्यास ते कॉलम दाखवले जात नाहीत आणि score त्यावर अवलंबून नसतो. POWER STOCK हा भाव व Volume breakout संकेत आहे; तो संस्थात्मक खरेदीचा पुरावा नाही. ETF ओळखण्यासाठी फक्त EQ Series पुरेशी नसते; या आवृत्तीत EQ filter आहे, पण प्रत्येक ETF आपोआप ओळखण्याची हमी नाही. हे buy/sell recommendation नाही.</p></div></div></div>
+    <p className="flex items-center gap-2 text-[11px] text-slate-500"><Info className="h-3.5 w-3.5"/>NSE CM Bhavcopy आणि UDiFF CSV मधील Symbol/Series/Price/Volume/Turnover header aliases वाचले जातात. ५ दिवसांची सरासरी काढण्यासाठी सलग दिवसांच्या Bhavcopy फाइल्स अपलोड करा.</p>
   </div>;
 };
