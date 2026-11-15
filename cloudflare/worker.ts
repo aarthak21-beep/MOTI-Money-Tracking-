@@ -317,7 +317,7 @@ export default {
           const date = String(item.date || '');
           const symbol = String(item.symbol || '').trim();
 
-          if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || !symbol) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !symbol) {
             return response({
               error: 'Invalid Swing row: valid date and symbol are required. No rows were saved.'
             }, 400, origin);
