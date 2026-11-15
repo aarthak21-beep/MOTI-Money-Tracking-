@@ -261,8 +261,8 @@ export const NiftyOptionsScannerView: React.FC = () => {
     return rangeRows.filter(r => r.type === type).sort((a, b) => b.changeOi - a.changeOi).slice(0, 5);
   }, [chain, rangeRows, summary]);
   const tradeContracts = useMemo(() => rangeRows.filter(r => r.ltp > 0).slice().sort((a, b) => Math.abs(a.strike - summary.spot) - Math.abs(b.strike - summary.spot) || a.type.localeCompare(b.type)), [rangeRows, summary.spot]);
-  const selectedTradeContract = tradeContracts.find(r => `${r.expiry}|${r.strike}|${r.type}` === tradeContractKey) || null;
   const tradeLotRows = tradeContracts.map(r => { const perLotRisk = r.ltp * (stopPct / 100) * lotSize; return { ...r, perLotRisk, maxLots: perLotRisk > 0 ? Math.floor(1500 / perLotRisk) : 0 }; }).filter(r => r.maxLots > 0 && r.perLotRisk <= 1500);
+  const selectedTradeContract = tradeLotRows.find(r => `${r.expiry}|${r.strike}|${r.type}` === tradeContractKey) || null;
   const proRadar = useMemo(() => {
     if (!chain.length || !summary.spot || summary.bias === 'WAIT') return [];
     const type: 'CE' | 'PE' = summary.bias === 'BULLISH' ? 'CE' : 'PE';
@@ -414,9 +414,9 @@ export const NiftyOptionsScannerView: React.FC = () => {
       <p className="mt-1 text-[11px] text-slate-400">Entry = निवडलेल्या contract चा uploaded LTP. Stop-loss / Target हे editable premium risk levels आहेत; forecast नाहीत. Max lots = ₹1,500 ÷ (प्रति lot stop-loss risk). Brokerage, slippage व taxes यात समाविष्ट नाहीत.</p>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-slate-300">CE / PE contract निवडा
-          <select value={tradeContractKey} onChange={e => setTradeContractKey(e.target.value)} disabled={!tradeContracts.length} className="rounded border border-slate-600 bg-[#080f1b] px-3 py-2 text-white">
-            <option value="">Contract निवडा…</option>
-            {tradeContracts.map(r => <option key={r.expiry + r.strike + r.type} value={`${r.expiry}|${r.strike}|${r.type}`}>{r.expiry} · {fmt(r.strike)} {r.type} · LTP ₹{fmt(r.ltp)}</option>)}
+          <select value={tradeContractKey} onChange={e => setTradeContractKey(e.target.value)} disabled={!tradeLotRows.length} className="rounded border border-slate-600 bg-[#080f1b] px-3 py-2 text-white">
+            <option value="">{tradeLotRows.length ? "Contract निवडा…" : "₹1,500 risk मध्ये बसणारा contract नाही"}</option>
+            {tradeLotRows.map(r => <option key={r.expiry + r.strike + r.type} value={`${r.expiry}|${r.strike}|${r.type}`}>{r.expiry} · {fmt(r.strike)} {r.type} · LTP ₹{fmt(r.ltp)} · Risk ₹{fmt(r.perLotRisk)} · {r.maxLots} lot(s)</option>)}
           </select>
         </label>
         <div className="flex flex-wrap items-end gap-4 text-xs text-slate-300">
