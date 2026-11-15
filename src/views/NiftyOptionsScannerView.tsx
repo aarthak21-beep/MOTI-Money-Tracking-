@@ -118,9 +118,13 @@ const parseCsv = (text: string, filename = ''): OptionRow[] => {
 const csvTemplate = 'Expiry,Strike,OptionType,LTP,OI,ChangeOI,Volume,IV,UnderlyingValue\n2026-12-03,26000,CE,150,120000,15000,45000,14.2,25950\n2026-12-03,26000,PE,175,145000,22000,51000,14.8,25950';
 const fmt = (v: number) => v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const today = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
-const isTodayOrFutureExpiry = (expiry: string) => {
-  const d = new Date(expiry + 'T00:00:00');
-  return !Number.isNaN(d.getTime()) && d.getTime() >= today().getTime();
+const isEligiblePositionalExpiry = (expiry: string) => {
+  const [year, month, day] = expiry.split('-').map(Number);
+  if (!year || !month || !day) return false;
+  const expiryDate = new Date(year, month - 1, day);
+  const daysAway = Math.round((expiryDate.getTime() - today().getTime()) / 86400000);
+  // Positional scanner: exclude contracts expiring in fewer than 7 days.
+  return !Number.isNaN(daysAway) && daysAway >= 7;
 };
 
 export const NiftyOptionsScannerView: React.FC = () => {
@@ -164,9 +168,9 @@ export const NiftyOptionsScannerView: React.FC = () => {
 
   const expiries = useMemo(() => Array.from(new Set(rows.map(r => r.expiry))).sort(), [rows]);
   const groupExpiries = useMemo(() => {
-    // Skip the nearest upcoming expiry (this week's contract); group only later expiries.
-    const afterNearestExpiry = expiries.filter(isTodayOrFutureExpiry).slice(1);
-    return afterNearestExpiry.filter((_, index) => expiryGroup === 'next' ? index === 0 : expiryGroup === 'two-weeks' ? index === 1 : index >= 2);
+    // Exclude near-term contracts (< 7 calendar days); keep the first eligible expiry even when the CSV contains only one expiry.
+    const positionalExpiries = expiries.filter(isEligiblePositionalExpiry);
+    return positionalExpiries.filter((_, index) => expiryGroup === 'next' ? index === 0 : expiryGroup === 'two-weeks' ? index === 1 : index >= 2);
   }, [expiries, expiryGroup]);
   const selectedExpiry = groupExpiries.includes(expiryChoice) ? expiryChoice : groupExpiries[0] || '';
   const chain = useMemo(() => rows.filter(r => r.expiry === selectedExpiry), [rows, selectedExpiry]);
