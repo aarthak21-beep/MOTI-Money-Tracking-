@@ -118,15 +118,9 @@ const parseCsv = (text: string, filename = ''): OptionRow[] => {
 const csvTemplate = 'Expiry,Strike,OptionType,LTP,OI,ChangeOI,Volume,IV,UnderlyingValue\n2026-12-03,26000,CE,150,120000,15000,45000,14.2,25950\n2026-12-03,26000,PE,175,145000,22000,51000,14.8,25950';
 const fmt = (v: number) => v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const today = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
-const startOfWeek = (date: Date) => { const d = new Date(date.getFullYear(), date.getMonth(), date.getDate()); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
-const expiryWeekOffset = (expiry: string) => {
-  const parts = expiry.split('-').map(Number);
-  if (parts.length !== 3 || parts.some(n => !Number.isFinite(n))) return -1;
-  const expiryDate = new Date(parts[0], parts[1] - 1, parts[2]);
-  if (expiryDate.getFullYear() !== parts[0] || expiryDate.getMonth() !== parts[1] - 1 || expiryDate.getDate() !== parts[2]) return -1;
-  const currentWeek = startOfWeek(today()).getTime();
-  const expiryWeek = startOfWeek(expiryDate).getTime();
-  return Math.round((expiryWeek - currentWeek) / 604800000);
+const isTodayOrFutureExpiry = (expiry: string) => {
+  const d = new Date(expiry + 'T00:00:00');
+  return !Number.isNaN(d.getTime()) && d.getTime() >= today().getTime();
 };
 
 export const NiftyOptionsScannerView: React.FC = () => {
@@ -169,11 +163,11 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const expiries = useMemo(() => Array.from(new Set(rows.map(r => r.expiry))).sort(), [rows]);
-  const groupExpiries = useMemo(() => expiries.filter(e => {
-    const weekOffset = expiryWeekOffset(e);
-    // Current week's expiry is deliberately excluded from all positional groups.
-    return expiryGroup === 'next' ? weekOffset === 1 : expiryGroup === 'two-weeks' ? weekOffset === 2 : weekOffset >= 3;
-  }), [expiries, expiryGroup]);
+  const groupExpiries = useMemo(() => {
+    // Skip the nearest upcoming expiry (this week's contract); group only later expiries.
+    const afterNearestExpiry = expiries.filter(isTodayOrFutureExpiry).slice(1);
+    return afterNearestExpiry.filter((_, index) => expiryGroup === 'next' ? index === 0 : expiryGroup === 'two-weeks' ? index === 1 : index >= 2);
+  }, [expiries, expiryGroup]);
   const selectedExpiry = groupExpiries.includes(expiryChoice) ? expiryChoice : groupExpiries[0] || '';
   const chain = useMemo(() => rows.filter(r => r.expiry === selectedExpiry), [rows, selectedExpiry]);
   const summary = useMemo(() => {
@@ -323,7 +317,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h2 className="text-sm font-bold text-white">Expiry Selection · या आठवड्याची expiry वगळलेली</h2><p className="mt-1 text-[11px] text-slate-400">आठवडा सोमवार ते रविवार मोजला जातो. पुढील आठवड्यापासूनच expiry निवडता येईल.</p></div>
+        <div><h2 className="text-sm font-bold text-white">Expiry Selection · या आठवड्याची expiry वगळलेली</h2><p className="mt-1 text-[11px] text-slate-400">सर्वात जवळची upcoming expiry वगळली आहे. त्यानंतरची expiry Next Week, पुढची 2 Weeks Ahead आणि उरलेल्या 3+ Weeks Ahead मध्ये दिसेल.</p></div>
         <div className="flex flex-wrap gap-2">
           {([{ id: 'next', label: 'Next Week' }, { id: 'two-weeks', label: '2 Weeks Ahead' }, { id: 'three-plus', label: '3+ Weeks Ahead' }] as const).map(g => <button key={g.id} onClick={() => { setExpiryGroup(g.id); setExpiryChoice(''); }} className={'rounded-lg border px-3 py-2 text-xs font-bold ' + (expiryGroup === g.id ? 'border-cyan-300 bg-cyan-300 text-slate-950' : 'border-slate-600 text-slate-200 hover:bg-white/5')}>{g.label}</button>)}
           <select value={selectedExpiry} onChange={e => setExpiryChoice(e.target.value)} className="rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm text-white">
