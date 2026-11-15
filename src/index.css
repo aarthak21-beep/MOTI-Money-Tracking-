@@ -43,6 +43,20 @@
   ::selection { background: rgba(52, 211, 153, 0.28); color: #ecfdf5; }
 }
 
+/* Keep the Swing upload panel in a flat hit-testing plane on desktop.
+   The site-wide 3D card hover transform can interfere with native file controls. */
+@media (hover: hover) and (pointer: fine) {
+  .swing-upload-panel,
+  .swing-upload-panel:hover {
+    transform: none !important;
+    transform-style: flat !important;
+    backface-visibility: visible !important;
+  }
+  .swing-upload-panel > :first-child {
+    transform: none !important;
+  }
+}
+
 /* Refined scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #050a12; }
