@@ -247,12 +247,26 @@ export const SwingScannerView: React.FC = () => {
   )).sort(), [records]);
   const latestDate = useMemo(() => bhavcopySessionDates[bhavcopySessionDates.length - 1] || '', [bhavcopySessionDates]);
   const latestRows = useMemo(() => records.filter(r => r.date === latestDate), [records, latestDate]);
+  // Build the symbol index once. Filtering the full 30k-row history separately
+  // for every symbol made scanner entry scale as records × symbols.
+  const recordsBySymbol = useMemo(() => {
+    const grouped = new Map<string, DailyRow[]>();
+    for (const row of records) {
+      const rows = grouped.get(row.symbol);
+      if (rows) rows.push(row);
+      else grouped.set(row.symbol, [row]);
+    }
+    for (const rows of grouped.values()) rows.sort((a, b) => a.date.localeCompare(b.date));
+    return grouped;
+  }, [records]);
   const candidates = useMemo(() => {
     // Bhavcopy is the source of truth for the watchlist and all technical levels.
     // A stock must qualify on an EQ/BE Bhavcopy session (+4%, close ₹300–₹3,000).
-    const symbols = Array.from(new Set(records.filter(r => r.sources.includes('bhavcopy')).map(r => r.symbol)));
+    const symbols = Array.from(recordsBySymbol.entries())
+      .filter(([, rows]) => rows.some(r => r.sources.includes('bhavcopy')))
+      .map(([symbol]) => symbol);
     return symbols.map(symbol => {
-      const symbolRows = records.filter(r => r.symbol === symbol);
+      const symbolRows = recordsBySymbol.get(symbol) || [];
       const bhavcopyRows = symbolRows
         .filter(r => r.sources.includes('bhavcopy') && r.high !== undefined && r.low !== undefined && r.close !== undefined)
         .sort((a, b) => a.date.localeCompare(b.date));
@@ -351,9 +365,9 @@ export const SwingScannerView: React.FC = () => {
       (item.series === 'EQ' || item.series === 'BE') &&
       item.close !== undefined && item.close >= 300 && item.close <= 3000
     ).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
-  }, [records, latestRows, latestDate, bhavcopySessionDates]);
+  }, [recordsBySymbol, latestRows, latestDate, bhavcopySessionDates]);
 
-  const sortedCandidates = [...candidates].sort((a, b) => {
+  const sortedCandidates = useMemo(() => [...candidates].sort((a, b) => {
     const direction = sortConfig.direction === 'asc' ? 1 : -1;
     const rangeScore = (item: typeof candidates[number], mode: 'breakout' | 'darvas') => {
       const score = (days: number) => {
@@ -381,11 +395,18 @@ export const SwingScannerView: React.FC = () => {
     const av = value(a), bv = value(b);
     if (typeof av === 'string' && typeof bv === 'string') return direction * av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
     return direction * ((av as number) - (bv as number));
-  });
-  const toggleSort = (key: string) => setSortConfig(current => ({
+  }), [candidates, sortConfig]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 50;
+  const pageCount = Math.max(1, Math.ceil(sortedCandidates.length / pageSize));
+  const visibleCandidates = sortedCandidates.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const toggleSort = (key: string) => {
+    setCurrentPage(1);
+    setSortConfig(current => ({
     key,
     direction: current.key === key ? (current.direction === 'desc' ? 'asc' : 'desc') : key === 'symbol' ? 'asc' : 'desc'
-  }));
+    }));
+  };
   const sortIndicator = (key: string) => sortConfig.key === key ? (sortConfig.direction === 'asc' ? ' ↑' : ' ↓') : ' ↕';
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -510,7 +531,7 @@ export const SwingScannerView: React.FC = () => {
             <tr>{[{label:'Stock',key:'symbol'},{label:'Setup',key:'setup'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
           </thead>
           <tbody className="divide-y divide-[#1e2e4f]/60">
-            {sortedCandidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
+            {visibleCandidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
               <td className="px-3 py-3 font-black text-white">{item.symbol}</td>
               <td className="px-3 py-3"><span className={item.setup === 'Strong Setup' ? 'rounded-md bg-emerald-300/15 px-2 py-1 font-bold text-emerald-300' : item.setup === 'Avoid / Extended' ? 'rounded-md bg-rose-300/10 px-2 py-1 font-semibold text-rose-300' : 'rounded-md bg-amber-300/10 px-2 py-1 font-semibold text-amber-200'}>{item.setup}</span></td>
               <td className="px-3 py-3 text-white">{money(item.close)}</td>
@@ -525,7 +546,7 @@ export const SwingScannerView: React.FC = () => {
         </table>
         {!candidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">{candidates.length ? 'या filters मध्ये stock सापडला नाही' : 'NSE reports upload कर'}</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि Advances CSV मधील वाढणारे stocks शोधण्यासाठी वापरली जाईल. एकदा +4% वरून लिस्टमध्ये आलेला stock पुढे +4% खाली गेला तरी ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहील.</p></div>}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#1e2e4f] bg-[#0a1220] px-4 py-3"><p className="text-[10px] text-slate-400">Showing <span className="font-bold text-white">{candidates.length}</span> watchlist stocks</p></div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#1e2e4f] bg-[#0a1220] px-4 py-3"><p className="text-[10px] text-slate-400">Showing <span className="font-bold text-white">{candidates.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, candidates.length)}</span> of <span className="font-bold text-white">{candidates.length}</span> watchlist stocks</p><div className="flex items-center gap-2"><button type="button" onClick={() => setCurrentPage(page => Math.max(1, page - 1))} disabled={currentPage <= 1} className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] text-slate-200 disabled:opacity-40">Previous</button><span className="text-[10px] text-slate-400">Page {currentPage} / {pageCount}</span><button type="button" onClick={() => setCurrentPage(page => Math.min(pageCount, page + 1))} disabled={currentPage >= pageCount} className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] text-slate-200 disabled:opacity-40">Next</button></div></div>
     </div>
     <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><div className="flex items-center gap-2 text-xs font-bold text-cyan-200"><Info className="h-4 w-4" /> Data notes</div>
       <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] leading-5 text-slate-400">
