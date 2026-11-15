@@ -241,7 +241,7 @@ export default {
     if (request.method === 'PUT') {
       const contentLength = Number(request.headers.get('content-length') || 0);
       if (contentLength > 5 * 1024 * 1024) return response({ error: 'Payload exceeds 5 MB' }, 413, origin);
-      let payload: { scanner?: string; data?: unknown };
+      let payload: { scanner?: string; data?: unknown; mode?: string };
       try {
         payload = await request.json() as { scanner?: string; data?: unknown };
       } catch {
@@ -253,6 +253,43 @@ export default {
       const json = JSON.stringify(payload.data);
       if (new TextEncoder().encode(json).byteLength > 5 * 1024 * 1024) {
         return response({ error: 'Payload exceeds 5 MB' }, 413, origin);
+      }
+      let storedData = payload.data;
+      if (scanner === 'swing' && payload.mode === 'merge' && Array.isArray(payload.data)) {
+        const existing = await env.MOTI_DB.prepare(
+          'SELECT data_json FROM moti_scanner_data WHERE scanner = ?1'
+        ).bind(scanner).first<{ data_json: string }>();
+        let oldRows: Array<Record<string, unknown>> = [];
+        if (existing?.data_json) {
+          try {
+            const parsed = JSON.parse(existing.data_json);
+            if (Array.isArray(parsed)) oldRows = parsed;
+          } catch {
+            return response({ error: 'Existing scanner history is invalid; refusing to overwrite it.' }, 500, origin);
+          }
+        }
+        const merged = new Map<string, Record<string, unknown>>();
+        for (const row of [...oldRows, ...(payload.data as Array<Record<string, unknown>>)]) {
+          const key = String(row?.date || '') + '|' + String(row?.symbol || '');
+          if (key === '|') continue;
+          const previous = merged.get(key);
+          merged.set(key, previous ? {
+            ...previous,
+            ...Object.fromEntries(Object.entries(row).filter(([field, value]) => value !== undefined && field !== 'sources')),
+            sources: Array.from(new Set([
+              ...(Array.isArray(previous.sources) ? previous.sources : []),
+              ...(Array.isArray(row.sources) ? row.sources : []),
+            ])),
+          } : row);
+        }
+        storedData = Array.from(merged.values()).sort((a, b) =>
+          String(a.date || '').localeCompare(String(b.date || '')) ||
+          String(a.symbol || '').localeCompare(String(b.symbol || ''))
+        ).slice(-30000);
+      }
+      const json = JSON.stringify(storedData);
+      if (new TextEncoder().encode(json).byteLength > 5 * 1024 * 1024) {
+        return response({ error: 'Stored scanner history exceeds 5 MB; no data was written.' }, 413, origin);
       }
       const updatedAt = new Date().toISOString();
       await env.MOTI_DB.prepare(
