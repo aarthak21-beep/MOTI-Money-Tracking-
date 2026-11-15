@@ -31,6 +31,48 @@ const splitCsvLine = (line: string): string[] => {
   }
   out.push(value.trim()); return out;
 };
+const parseDateValue = (value: string): string | undefined => {
+  const v = value.trim();
+  let m = v.match(/^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})$/);
+  if (m) {
+    const [, y, mo, d] = m;
+    const date = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
+    if (date.getUTCFullYear() === Number(y) && date.getUTCMonth() === Number(mo) - 1 && date.getUTCDate() === Number(d)) return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  m = v.match(/^(\\d{1,2})[-/.](\\d{1,2})[-/.](\\d{4})$/);
+  if (m) {
+    const [, d, mo, y] = m;
+    const date = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
+    if (date.getUTCFullYear() === Number(y) && date.getUTCMonth() === Number(mo) - 1 && date.getUTCDate() === Number(d)) return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  return undefined;
+};
+const reportDateFromUpload = (name: string, text: string): string | undefined => {
+  const filename = name.match(/(?:^|\\D)(\\d{4})[-_]?([01]\\d)[-_]?([0-3]\\d)(?:\\D|$)/) ||
+    name.match(/(?:^|\\D)([0-3]\\d)[-_]?([01]\\d)[-_]?(\\d{4})(?:\\D|$)/);
+  if (filename) {
+    const date = filename[1].length === 4 ? parseDateValue(`${filename[1]}-${filename[2]}-${filename[3]}`) : parseDateValue(`${filename[1]}-${filename[2]}-${filename[3]}`);
+    if (date) return date;
+  }
+  const lines = text.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(line => line.trim());
+  for (const line of lines.slice(0, 12)) {
+    const labelled = line.match(/(?:report\\s*date|trade\\s*date|trading\\s*date|as\\s*on|date)\\s*[,;:= -]+\\s*["']?([^,"';]+)/i);
+    if (labelled) {
+      const date = parseDateValue(labelled[1]);
+      if (date) return date;
+    }
+  }
+  for (let i = 0; i < Math.min(lines.length, 12); i++) {
+    const headers = splitCsvLine(lines[i]);
+    const dateCol = headers.findIndex(h => ['date', 'reportdate', 'tradedate', 'tradingdate'].includes(norm(h)));
+    if (dateCol < 0) continue;
+    for (const line of lines.slice(i + 1, i + 6)) {
+      const date = parseDateValue(splitCsvLine(line)[dateCol] || '');
+      if (date) return date;
+    }
+  }
+  return undefined;
+};
 const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9%]/g, '');
 const num = (v?: string) => {
   if (!v) return undefined;
@@ -325,9 +367,13 @@ export const SwingScannerView: React.FC = () => {
           if (fileDate !== reportDate) setReportDate(fileDate);
           foundTypes.push('NSE Cash Market Bhavcopy (' + fileDate + ')');
         } else {
-          const parsed = parseReport(await file.text(), reportDate);
+          const csvText = await file.text();
+          const detectedDate = reportDateFromUpload(file.name, csvText);
+          const effectiveDate = detectedDate || reportDate;
+          const parsed = parseReport(csvText, effectiveDate);
           incoming.push(...parsed.rows);
-          foundTypes.push(parsed.type === 'top20' ? 'Top 20' : parsed.type === 'volume' ? 'Volume Gainers' : 'Advances');
+          if (detectedDate) setReportDate(detectedDate);
+          foundTypes.push((parsed.type === 'top20' ? 'Top 20' : parsed.type === 'volume' ? 'Volume Gainers' : 'Advances') + ' (' + effectiveDate + (detectedDate ? ', auto date' : ', selected date') + ')');
         }
       } catch (e) { issues.push(file.name + ': ' + (e instanceof Error ? e.message : 'CSV वाचता आला नाही')); }
     }
@@ -370,7 +416,7 @@ export const SwingScannerView: React.FC = () => {
           <input type="file" accept=".csv,.zip,text/csv,application/zip" multiple className="hidden" disabled={loading} onChange={e => { handleFiles(e.target.files); e.currentTarget.value = ''; }} />
         </label>
       </div>
-      <p className="mt-2 text-[10px] text-slate-400">एकाच तारखेचे जुने CSV किंवा NSE Cash Market Bhavcopy ZIP upload करू शकतोस. ZIP मधील EQ/BE rows स्वतंत्र bhavcopy source म्हणून साठतात. प्रत्येक upload आधी report date निवड.</p>
+      <p className="mt-2 text-[10px] text-slate-400">CSV/ZIP upload केल्यावर file name किंवा report header मधून तारीख आपोआप शोधली जाईल. तारीख सापडली नाही तर वर निवडलेली Report date वापरली जाईल.</p>
     </div>
 
     <div className="grid gap-3 sm:grid-cols-2">
