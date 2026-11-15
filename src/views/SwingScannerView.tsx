@@ -345,7 +345,6 @@ export const SwingScannerView: React.FC = () => {
       // complete set of preceding market sessions. The latest candle must
       // revisit the breakout level (within 1.5%), close back above it, and
       // finish positive versus its previous close.
-      const bhavcopyByDate = new Map(bhavcopyRows.map(row => [row.date, row]));
       let priorBreakout: { date: string; level: number; days: number } | undefined;
       for (let i = 0; i < bhavcopyRows.length; i++) {
         const row = bhavcopyRows[i];
