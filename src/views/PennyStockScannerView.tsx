@@ -143,8 +143,9 @@ const scoreRow = (row: PennyRow): PennyRow => {
   // Fundamental-first score: quarterly growth, returns, leverage and operating margin.
   add(row.salesGrowth, 15, n => n > 15 ? 15 : n > 5 ? 10 : n >= 0 ? 5 : 0);
   add(row.profitGrowth, 18, n => n > 20 ? 18 : n > 10 ? 13 : n >= 0 ? 6 : 0);
-  add(row.roe, 12, n => n >= 20 ? 12 : n >= 15 ? 9 : n >= 10 ? 6 : 0);
-  add(row.roce, 15, n => n >= 20 ? 15 : n >= 15 ? 11 : n >= 10 ? 6 : 0);
+  // Treat unusually high return ratios as data-quality warnings until verified; do not let them inflate the score.
+  add(row.roe, 12, n => n > 60 ? 0 : n >= 20 ? 12 : n >= 15 ? 9 : n >= 10 ? 6 : 0);
+  add(row.roce, 15, n => n > 60 ? 0 : n >= 20 ? 15 : n >= 15 ? 11 : n >= 10 ? 6 : 0);
   add(row.debtEquity, 15, n => n >= 0 && n <= 0.3 ? 15 : n <= 0.7 && n >= 0 ? 11 : n <= 1.2 && n >= 0 ? 6 : 0);
   add(row.promoterHolding, 10, n => n >= 50 ? 10 : n >= 35 ? 7 : n >= 20 ? 4 : 0);
   add(row.opm, 10, n => n >= 20 ? 10 : n >= 12 ? 7 : n >= 5 ? 4 : 0);
@@ -152,6 +153,11 @@ const scoreRow = (row: PennyRow): PennyRow => {
   else if (row.pb !== undefined && row.pb > 0) add(row.pb, 5, n => n <= 2 ? 5 : n <= 4 ? 3 : n <= 7 ? 1 : 0);
   if (row.salesGrowth !== undefined && row.salesGrowth < 0) risks.push('Sales growth negative');
   if (row.profitGrowth !== undefined && row.profitGrowth < 0) risks.push('Profit growth negative');
+  // Quarterly YoY growth above 100% is capped at the normal maximum score and flagged for base-effect review.
+  if (row.salesGrowth !== undefined && row.salesGrowth > 100) risks.push('Exceptional sales growth (>100%): verify base effect');
+  if (row.profitGrowth !== undefined && row.profitGrowth > 100) risks.push('Exceptional profit growth (>100%): verify base effect');
+  if (row.roe !== undefined && row.roe > 60) risks.push('Unusually high ROE (>60%): verify data/one-off effects');
+  if (row.roce !== undefined && row.roce > 60) risks.push('Unusually high ROCE (>60%): verify data/one-off effects');
   if (row.debtEquity !== undefined && row.debtEquity > 1.5) risks.push('High debt');
   if (row.pledge !== undefined && row.pledge > 20) risks.push('High promoter pledge');
   if (row.operatingCashFlow !== undefined && row.operatingCashFlow < 0) risks.push('Negative operating cash flow');
