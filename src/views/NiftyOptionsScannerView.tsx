@@ -199,6 +199,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const [targetPct, setTargetPct] = useState(35);
   const [lotSize, setLotSize] = useState(65);
   const [expiryChoice, setExpiryChoice] = useState('');
+  const [tradeContractKey, setTradeContractKey] = useState('');
   const [expiryGroup, setExpiryGroup] = useState<'next' | 'two-weeks' | 'three-plus'>('next');
   const [loading, setLoading] = useState(false);
 
@@ -259,6 +260,8 @@ export const NiftyOptionsScannerView: React.FC = () => {
     const type = summary.bias === 'BULLISH' ? 'CE' : 'PE';
     return rangeRows.filter(r => r.type === type).sort((a, b) => b.changeOi - a.changeOi).slice(0, 5);
   }, [chain, rangeRows, summary]);
+  const tradeContracts = useMemo(() => rangeRows.filter(r => r.ltp > 0).slice().sort((a, b) => Math.abs(a.strike - summary.spot) - Math.abs(b.strike - summary.spot) || a.type.localeCompare(b.type)), [rangeRows, summary.spot]);
+  const selectedTradeContract = tradeContracts.find(r => `${r.expiry}|${r.strike}|${r.type}` === tradeContractKey) || null;
   const proRadar = useMemo(() => {
     if (!chain.length || !summary.spot || summary.bias === 'WAIT') return [];
     const type: 'CE' | 'PE' = summary.bias === 'BULLISH' ? 'CE' : 'PE';
@@ -407,14 +410,38 @@ export const NiftyOptionsScannerView: React.FC = () => {
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
       <h2 className="text-sm font-bold text-white">Indicative Trade Planning · Risk cap ₹1,000</h2>
-      <p className="mt-1 text-[11px] text-slate-400">Entry = uploaded option LTP. Stop-loss / Target हे editable premium risk levels आहेत; forecast नाहीत. Max lots = ₹1,000 ÷ (प्रति lot stop-loss risk). Brokerage, slippage व taxes यात समाविष्ट नाहीत.</p>
-      <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-300">
-        <label>Lot size <input type="number" min="1" max="10000" value={lotSize} onChange={e => setLotSize(Math.max(1, Number(e.target.value) || 1))} className="ml-2 w-20 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
-        <label>Stop-loss % <input type="number" min="1" max="80" value={stopPct} onChange={e => setStopPct(Number(e.target.value))} className="ml-2 w-20 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
-        <label>Target % <input type="number" min="1" max="200" value={targetPct} onChange={e => setTargetPct(Number(e.target.value))} className="ml-2 w-20 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
+      <p className="mt-1 text-[11px] text-slate-400">Entry = निवडलेल्या contract चा uploaded LTP. Stop-loss / Target हे editable premium risk levels आहेत; forecast नाहीत. Max lots = ₹1,000 ÷ (प्रति lot stop-loss risk). Brokerage, slippage व taxes यात समाविष्ट नाहीत.</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-xs text-slate-300">CE / PE contract निवडा
+          <select value={tradeContractKey} onChange={e => setTradeContractKey(e.target.value)} disabled={!tradeContracts.length} className="rounded border border-slate-600 bg-[#080f1b] px-3 py-2 text-white">
+            <option value="">Contract निवडा…</option>
+            {tradeContracts.map(r => <option key={r.expiry + r.strike + r.type} value={`${r.expiry}|${r.strike}|${r.type}`}>{r.expiry} · {fmt(r.strike)} {r.type} · LTP ₹{fmt(r.ltp)}</option>)}
+          </select>
+        </label>
+        <div className="flex flex-wrap items-end gap-4 text-xs text-slate-300">
+          <label>Lot size <input type="number" min="1" max="10000" value={lotSize} onChange={e => setLotSize(Math.max(1, Number(e.target.value) || 1))} className="ml-2 w-20 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
+          <label>Stop-loss % <input type="number" min="1" max="80" value={stopPct} onChange={e => setStopPct(Number(e.target.value))} className="ml-2 w-20 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
+          <label>Target % <input type="number" min="1" max="200" value={targetPct} onChange={e => setTargetPct(Number(e.target.value))} className="ml-2 w-20 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white" /></label>
+        </div>
       </div>
-      {candidates.length ? <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Type','Strike','Expiry','Entry','Stop-loss','Target','Risk / lot','Max lots'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{candidates.map(r => { const stop = r.ltp * (1 - stopPct / 100); const riskPerLot = (r.ltp - stop) * lotSize; const lots = riskPerLot > 0 ? Math.floor(1000 / riskPerLot) : 0; return <tr key={r.expiry + r.strike + r.type}><td className="px-3 py-3 font-black text-emerald-300">{r.type}</td><td className="px-3 py-3 text-white">{fmt(r.strike)}</td><td className="px-3 py-3">{r.expiry}</td><td className="px-3 py-3 text-white">₹{fmt(r.ltp)}</td><td className="px-3 py-3 text-rose-300">₹{fmt(stop)}</td><td className="px-3 py-3 text-emerald-300">₹{fmt(r.ltp * (1 + targetPct / 100))}</td><td className="px-3 py-3">₹{fmt(riskPerLot)}</td><td className="px-3 py-3 font-bold">{lots > 0 ? `${lots} lot(s)` : 'SKIP'}</td></tr>; })}</tbody></table></div> : <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs text-amber-100">{rows.length ? 'सध्याच्या OI reading वर स्पष्ट directional bias नाही. Support/Resistance आणि OI table वरून निरीक्षण करा; WAIT.' : 'सुरुवात करण्यासाठी option-chain CSV upload कर.'}</div>}
-      <div className="mt-4 flex items-start gap-2 rounded-lg bg-[#080f1b] p-3 text-[11px] leading-5 text-slate-400"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /> Highest CE/PE OI हे फक्त संभाव्य resistance/support आहेत; हमखास स्तर नाहीत. OI/PCR एकट्याने buy signal देत नाहीत. Chart trend, liquidity, bid-ask spread, volatility आणि event risk तपासा. Option buying मध्ये premium पूर्ण गमावण्याचा धोका असतो.</div>
+      {selectedTradeContract && stopPct > 0 && stopPct <= 80 && targetPct > 0 && targetPct <= 200 && lotSize > 0 ? (() => {
+        const entry = selectedTradeContract.ltp;
+        const stop = entry * (1 - stopPct / 100);
+        const target = entry * (1 + targetPct / 100);
+        const riskPerLot = (entry - stop) * lotSize;
+        const maxLots = riskPerLot > 0 ? Math.floor(1000 / riskPerLot) : 0;
+        return <div className="mt-4">
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs"><span className="rounded bg-[#080f1b] px-3 py-2 text-white">{selectedTradeContract.expiry} · {fmt(selectedTradeContract.strike)} {selectedTradeContract.type}</span><span className="rounded bg-amber-300/10 px-3 py-2 font-bold text-amber-200">OI read: {summary.bias} · BUY signal नाही</span></div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Entry · CSV LTP</p><p className="mt-1 font-bold text-white">₹{fmt(entry)}</p></div>
+            <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Stop-loss · {stopPct}%</p><p className="mt-1 font-bold text-rose-300">₹{fmt(stop)}</p></div>
+            <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Target · {targetPct}%</p><p className="mt-1 font-bold text-emerald-300">₹{fmt(target)}</p></div>
+            <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Risk / lot</p><p className="mt-1 font-bold text-white">₹{fmt(riskPerLot)}</p></div>
+          </div>
+          <div className="mt-3 rounded-lg border border-cyan-300/20 bg-cyan-300/5 p-3"><p className="text-xs text-slate-300">₹1,000 Risk cap · Lot size {lotSize}</p><p className="mt-1 text-lg font-black text-white">{maxLots} max lot(s)</p><p className="text-[10px] text-slate-400">{maxLots > 0 ? `Estimated premium risk: ₹${fmt(maxLots * riskPerLot)} (excluding charges and slippage)` : 'एका lot चा stop-loss risk ₹1,000 पेक्षा जास्त आहे; risk cap मध्ये lot बसत नाही.'}</p></div>
+        </div>;
+      })() : selectedTradeContract ? <p className="mt-3 text-xs text-rose-300">SL 1–80%, Target 1–200% आणि Lot size 1 पेक्षा जास्त ठेवा.</p> : <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs text-amber-100">{tradeContracts.length ? 'वरील यादीतून CE किंवा PE contract निवडा. निवडल्यावर uploaded LTP वरून Entry, SL, Target आणि Max lots मोजले जातील. OI bias WAIT असला तरी calculation दिसेल.' : rows.length ? 'या expiry मध्ये Spot ± ₹600 range मध्ये LTP असलेले contracts उपलब्ध नाहीत. दुसरी expiry निवडा किंवा पूर्ण Option Chain CSV upload करा.' : 'सुरुवात करण्यासाठी option-chain CSV upload कर.'}</div>}
+      <div className="mt-4 flex items-start gap-2 rounded-lg bg-[#080f1b] p-3 text-[11px] leading-5 text-slate-400"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /> हे फक्त indicative गणित आहे; WAIT म्हणजे directional confirmation नाही. Live premium feed, bid-ask spread, IV/Greeks आणि liquidity तपासल्याशिवाय प्रत्यक्ष ट्रेड करू नका. Option buying मध्ये premium पूर्ण गमावण्याचा धोका असतो.</div>
     </div>
     <div className="flex items-center justify-between text-[10px] text-slate-500"><span><CalendarClock className="mr-1 inline h-3 w-3" /> Current data cloud + browser · History last 30 daily snapshots saved in Cloudflare D1</span><button onClick={clearData} className="underline hover:text-white">Clear option data</button></div>
   </div>;
