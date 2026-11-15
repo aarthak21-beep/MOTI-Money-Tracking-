@@ -9,7 +9,7 @@ type DailyRow = {
 };
 type ReportType = 'top20' | 'volume' | 'advance' | 'bhavcopy';
 const bhavcopyDateFromFilename = (name: string): string | undefined => {
-  const match = name.match(/BhavCopy_NSE_CM_0_0_0_(\\d{4})(\\d{2})(\\d{2})_F_/i);
+  const match = name.match(/BhavCopy_NSE_CM_0_0_0_(\d{4})(\d{2})(\d{2})_F_/i);
   if (!match) return undefined;
   const [, year, month, day] = match;
   const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
@@ -32,13 +32,13 @@ const splitCsvLine = (line: string): string[] => {
 };
 const parseDateValue = (value: string): string | undefined => {
   const v = value.trim();
-  let m = v.match(/^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})$/);
+  let m = v.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
   if (m) {
     const [, y, mo, d] = m;
     const date = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
     if (date.getUTCFullYear() === Number(y) && date.getUTCMonth() === Number(mo) - 1 && date.getUTCDate() === Number(d)) return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
-  m = v.match(/^(\\d{1,2})[-/.](\\d{1,2})[-/.](\\d{4})$/);
+  m = v.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
   if (m) {
     const [, d, mo, y] = m;
     const date = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
@@ -47,15 +47,15 @@ const parseDateValue = (value: string): string | undefined => {
   return undefined;
 };
 const reportDateFromUpload = (name: string, text: string): string | undefined => {
-  const filename = name.match(/(?:^|\\D)(\\d{4})[-_]?([01]\\d)[-_]?([0-3]\\d)(?:\\D|$)/) ||
-    name.match(/(?:^|\\D)([0-3]\\d)[-_]?([01]\\d)[-_]?(\\d{4})(?:\\D|$)/);
+  const filename = name.match(/(?:^|\D)(\d{4})[-_]?([01]\d)[-_]?([0-3]\d)(?:\D|$)/) ||
+    name.match(/(?:^|\D)([0-3]\d)[-_]?([01]\d)[-_]?(\d{4})(?:\D|$)/);
   if (filename) {
     const date = filename[1].length === 4 ? parseDateValue(`${filename[1]}-${filename[2]}-${filename[3]}`) : parseDateValue(`${filename[1]}-${filename[2]}-${filename[3]}`);
     if (date) return date;
   }
-  const lines = text.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(line => line.trim());
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
   for (const line of lines.slice(0, 12)) {
-    const labelled = line.match(/(?:report\\s*date|trade\\s*date|trading\\s*date|as\\s*on|date)\\s*[,;:= -]+\\s*["']?([^,"';]+)/i);
+    const labelled = line.match(/(?:report\s*date|trade\s*date|trading\s*date|as\s*on|date)\s*[,;:= -]+\s*["']?([^,"';]+)/i);
     if (labelled) {
       const date = parseDateValue(labelled[1]);
       if (date) return date;
