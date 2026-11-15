@@ -177,7 +177,7 @@ export const SmartMoneyScreenerView: React.FC = () => {
       const best = Math.max(accumulation, distribution, breakout);
       const signal = best < 3 ? 'WATCH' : best === accumulation ? 'ACCUMULATION' : best === distribution ? 'DISTRIBUTION' : 'BREAKOUT';
       const availableScore = (volumeRatio !== undefined ? 30 : 0) + (change !== undefined ? 20 : 0) + (trend5d !== undefined ? 20 : 0) + (delivery !== undefined ? 30 : 0);
-      const score = (volumeRatio !== undefined ? Math.min(30, Math.max(0, (volumeRatio - 0.8) / 1.2 * 30) : 0)
+      const score = (volumeRatio !== undefined ? Math.min(30, Math.max(0, (volumeRatio - 0.8) / 1.2 * 30)) : 0)
         + (change !== undefined ? Math.max(0, 20 - Math.abs(change - 1) * 3) : 0)
         + (trend5d !== undefined ? Math.max(0, Math.min(20, 10 + trend5d * 2)) : 0)
         + (delivery !== undefined ? Math.min(30, Math.max(0, (delivery - 30) / 30 * 30)) : 0);
