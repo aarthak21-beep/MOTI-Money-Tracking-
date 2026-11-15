@@ -60,7 +60,37 @@ const parseCsv = (raw: string): StockRow[] => {
   if(!rows.length) throw new Error('योग्य stock rows सापडल्या नाहीत. Template डाउनलोड करून columns तपासा.');
   return rows;
 };
-const pct = (n?: number) => n===undefined ? '—' : `${n.toFixed(1)}%`;
+const pct = (n?: number) => n===undefined ? '—' : n.toFixed(1) + '%';
+const dateTime = (v: string) => { const n=Date.parse(v); return Number.isFinite(n)?n:undefined; };
+const dateKey = (r: StockRow) => { const n=dateTime(r.date||''); return n===undefined?(r.date||'').trim().toLowerCase():new Date(n).toISOString().slice(0,10); };
+const mergeHistory = (oldRows: StockRow[], newRows: StockRow[]) => {
+  const map=new Map<string,StockRow>();
+  [...oldRows,...newRows].forEach((r,i)=>map.set(r.symbol+'|'+(dateKey(r)||('undated-'+i)),r));
+  return [...map.values()].sort((a,b)=>(dateTime(a.date||'')??Number.MAX_SAFE_INTEGER)-(dateTime(b.date||'')??Number.MAX_SAFE_INTEGER)||a.symbol.localeCompare(b.symbol));
+};
+type TrendInfo = {label:string;detail:string;score:number};
+const buildTrends = (rows: StockRow[]) => {
+  const groups=new Map<string,StockRow[]>();
+  rows.forEach(r=>{if(dateTime(r.date||'')===undefined)return;const a=groups.get(r.symbol)||[];a.push(r);groups.set(r.symbol,a);});
+  const out=new Map<string,TrendInfo>();
+  groups.forEach((all,symbol)=>{
+    const a=[...all].sort((x,y)=>(dateTime(x.date)||0)-(dateTime(y.date)||0)).slice(-5);
+    if(a.length<5){out.set(symbol,{label:'इतिहास अपुरा',detail:a.length+'/5 दिवस उपलब्ध',score:0});return;}
+    const d=(r:StockRow)=>r.deliveryPct??(r.deliveryQty!==undefined&&r.volume>0?r.deliveryQty/r.volume*100:undefined);
+    const ds=a.map(d).filter((x):x is number=>x!==undefined), first=a.slice(0,2).map(d).filter((x):x is number=>x!==undefined), last=a.slice(-2).map(d).filter((x):x is number=>x!==undefined);
+    const avg=ds.length?ds.reduce((x,y)=>x+y,0)/ds.length:undefined;
+    const rise=first.length&&last.length?last.reduce((x,y)=>x+y,0)/last.length-first.reduce((x,y)=>x+y,0)/first.length:undefined;
+    const move=a[0].close>0?(a[4].close-a[0].close)/a[0].close*100:undefined;
+    const hi=Math.max(...a.map(r=>r.high??r.close)),lo=Math.min(...a.map(r=>r.low??r.close)),range=lo>0?(hi-lo)/lo*100:undefined;
+    const v1=a.slice(0,3).reduce((s,r)=>s+r.volume,0)/3,v2=a.slice(-2).reduce((s,r)=>s+r.volume,0)/2,vol=v1>0?v2/v1:undefined;
+    if(avg===undefined||rise===undefined)out.set(symbol,{label:'डिलिव्हरी डेटा अपुरा',detail:'५ दिवसांचा Delivery % किंवा Qty आवश्यक',score:0});
+    else if(avg<35&&(move??0)<=-2&&(vol??0)>=1.1)out.set(symbol,{label:'वितरणाचा इशारा',detail:'सरासरी डिलिव्हरी '+avg.toFixed(1)+'% · व्हॉल्यूम '+(vol?.toFixed(2)??'—')+'x',score:1});
+    else if(avg>=50&&rise>=5&&(range??99)<=8&&(move??99)>=-4&&(move??99)<=8)out.set(symbol,{label:'संभाव्य मजबूत संचय',detail:'डिलिव्हरी '+rise.toFixed(1)+' टक्के-पॉइंट वाढ · भाव बदल '+pct(move),score:3});
+    else if(avg>=45&&rise>=3&&(range??99)<=10&&(move??99)>=-6&&(move??99)<=10)out.set(symbol,{label:'संभाव्य संचय',detail:'डिलिव्हरी '+rise.toFixed(1)+' टक्के-पॉइंट वाढ · भाव बदल '+pct(move),score:2});
+    else out.set(symbol,{label:'ठोस कल नाही',detail:'सरासरी डिलिव्हरी '+avg.toFixed(1)+'% · ५ दिवसांचा भाव बदल '+pct(move),score:0});
+  });
+  return out;
+};
 export const SmartMoneyScreenerView: React.FC = () => {
   const [rows,setRows]=useState<StockRow[]>([]);
   useEffect(() => {
@@ -90,18 +120,21 @@ export const SmartMoneyScreenerView: React.FC = () => {
     return () => { active = false; };
   }, []);
   const [query,setQuery]=useState(''); const [filter,setFilter]=useState('ALL'); const [error,setError]=useState(''); const [message,setMessage]=useState('');
-  const enriched=useMemo(()=>rows.map(r=>{
-    const volumeRatio=r.avgVolume&&r.avgVolume>0?r.volume/r.avgVolume:undefined;
-    const change=r.prevClose&&r.prevClose>0?(r.close-r.prevClose)/r.prevClose*100:undefined;
-    const accumulation=(r.deliveryPct!==undefined&&r.deliveryPct>=50?2:0)+(volumeRatio!==undefined&&volumeRatio>=1.5?2:0)+(change!==undefined&&change>=-1&&change<=2?1:0);
-    const distribution=(r.deliveryPct!==undefined&&r.deliveryPct<35?1:0)+(volumeRatio!==undefined&&volumeRatio>=1.5?2:0)+(change!==undefined&&change<=-2?2:0);
-    const breakout=(r.high!==undefined&&r.close>=r.high*0.995?2:0)+(volumeRatio!==undefined&&volumeRatio>=1.5?2:0)+(change!==undefined&&change>=2?1:0);
-    const best=Math.max(accumulation,distribution,breakout);
-    const signal=best<3?'WATCH':best===accumulation?'ACCUMULATION':best===distribution?'DISTRIBUTION':'BREAKOUT';
-    return {...r,volumeRatio,change,accumulation,distribution,breakout,signal,score:best};
-  }).sort((a,b)=>b.score-a.score),[rows]);
+  const enriched=useMemo(()=>{
+    const trends=buildTrends(rows), latest=new Map<string,StockRow>();
+    rows.forEach(r=>latest.set(r.symbol,r));
+    return [...latest.values()].map(r=>{
+      const volumeRatio=r.avgVolume&&r.avgVolume>0?r.volume/r.avgVolume:undefined;
+      const change=r.prevClose&&r.prevClose>0?(r.close-r.prevClose)/r.prevClose*100:undefined;
+      const accumulation=(r.deliveryPct!==undefined&&r.deliveryPct>=50?2:0)+(volumeRatio!==undefined&&volumeRatio>=1.5?2:0)+(change!==undefined&&change>=-1&&change<=2?1:0);
+      const distribution=(r.deliveryPct!==undefined&&r.deliveryPct<35?1:0)+(volumeRatio!==undefined&&volumeRatio>=1.5?2:0)+(change!==undefined&&change<=-2?2:0);
+      const breakout=(r.high!==undefined&&r.close>=r.high*0.995?2:0)+(volumeRatio!==undefined&&volumeRatio>=1.5?2:0)+(change!==undefined&&change>=2?1:0);
+      const best=Math.max(accumulation,distribution,breakout),signal=best<3?'WATCH':best===accumulation?'ACCUMULATION':best===distribution?'DISTRIBUTION':'BREAKOUT';
+      return {...r,volumeRatio,change,accumulation,distribution,breakout,signal,score:best,trend:trends.get(r.symbol)||{label:'इतिहास अपुरा',detail:'दिनांकासह ५ दिवसांचा डेटा अपलोड करा',score:0}};
+    }).sort((a,b)=>b.trend.score-a.trend.score||b.score-a.score);
+  },[rows]);
   const visible=enriched.filter(r=>r.symbol.includes(query.trim().toUpperCase())&&(filter==='ALL'||r.signal===filter));
-  const upload=async(file?:File)=>{if(!file)return;setError('');setMessage('');try{const parsed=parseCsv(await file.text());await saveScannerData('smart-money', parsed);setRows(parsed);setMessage(`${parsed.length} EQ rows Cloudflare D1 मध्ये Appwrite-authenticated session द्वारे save झाले.`);}catch(e){setError(e instanceof Error?e.message:'CSV import/save करता आला नाही.');}};
+  const upload=async(file?:File)=>{if(!file)return;setError('');setMessage('');try{const parsed=parseCsv(await file.text()),merged=mergeHistory(rows,parsed);await saveScannerData('smart-money',merged);setRows(merged);setMessage(parsed.length+' नवीन/अपडेटेड नोंदी जोडल्या. एकूण '+merged.length+' दिवसनिहाय नोंदी सेव्ह झाल्या.');}catch(e){setError(e instanceof Error?e.message:'CSV import/save करता आला नाही.');}};
   const download=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvTemplate],{type:'text/csv;charset=utf-8'}));a.download='moti-smart-money-template.csv';a.click();URL.revokeObjectURL(a.href);};
   const clear=async()=>{if(window.confirm('Smart Money Screener चा saved CSV data delete करायचा?')){try{await deleteScannerData('smart-money');localStorage.removeItem(KEY);setRows([]);setMessage('Saved data delete केला.');}catch{setError('Saved data delete करता आला नाही.');}}};
   return <div className="space-y-5">
@@ -110,12 +143,12 @@ export const SmartMoneyScreenerView: React.FC = () => {
       <div className="mt-5 flex flex-wrap gap-2"><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-emerald-300 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-emerald-200"><Upload className="h-4 w-4"/>Import stock CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={e=>{void upload(e.target.files?.[0]);e.currentTarget.value='';}}/></label><button onClick={download} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-white/10"><Download className="h-4 w-4"/>CSV Template</button>{rows.length>0&&<button onClick={clear} className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 px-3 py-2.5 text-sm text-rose-200 hover:bg-rose-300/10"><Trash2 className="h-4 w-4"/>Clear</button>}</div>
       {message&&<p className="mt-3 text-xs text-emerald-300">{message}</p>}{error&&<p className="mt-3 text-xs text-rose-300">{error}</p>}
     </section>
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[{label:'Stocks Loaded',value:String(rows.length)},{label:'Accumulation',value:String(enriched.filter(r=>r.signal==='ACCUMULATION').length)},{label:'Distribution',value:String(enriched.filter(r=>r.signal==='DISTRIBUTION').length)},{label:'Breakout Watch',value:String(enriched.filter(r=>r.signal==='BREAKOUT').length)}].map(x=><div key={x.label} className="rounded-xl border border-white/10 bg-[#0b1421] p-4"><p className="text-xs text-slate-400">{x.label}</p><p className="mt-1 text-2xl font-bold text-white">{x.value}</p></div>)}</div>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[{label:'Stocks Loaded',value:String(enriched.length)},{label:'Accumulation',value:String(enriched.filter(r=>r.signal==='ACCUMULATION').length)},{label:'Distribution',value:String(enriched.filter(r=>r.signal==='DISTRIBUTION').length)},{label:'Breakout Watch',value:String(enriched.filter(r=>r.signal==='BREAKOUT').length)}].map(x=><div key={x.label} className="rounded-xl border border-white/10 bg-[#0b1421] p-4"><p className="text-xs text-slate-400">{x.label}</p><p className="mt-1 text-2xl font-bold text-white">{x.value}</p></div>)}</div>
     <section className="rounded-2xl border border-white/10 bg-[#0b1421] p-4 sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold text-white">Smart Money Signals</h2><p className="mt-1 text-xs text-slate-400">डेटा completeness नुसार संकेत बदलू शकतात.</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search symbol" className="w-full rounded-lg border border-white/10 bg-[#070d18] py-2 pl-9 pr-3 text-sm text-white outline-none focus:border-emerald-300/40 sm:w-40"/></div><select value={filter} onChange={e=>setFilter(e.target.value)} className="rounded-lg border border-white/10 bg-[#070d18] px-3 py-2 text-sm text-white"><option value="ALL">All signals</option><option value="ACCUMULATION">Accumulation</option><option value="DISTRIBUTION">Distribution</option><option value="BREAKOUT">Breakout</option><option value="WATCH">Watch</option></select></div></div>
-      {visible.length===0?<div className="py-12 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-slate-600"/><p className="mt-3 text-sm font-semibold text-slate-300">अजून CSV data नाही</p><p className="mt-1 text-xs text-slate-500">Template डाउनलोड करा किंवा तुमचा stock data CSV import करा.</p></div>:<div className="mt-4 overflow-x-auto"><table className="w-full min-w-[780px] text-left text-xs"><thead className="border-b border-white/10 text-slate-400"><tr>{['Symbol','Close','Change','Volume vs Avg','Delivery %','Signal','Score'].map(h=><th key={h} className="px-3 py-3 font-semibold">{h}</th>)}</tr></thead><tbody>{visible.map((r,i)=><tr key={r.symbol+i} className="border-b border-white/[0.06] last:border-0"><td className="px-3 py-3 font-bold text-white">{r.symbol}<div className="text-[10px] font-normal text-slate-500">{r.date||'Date n/a'}</div></td><td className="px-3 py-3 text-slate-200">₹{r.close.toLocaleString('en-IN')}</td><td className={`px-3 py-3 font-semibold ${(r.change||0)>=0?'text-emerald-300':'text-rose-300'}`}>{pct(r.change)}</td><td className="px-3 py-3 text-slate-300">{r.volumeRatio===undefined?'—':`${r.volumeRatio.toFixed(2)}x`}</td><td className="px-3 py-3 text-slate-300">{pct(r.deliveryPct)}</td><td className="px-3 py-3"><span className={`rounded-md px-2 py-1 text-[10px] font-bold ${r.signal==='ACCUMULATION'?'bg-emerald-300/10 text-emerald-300':r.signal==='DISTRIBUTION'?'bg-rose-300/10 text-rose-300':r.signal==='BREAKOUT'?'bg-cyan-300/10 text-cyan-300':'bg-slate-700/50 text-slate-300'}`}>{r.signal}</span></td><td className="px-3 py-3 font-mono text-slate-300">{r.score}/5</td></tr>)}</tbody></table></div>}
+      {visible.length===0?<div className="py-12 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-slate-600"/><p className="mt-3 text-sm font-semibold text-slate-300">अजून CSV data नाही</p><p className="mt-1 text-xs text-slate-500">Template डाउनलोड करा किंवा तुमचा stock data CSV import करा.</p></div>:<div className="mt-4 overflow-x-auto"><table className="w-full min-w-[780px] text-left text-xs"><thead className="border-b border-white/10 text-slate-400"><tr>{['Symbol','Close','Change','Volume vs Avg','Delivery %','Daily Signal','५ दिवसांचा ट्रेंड','Score'].map(h=><th key={h} className="px-3 py-3 font-semibold">{h}</th>)}</tr></thead><tbody>{visible.map((r,i)=><tr key={r.symbol+i} className="border-b border-white/[0.06] last:border-0"><td className="px-3 py-3 font-bold text-white">{r.symbol}<div className="text-[10px] font-normal text-slate-500">{r.date||'Date n/a'}</div></td><td className="px-3 py-3 text-slate-200">₹{r.close.toLocaleString('en-IN')}</td><td className={`px-3 py-3 font-semibold ${(r.change||0)>=0?'text-emerald-300':'text-rose-300'}`}>{pct(r.change)}</td><td className="px-3 py-3 text-slate-300">{r.volumeRatio===undefined?'—':`${r.volumeRatio.toFixed(2)}x`}</td><td className="px-3 py-3 text-slate-300">{pct(r.deliveryPct)}</td><td className="px-3 py-3"><span className={`rounded-md px-2 py-1 text-[10px] font-bold ${r.signal==='ACCUMULATION'?'bg-emerald-300/10 text-emerald-300':r.signal==='DISTRIBUTION'?'bg-rose-300/10 text-rose-300':r.signal==='BREAKOUT'?'bg-cyan-300/10 text-cyan-300':'bg-slate-700/50 text-slate-300'}`}>{r.signal}</span></td><td className="px-3 py-3 text-slate-300"><div className="font-semibold">{r.trend.label}</div><div className="mt-1 text-[10px] text-slate-500">{r.trend.detail}</div></td><td className="px-3 py-3 font-mono text-slate-300">{r.score}/5</td></tr>)}</tbody></table></div>}
     </section>
-    <div className="rounded-xl border border-amber-300/15 bg-amber-300/[0.05] p-4"><div className="flex items-start gap-2"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-300"/><div><p className="text-xs font-bold text-amber-200">महत्त्वाची मर्यादा</p><p className="mt-1 text-xs leading-relaxed text-slate-300">हे heuristic संकेत आहेत; संस्थात्मक खरेदी/विक्रीचा पुरावा नाहीत किंवा buy/sell recommendation नाही. Delivery %, volume आणि price action एकत्र तपासा. Bulk/Block deal data या पहिल्या आवृत्तीत आपोआप जोडलेला नाही. CSV data फक्त या browser मध्ये साठवला जातो.</p></div></div></div>
-    <p className="flex items-center gap-2 text-[11px] text-slate-500"><Info className="h-3.5 w-3.5"/>Required CSV columns: Symbol, Close/LTP, Volume. Delivery %, Avg Volume, Prev Close, High, Date optional पण scoring सुधारण्यासाठी उपयुक्त.</p>
+    <div className="rounded-xl border border-amber-300/15 bg-amber-300/[0.05] p-4"><div className="flex items-start gap-2"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-300"/><div><p className="text-xs font-bold text-amber-200">महत्त्वाची मर्यादा</p><p className="mt-1 text-xs leading-relaxed text-slate-300">हे heuristic संकेत आहेत; संस्थात्मक खरेदी/विक्रीचा पुरावा नाहीत किंवा buy/sell recommendation नाही. Delivery %, volume आणि price action एकत्र तपासा. Bulk/Block deal data या पहिल्या आवृत्तीत आपोआप जोडलेला नाही. CSV डेटा Cloudflare D1 मध्ये साठवला जातो. नवीन अपलोड जुना इतिहास न पुसता जोडतो; समान शेअर आणि तारीख पुन्हा अपलोड केल्यास नोंद अपडेट होते.</p></div></div></div>
+    <p className="flex items-center gap-2 text-[11px] text-slate-500"><Info className="h-3.5 w-3.5"/>आवश्यक CSV columns: Symbol, Close/LTP, Volume. ५ दिवसांचा ट्रेंड काढण्यासाठी Date आणि Delivery % किंवा Delivery Qty आवश्यक; Avg Volume, Prev Close, High/Low अतिरिक्त मदत करतात.</p>
   </div>;
 };
