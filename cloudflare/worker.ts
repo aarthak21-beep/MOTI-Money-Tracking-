@@ -187,7 +187,7 @@ export default {
           const byExpiry = new Map();
           for (const row of oldRows) {
             const expiry = String(row?.expiry || '').trim();
-            if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(expiry)) continue;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(expiry)) continue;
             const list = byExpiry.get(expiry) || [];
             list.push(row);
             byExpiry.set(expiry, list);
@@ -232,7 +232,7 @@ export default {
         try { payload = await request.json(); }
         catch { return response({ error: 'Invalid JSON body' }, 400, origin); }
         const snapshot = payload.snapshot;
-        if (!snapshot || typeof snapshot.date !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshot.date)
+        if (!snapshot || typeof snapshot.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(snapshot.date)
           || typeof snapshot.spot !== 'number' || !Number.isFinite(snapshot.spot)
           || !Array.isArray(snapshot.rows) || snapshot.rows.length === 0) {
           return response({ error: 'Invalid NIFTY option snapshot' }, 400, origin);
@@ -240,7 +240,7 @@ export default {
         const byExpiry = new Map();
         for (const row of snapshot.rows) {
           const expiry = String(row?.expiry || '').trim();
-          if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(expiry)) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
             return response({ error: 'Every option row must include a valid expiry date.' }, 400, origin);
           }
           const list = byExpiry.get(expiry) || [];
