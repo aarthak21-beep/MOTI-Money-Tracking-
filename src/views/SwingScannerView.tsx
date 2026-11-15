@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, Upload, RefreshCw, FileSpreadsheet, Info, Download } from 'lucide-react';
 import { loadScannerData, saveScannerData } from '../services/cloudScannerStorage';
 
@@ -210,6 +210,7 @@ export const SwingScannerView: React.FC = () => {
   const [reportDateInput, setReportDateInput] = useState(todayLocal());
   useEffect(() => { setReportDateInput(reportDate); }, [reportDate]);
   const [loading, setLoading] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [stockSearch, setStockSearch] = useState('');
@@ -460,10 +461,10 @@ export const SwingScannerView: React.FC = () => {
             }} className="w-[145px] rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm font-semibold text-white placeholder:text-slate-500 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-300" />
           </div>
         </div>
-        <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-300 px-4 py-3 text-xs font-black text-slate-950 hover:bg-emerald-200">
+        <button type="button" disabled={loading} onClick={() => uploadInputRef.current?.click()} className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-300 px-4 py-3 text-xs font-black text-slate-950 hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60">
           <Upload className="h-4 w-4" /> {loading ? 'Reading reports...' : 'Upload NSE CSV / Bhavcopy ZIP'}
-          <input type="file" accept=".csv,.zip,text/csv,application/zip" multiple className="hidden" disabled={loading} onChange={e => { handleFiles(e.target.files); e.currentTarget.value = ''; }} />
-        </label>
+        </button>
+        <input ref={uploadInputRef} type="file" accept=".csv,.zip,text/csv,application/zip" multiple className="hidden" disabled={loading} onChange={e => { handleFiles(e.target.files); e.currentTarget.value = ''; }} />
       </div>
       <p className="mt-2 text-[10px] text-slate-400">CSV/ZIP upload केल्यावर file name किंवा report header मधून तारीख आपोआप शोधली जाईल. तारीख सापडली नाही तर वर निवडलेली Report date वापरली जाईल.</p>
     </div>
