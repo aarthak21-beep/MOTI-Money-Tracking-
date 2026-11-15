@@ -445,7 +445,7 @@ export const SwingScannerView: React.FC = () => {
   };
 
   return <div className="space-y-5">
-    <div className="rounded-2xl border border-emerald-300/20 bg-gradient-to-br from-[#102b2a] via-[#0d1928] to-[#0d1527] p-5 sm:p-7">
+    <div className="swing-upload-panel rounded-2xl border border-emerald-300/20 bg-gradient-to-br from-[#102b2a] via-[#0d1928] to-[#0d1527] p-5 sm:p-7">
       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300"><Activity className="h-4 w-4" /> MOTI Trading Intelligence</div>
       <h1 className="mt-3 text-2xl font-black text-white sm:text-3xl">Weekly Movement Screener</h1>
       <p className="mt-2 max-w-2xl text-sm text-slate-300">NSE Cash Market Bhavcopy ZIP किंवा जुने Top 20, Volume Gainers आणि Advances CSV वापरून movement व 5/10/20 breakouts तपासा. Bhavcopy upload स्वतंत्र टेस्ट आहे; जुने reports कायम आहेत.</p>
