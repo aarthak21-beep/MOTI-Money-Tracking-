@@ -329,8 +329,21 @@ export const NiftyOptionsScannerView: React.FC = () => {
     if(previous)expiryRows.forEach(r=>{const old=oldMap.get(`${r.strike}-${r.type}`);if(!old)return;const up=r.ltp>old.ltp,down=r.ltp<old.ltp,oiUp=r.oi>old.oi,oiDown=r.oi<old.oi;if(up&&oiUp)buildup.long++;else if(down&&oiUp)buildup.short++;else if(up&&oiDown)buildup.covering++;else if(down&&oiDown)buildup.unwinding++;});
     const oldCe=previous?.rows.filter(r=>r.expiry===expiry&&r.type==='CE').reduce((v,r)=>v+r.oi,0)||0,oldPe=previous?.rows.filter(r=>r.expiry===expiry&&r.type==='PE').reduce((v,r)=>v+r.oi,0)||0;
     const previousPcr=oldCe?oldPe/oldCe:0,pcrTrend=previousPcr?(pcr>previousPcr?'UP':pcr<previousPcr?'DOWN':'FLAT'):'NO PRIOR DATA';
-    return {expiry,spot,ceChange,peChange,pcr,previousPcr,pcrTrend,resistance,support,buildup,hasPrevious:Boolean(previous),rowCount:expiryRows.length};
+    const bias=pcr>=1.1&&peChange>ceChange?'BULLISH':pcr<=0.9&&ceChange>peChange?'BEARISH':'NEUTRAL';
+    return {expiry,spot,ceOi,peOi,ceChange,peChange,pcr,previousPcr,pcrTrend,resistance,support,buildup,hasPrevious:Boolean(previous),rowCount:expiryRows.length,bias};
   }).filter(x=>x.rowCount>0),[expiries,rows,history]);
+  const overallMarketDirection = useMemo(() => {
+    const ceOi = allExpiryAnalytics.reduce((v, x) => v + x.ceOi, 0);
+    const peOi = allExpiryAnalytics.reduce((v, x) => v + x.peOi, 0);
+    const ceChange = allExpiryAnalytics.reduce((v, x) => v + x.ceChange, 0);
+    const peChange = allExpiryAnalytics.reduce((v, x) => v + x.peChange, 0);
+    const pcr = ceOi > 0 ? peOi / ceOi : 0;
+    const bias = pcr >= 1.1 && peChange > ceChange ? 'BULLISH' : pcr <= 0.9 && ceChange > peChange ? 'BEARISH' : 'NEUTRAL';
+    return { ceOi, peOi, ceChange, peChange, pcr, bias,
+      bullish: allExpiryAnalytics.filter(x => x.bias === 'BULLISH').length,
+      bearish: allExpiryAnalytics.filter(x => x.bias === 'BEARISH').length,
+      neutral: allExpiryAnalytics.filter(x => x.bias === 'NEUTRAL').length };
+  }, [allExpiryAnalytics]);
   const handleUpload = async (file?: File) => {
     if (!file) return;
     setLoading(true); setError(''); setMessage('');
@@ -422,6 +435,20 @@ export const NiftyOptionsScannerView: React.FC = () => {
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Put / Call OI Ratio</p><p className="mt-1 text-xl font-black text-white">{summary.pcr ? summary.pcr.toFixed(2) : '—'}</p></div>
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Directional read (OI only)</p><p className={'mt-1 text-xl font-black ' + (summary.bias === 'BULLISH' ? 'text-emerald-300' : summary.bias === 'BEARISH' ? 'text-rose-300' : 'text-amber-300')}>{summary.bias}</p></div>
     </div>
+
+    <section className="rounded-2xl border border-violet-300/20 bg-gradient-to-br from-[#21183b] via-[#101a2d] to-[#0d1527] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-300">MOTI PRO · Market Pulse</p><h2 className="mt-1 text-lg font-black text-white">Overall Market Direction · All Expiries</h2></div><span className={'rounded-full border px-3 py-1 text-xs font-black '+(overallMarketDirection.bias==='BULLISH'?'border-emerald-300/30 text-emerald-200':overallMarketDirection.bias==='BEARISH'?'border-rose-300/30 text-rose-200':'border-amber-300/30 text-amber-200')}>{overallMarketDirection.bias}</span></div>
+      <p className="mt-2 text-[11px] text-slate-400">सर्व eligible expiries मधील एकत्रित OI आणि Change in OI वर आधारित heuristic direction; हा BUY/SELL signal नाही.</p>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Combined PCR</p><p className="mt-1 text-lg font-black text-white">{overallMarketDirection.pcr.toFixed(2)}</p></div>
+        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Bullish Expiries</p><p className="mt-1 text-lg font-black text-emerald-200">{overallMarketDirection.bullish}</p></div>
+        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Bearish Expiries</p><p className="mt-1 text-lg font-black text-rose-200">{overallMarketDirection.bearish}</p></div>
+        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Neutral Expiries</p><p className="mt-1 text-lg font-black text-amber-200">{overallMarketDirection.neutral}</p></div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Combined CE Change OI</p><p className="mt-1 font-bold text-white">{fmt(overallMarketDirection.ceChange)} contracts</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Combined PE Change OI</p><p className="mt-1 font-bold text-white">{fmt(overallMarketDirection.peChange)} contracts</p></div></div>
+      <div className="mt-3 space-y-2">{allExpiryAnalytics.map(item=><div key={item.expiry} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#080f1b] px-3 py-2"><span className="text-xs font-bold text-white">{item.expiry}</span><span className="text-[10px] text-slate-400">PCR {item.pcr.toFixed(2)} · CE Δ {fmt(item.ceChange)} · PE Δ {fmt(item.peChange)}</span><span className={'text-[10px] font-black '+(item.bias==='BULLISH'?'text-emerald-200':item.bias==='BEARISH'?'text-rose-200':'text-amber-200')}>{item.bias}</span></div>)}</div>
+      <p className="mt-3 text-[10px] text-amber-200/80">Directional read हा OI-आधारित अंदाज आहे. Option buying करण्यापूर्वी price action, liquidity, spread, IV आणि risk तपासा.</p>
+    </section>
 
     <section className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-white">All Expiry Market Analysis</h2><p className="mt-1 text-[11px] text-slate-400">प्रत्येक eligible expiry चे Support / Resistance, Price + OI buildup आणि PCR trend. OI Contracts आणि Lots दोन्हीमध्ये.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-[10px] text-cyan-200">Lot size: {lotSize}</span></div>
