@@ -118,14 +118,20 @@ const parseCsv = (text: string, filename = ''): OptionRow[] => {
 const csvTemplate = 'Expiry,Strike,OptionType,LTP,OI,ChangeOI,Volume,IV,UnderlyingValue\n2026-12-03,26000,CE,150,120000,15000,45000,14.2,25950\n2026-12-03,26000,PE,175,145000,22000,51000,14.8,25950';
 const fmt = (v: number) => v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const today = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
-const isEligiblePositionalExpiry = (expiry: string) => {
+const expiryDaysAway = (expiry: string) => {
   const [year, month, day] = expiry.split('-').map(Number);
-  if (!year || !month || !day) return false;
+  if (!year || !month || !day) return Number.NaN;
   const expiryDate = new Date(year, month - 1, day);
-  const daysAway = Math.round((expiryDate.getTime() - today().getTime()) / 86400000);
-  // Positional scanner: exclude contracts expiring in fewer than 7 days.
-  return !Number.isNaN(daysAway) && daysAway >= 7;
+  return Math.round((expiryDate.getTime() - today().getTime()) / 86400000);
 };
+const getExpiryBucket = (expiry: string): 'next' | 'two-weeks' | 'three-plus' | '' => {
+  const daysAway = expiryDaysAway(expiry);
+  if (!Number.isFinite(daysAway) || daysAway < 7) return '';
+  if (daysAway <= 13) return 'next';
+  if (daysAway <= 20) return 'two-weeks';
+  return 'three-plus';
+};
+const isEligiblePositionalExpiry = (expiry: string) => Boolean(getExpiryBucket(expiry));
 
 export const NiftyOptionsScannerView: React.FC = () => {
   const [rows, setRows] = useState<OptionRow[]>(() => {
@@ -168,9 +174,8 @@ export const NiftyOptionsScannerView: React.FC = () => {
 
   const expiries = useMemo(() => Array.from(new Set(rows.map(r => r.expiry))).sort(), [rows]);
   const groupExpiries = useMemo(() => {
-    // Exclude near-term contracts (< 7 calendar days); keep the first eligible expiry even when the CSV contains only one expiry.
-    const positionalExpiries = expiries.filter(isEligiblePositionalExpiry);
-    return positionalExpiries.filter((_, index) => expiryGroup === 'next' ? index === 0 : expiryGroup === 'two-weeks' ? index === 1 : index >= 2);
+    // Classify every expiry by its actual calendar distance, not by its position in the uploaded file.
+    return expiries.filter(expiry => getExpiryBucket(expiry) === expiryGroup);
   }, [expiries, expiryGroup]);
   const selectedExpiry = groupExpiries.includes(expiryChoice) ? expiryChoice : groupExpiries[0] || '';
   const chain = useMemo(() => rows.filter(r => r.expiry === selectedExpiry), [rows, selectedExpiry]);
@@ -253,8 +258,21 @@ export const NiftyOptionsScannerView: React.FC = () => {
       const suppliedSpot = Number(manualSpot.replace(/[,₹\s]/g, ''));
       if (manualSpot.trim() && (!Number.isFinite(suppliedSpot) || suppliedSpot <= 0)) throw new Error('NIFTY Spot योग्य आकड्यात भरा.');
       const parsed = suppliedSpot > 0 ? parsedRows.map(r => ({ ...r, spot: suppliedSpot })) : parsedRows;
-      await saveScannerData('nifty-options', parsed);
-      setRows(parsed);
+
+      // Keep other expiries already uploaded today; replace only expiries present in this CSV.
+      const cloudRows = await loadScannerData<OptionRow[]>('nifty-options');
+      const existingRows = cloudRows || rows;
+      const uploadedExpiries = new Set(parsed.map(r => r.expiry));
+      const mergedByContract = new Map<string, OptionRow>();
+      for (const row of existingRows) {
+        if (!uploadedExpiries.has(row.expiry)) mergedByContract.set(`${row.expiry}|${row.strike}|${row.type}`, row);
+      }
+      for (const row of parsed) mergedByContract.set(`${row.expiry}|${row.strike}|${row.type}`, row);
+      const mergedRows = Array.from(mergedByContract.values()).sort((a, b) =>
+        a.expiry.localeCompare(b.expiry) || a.strike - b.strike || a.type.localeCompare(b.type)
+      );
+      await saveScannerData('nifty-options', mergedRows);
+      setRows(mergedRows);
       const now = new Date();
       const snapshotDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const snapshot: DailySnapshot = { date: snapshotDate, spot: parsed[0]?.spot || 0, rows: parsed.map(r => ({ expiry: r.expiry, strike: r.strike, type: r.type, ltp: r.ltp, oi: r.oi, changeOi: r.changeOi, volume: r.volume })) };
@@ -264,7 +282,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
       const nextHistory = [...cloudHistory].sort((a, b) => a.date.localeCompare(b.date) || String(a.expiry || '').localeCompare(String(b.expiry || '')));
       setHistory(nextHistory);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedRows));
       setExpiryChoice('');
       setMessage(`${parsed.length} option rows import झाले. ${suppliedSpot > 0 ? `तुम्ही दिलेला NIFTY Spot ₹${fmt(suppliedSpot)} वापरला.` : 'NIFTY Spot CE-PE premium parity वरून अंदाजे काढला आहे.'} Daily snapshot save झाला.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'CSV वाचता आला नाही.'); }
