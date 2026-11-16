@@ -19,7 +19,7 @@ import { SettingsView } from './views/SettingsView';
 import { SwingScannerView } from './views/SwingScannerView';
 import { NiftyOptionsScannerView } from './views/NiftyOptionsScannerView';
 import { SmartMoneyScreenerView } from './views/SmartMoneyScreenerView';
-import { PennyStockScannerView } from './views/PennyStockScannerView';
+
 
 import { StorageService } from './services/storageService';
 import { CloudAppSyncService } from './services/cloudAppSyncService';
@@ -396,7 +396,7 @@ function AuthenticatedApp() {
           {currentTab === 'swingScanner' && <SwingScannerView />}
           {currentTab === 'niftyOptions' && <NiftyOptionsScannerView />}
           {currentTab === 'smartMoney' && <SmartMoneyScreenerView />}
-          {currentTab === 'pennyStock' && <PennyStockScannerView />}
+
 
           {currentTab === 'stockTrading' && (
             <StockTradingView
