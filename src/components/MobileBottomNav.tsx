@@ -13,7 +13,6 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ currentTab, on
     { id: 'swingScanner', label: 'Scanner', icon: Activity },
     { id: 'niftyOptions', label: 'NIFTY', icon: CandlestickChart },
     { id: 'smartMoney', label: 'Smart Money', icon: Search },
-    { id: 'longTermWealth', label: 'Wealth', icon: ShieldCheck },
     { id: 'weeklyIncome', label: 'Weekly', icon: CalendarDays },
   ];
   return <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-[60px] items-center justify-start overflow-x-auto border-t border-white/[0.09] bg-[#050a12]/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
