@@ -316,10 +316,19 @@ export const SmartMoneyScreenerView: React.FC = () => {
       setMessage(parsed.length + ' EQ नोंदी वाचल्या. एकूण ' + merged.length + ' दिवसनिहाय नोंदी सेव्ह झाल्या. CSV तारीख: ' + csvDateSummary + '. सेव्हमधील नवीनतम तारीख: ' + latestSavedDate + '.');
     } catch (e) { setError(e instanceof Error ? e.message : 'CSV import/save करता आला नाही.'); }
   };
-  const download = () => {
-    const template = 'date,symbol,series,open,high,low,close,prevClose,volume,turnover\n2026-11-13,RELIANCE,EQ,1440,1462,1432,1450,1438,2500000,3625000000\n';
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([template], { type: 'text/csv;charset=utf-8' }));
-    a.download = 'moti-smart-money-template.csv'; a.click(); URL.revokeObjectURL(a.href);
+  const exportFyersCsv = () => {
+    if (!visible.length) return;
+    // FYERS Web watchlist import format, matching Swing Scanner export.
+    const symbols = visible.map(item => 'NSE:' + item.symbol + '-' + (item.series === 'BE' ? 'BE' : 'EQ'));
+    const csv = '\\uFEFF' + symbols.join(',');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'fyers-smart-money-' + (visible.reduce((latest, item) => item.date > latest ? item.date : latest, '') || new Date().toISOString().slice(0, 10)) + '.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
   const removeStock = async (symbol: string) => {
     if (!window.confirm(symbol + ' ची Smart Money मधील सर्व दिवसांची नोंद delete करायची?')) return;
@@ -341,7 +350,7 @@ export const SmartMoneyScreenerView: React.FC = () => {
   return <div className="space-y-5">
     <section className="rounded-2xl border border-emerald-300/20 bg-gradient-to-br from-[#10251f] via-[#0b1724] to-[#101827] p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2 text-emerald-300"><Activity className="h-5 w-5"/><span className="text-xs font-bold uppercase tracking-[.18em]">MOTI · Swing / Positional</span></div><h1 className="mt-2 text-2xl font-black text-white sm:text-3xl">Smart Money Screener</h1><p className="mt-2 max-w-2xl text-sm text-slate-300">NSE Bhavcopy मधील EQ शेअर्सचे भाव, Volume आणि Turnover वापरून संभाव्य संचय व breakout संकेत. ₹१,०००–₹२,९०० भावपट्टा आणि किमान ₹१ कोटी दैनिक टर्नओव्हर.</p></div><span className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-3 py-1.5 text-xs font-semibold text-emerald-200">NSE Bhavcopy · Beta</span></div>
-      <div className="mt-5 flex flex-wrap gap-2"><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-emerald-300 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-emerald-200"><Upload className="h-4 w-4"/>Import NSE Bhavcopy CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={e => { void upload(e.target.files?.[0]); e.currentTarget.value = ''; }}/></label><button onClick={download} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-white/10"><Download className="h-4 w-4"/>CSV Template</button>{rows.length > 0 && <button onClick={() => void clear()} className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 px-3 py-2.5 text-sm text-rose-200 hover:bg-rose-300/10"><Trash2 className="h-4 w-4"/>Clear</button>}</div>
+      <div className="mt-5 flex flex-wrap gap-2"><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-emerald-300 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-emerald-200"><Upload className="h-4 w-4"/>Import NSE Bhavcopy CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={e => { void upload(e.target.files?.[0]); e.currentTarget.value = ''; }}/></label><button onClick={exportFyersCsv} disabled={!visible.length} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"><Download className="h-4 w-4"/>Export FYERS CSV</button>{rows.length > 0 && <button onClick={() => void clear()} className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 px-3 py-2.5 text-sm text-rose-200 hover:bg-rose-300/10"><Trash2 className="h-4 w-4"/>Clear</button>}</div>
       {message && <p className="mt-3 text-xs text-emerald-300">{message}</p>}{error && <p className="mt-3 text-xs text-rose-300">{error}</p>}
     </section>
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{cards.map(c => <button key={c.key} onClick={() => { setFilter(c.key); setQuery(''); }} className={`rounded-xl border p-4 text-left transition ${filter === c.key ? 'border-emerald-300/60 bg-emerald-300/10' : 'border-white/10 bg-[#0b1421]'}`}><p className="text-xs text-slate-400">{c.label}</p><p className="mt-1 text-2xl font-bold text-white">{c.value}</p><p className="mt-1 text-[10px] text-emerald-300/80">यादी पाहण्यासाठी क्लिक करा</p></button>)}</div>
