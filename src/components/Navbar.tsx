@@ -243,6 +243,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             { id: 'swingScanner', label: 'Swing Scanner', icon: Activity },
             { id: 'niftyOptions', label: 'NIFTY Options', icon: CandlestickChart },
             { id: 'smartMoney', label: 'Smart Money', icon: Activity },
+            { id: 'longTermWealth', label: 'Wealth', icon: TrendingUp },
             { id: 'weeklyIncome', label: 'Weekly', icon: CalendarDays },
             
           ].map((item) => {
