@@ -500,6 +500,25 @@ export const NiftyOptionsScannerView: React.FC = () => {
       <p className="mt-2 text-[10px] text-slate-400">NSE वरचा अचूक Spot भरून मग CSV upload करा. रिकामा ठेवल्यास CE-PE premium parity वरून अंदाज वापरला जाईल. Full Option Chain CSV मध्ये सर्व strikes scan होतात; single-strike CSV मध्ये फक्त तोच strike वाचता येतो.</p>
     </div>
 
+
+    <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h2 className="text-sm font-bold text-white">Expiry Selection · या आठवड्याची expiry वगळलेली</h2><p className="mt-1 text-[11px] text-slate-400">सर्वात जवळची upcoming expiry वगळली आहे. त्यानंतरची expiry Next Week, पुढची 2 Weeks Ahead आणि उरलेल्या 3+ Weeks Ahead मध्ये दिसेल.</p></div>
+        <div className="flex flex-wrap gap-2">
+          {([{ id: 'next', label: 'Next Week' }, { id: 'two-weeks', label: '2 Weeks Ahead' }, { id: 'three-plus', label: '3+ Weeks Ahead' }] as const).map(g => <button key={g.id} onClick={() => { setExpiryGroup(g.id); setExpiryChoice(''); }} className={'rounded-lg border px-3 py-2 text-xs font-bold ' + (expiryGroup === g.id ? 'border-cyan-300 bg-cyan-300 text-slate-950' : 'border-slate-600 text-slate-200 hover:bg-white/5')}>{g.label}</button>)}
+          <select value={selectedExpiry} onChange={e => setExpiryChoice(e.target.value)} className="rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm text-white">
+            {groupExpiries.length ? groupExpiries.map(e => <option key={e} value={e}>{e}</option>) : <option value="">या गटात expiry उपलब्ध नाही</option>}
+          </select>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">CE OI Change</p><p className="mt-1 text-sm font-bold text-white">{fmt(summary.ceChg)}</p></div>
+        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">PE OI Change</p><p className="mt-1 text-sm font-bold text-white">{fmt(summary.peChg)}</p></div>
+        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Eligible Expiries</p><p className="mt-1 text-sm font-bold text-white">{groupExpiries.length}</p></div>
+        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Contracts in selected expiry</p><p className="mt-1 text-sm font-bold text-white">{chain.length}</p></div>
+      </div>
+    </div>
+
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
       <h2 className="text-sm font-bold text-white">Daily Signal Accuracy · CSV History Based</h2>
       <p className="mt-1 text-[11px] text-slate-400">कालच्या OI + Premium signal नंतर पुढील upload-day ला त्याच contract चा premium कोणत्या दिशेने बदलला ते मोजले आहे. Intraday data नाही.</p>
@@ -600,23 +619,6 @@ export const NiftyOptionsScannerView: React.FC = () => {
       {pcrHistory.length > 0 && <div className="mt-3"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Selected expiry PCR history</p><div className="flex flex-wrap gap-2">{pcrHistory.map(p => <span key={p.date} className="rounded-lg bg-[#080f1b] px-3 py-2 text-[11px] text-slate-300">{p.date}: <b className="text-white">{p.pcr.toFixed(2)}</b></span>)}</div></div>}
     </div>
 
-    <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h2 className="text-sm font-bold text-white">Expiry Selection · या आठवड्याची expiry वगळलेली</h2><p className="mt-1 text-[11px] text-slate-400">सर्वात जवळची upcoming expiry वगळली आहे. त्यानंतरची expiry Next Week, पुढची 2 Weeks Ahead आणि उरलेल्या 3+ Weeks Ahead मध्ये दिसेल.</p></div>
-        <div className="flex flex-wrap gap-2">
-          {([{ id: 'next', label: 'Next Week' }, { id: 'two-weeks', label: '2 Weeks Ahead' }, { id: 'three-plus', label: '3+ Weeks Ahead' }] as const).map(g => <button key={g.id} onClick={() => { setExpiryGroup(g.id); setExpiryChoice(''); }} className={'rounded-lg border px-3 py-2 text-xs font-bold ' + (expiryGroup === g.id ? 'border-cyan-300 bg-cyan-300 text-slate-950' : 'border-slate-600 text-slate-200 hover:bg-white/5')}>{g.label}</button>)}
-          <select value={selectedExpiry} onChange={e => setExpiryChoice(e.target.value)} className="rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm text-white">
-            {groupExpiries.length ? groupExpiries.map(e => <option key={e} value={e}>{e}</option>) : <option value="">या गटात expiry उपलब्ध नाही</option>}
-          </select>
-        </div>
-      </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-4">
-        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">CE OI Change</p><p className="mt-1 text-sm font-bold text-white">{fmt(summary.ceChg)}</p></div>
-        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">PE OI Change</p><p className="mt-1 text-sm font-bold text-white">{fmt(summary.peChg)}</p></div>
-        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Eligible Expiries</p><p className="mt-1 text-sm font-bold text-white">{groupExpiries.length}</p></div>
-        <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Contracts in selected expiry</p><p className="mt-1 text-sm font-bold text-white">{chain.length}</p></div>
-      </div>
-    </div>
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
       <div className="mb-4 rounded-xl border border-[#263958] bg-[#080f1b] p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-bold text-white">OI Positioning Signal</span><span className={'rounded-md px-2 py-1 text-[10px] font-black ' + (summary.bias === 'BULLISH' ? 'bg-emerald-300/15 text-emerald-200' : summary.bias === 'BEARISH' ? 'bg-rose-300/15 text-rose-200' : 'bg-amber-300/15 text-amber-200')}>{summary.bias}</span></div><p className="mt-2 text-[11px] leading-5 text-slate-300">{summary.bias === 'BULLISH' ? 'PCR 1.10 किंवा अधिक आणि PE OI Change हा CE पेक्षा जास्त: bullish positioning चा संकेत. CE खरेदीचा आदेश नाही.' : summary.bias === 'BEARISH' ? 'PCR 0.90 किंवा कमी आणि CE OI Change हा PE पेक्षा जास्त: bearish positioning चा संकेत. PE खरेदीचा आदेश नाही.' : 'PCR आणि OI Change मध्ये स्पष्ट एकतर्फी संकेत नाही. WAIT; चार्ट आणि किंमतीची पुष्टी पाहा.'}</p><p className="mt-1 text-[10px] text-slate-500">CE OI वाढ = संभाव्य resistance pressure · PE OI वाढ = संभाव्य support positioning. OI कमी होणे म्हणजे positions unwind होत असू शकतात.</p></div>
