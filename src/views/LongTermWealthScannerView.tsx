@@ -37,21 +37,21 @@ const parseCsv = (raw: string): WealthRow[] => {
   const cols = {
     company: idx('company','companyname','name'), symbol: idx('nsesymbol','symbol','ticker'),
     sector: idx('sector'), industry: idx('industry'), price: idx('lastprice','price','currentprice','cmp'),
-    marketCap: idx('marketcap','marketcapcr'), pe: idx('pe','pe x'), usualPe: idx('usualpe'),
-    industryPe: idx('industrymedianpe'), peVsUsual: idx('pevsusualratio'), peVsIndustry: idx('pevsindustryratio'),
-    pb: idx('pb','pb x'), dividendYield: idx('dividendyield'), salesGrowth: idx('revenuegrowthquarteryoy','revenuegrowth','salesgrowth'),
+    marketCap: idx('marketcap','marketcapcr'), pe: idx('pe','pex'), usualPe: idx('usualpe','usualpex'),
+    industryPe: idx('industrymedianpe','industrymedianpex'), peVsUsual: idx('pevsusualratio'), peVsIndustry: idx('pevsindustryratio'),
+    pb: idx('pb','pbx'), dividendYield: idx('dividendyield'), salesGrowth: idx('revenuegrowthquarteryoy','revenuegrowth','salesgrowth'),
     profitGrowth: idx('netprofitgrowthquarteryoy','netprofitgrowth','profitgrowth'), opm: idx('operatingmarginopm','opm'),
-    roe: idx('roe'), roce: idx('roce'), debtEquity: idx('debtequity'), promoterHolding: idx('promoterholding'),
-    promoterChange: idx('promoterholdingchange1y','promoterholdingchange'), profits: idx('netprofitlast4reportedperiods','netprofitlast4','last4profits'),
+    roe: idx('roe'), roce: idx('roce'), debtEquity: idx('debtequity','debtequityx'), promoterHolding: idx('promoterholding'),
+    promoterChange: idx('promoterholdingchange1y','promoterholdingchange','promoterholdingchange1ypercentagepoints'), profits: idx('netprofitlast4reportedperiods','netprofitlast4reportedperiodscr','netprofitlast4','last4profits'),
     latestQuarter: idx('latestquarter'), loss: idx('lossinlatestquarter','losslatestquarter'),
     negative: idx('negativenetworth'), redFlags: idx('redflagscount','redflags'), greenFlags: idx('greenflagscount','greenflags'),
-    redText: idx('redflags'), greenText: idx('greenflags'), above200: idx('above200dayaverage')
+    redText: idx('redflags'), greenText: idx('greenflags'), above200: idx('above200dayaverage','above200day')
   };
   if (cols.symbol < 0 || cols.price < 0) throw new Error('NSE symbol आणि Last price columns आवश्यक आहेत.');
   const get = (c: string[], k: keyof typeof cols) => cols[k] >= 0 ? c[cols[k]] || '' : '';
   return lines.slice(1).map(line => {
     const c = split(line, delimiter);
-    const profits = get(c,'profits').split(/[;|]/).map(x => num(x)).filter((x): x is number => x !== undefined);
+    const profits = get(c,'profits').split(/[;,|]/).map(x => num(x)).filter((x): x is number => x !== undefined);
     return {
       company: get(c,'company') || get(c,'symbol'), symbol: get(c,'symbol').toUpperCase(),
       sector: get(c,'sector'), industry: get(c,'industry'), price: num(get(c,'price')), marketCap: num(get(c,'marketCap')),
