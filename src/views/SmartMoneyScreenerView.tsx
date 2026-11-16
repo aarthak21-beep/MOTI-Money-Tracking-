@@ -58,12 +58,25 @@ const splitCsv = (line: string, delimiter: string) => {
 const parseDate = (value: string) => {
   const v = value.trim();
   if (!v) return '';
-  const dmy = v.match(/^(\d{2})[-/]([A-Za-z]{3})[-/](\d{4})$/);
-  if (dmy) return new Date(Date.parse(dmy[2] + ' ' + dmy[1] + ', ' + dmy[3])).toISOString().slice(0, 10);
-  const dmyNum = v.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
-  if (dmyNum) return dmyNum[3] + '-' + dmyNum[2] + '-' + dmyNum[1];
+  // Keep exchange dates as calendar dates; converting local midnight to ISO can shift the day by timezone.
+  const dmy = v.match(/^(\d{1,2})[-/]([A-Za-z]{3})[-/](\d{4})$/);
+  if (dmy) {
+    const months: Record<string, string> = {
+      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+    };
+    const month = months[dmy[2].toLowerCase()];
+    const day = dmy[1].padStart(2, '0');
+    if (month) return dmy[3] + '-' + month + '-' + day;
+  }
+  const dmyNum = v.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmyNum) return dmyNum[3] + '-' + dmyNum[2].padStart(2, '0') + '-' + dmyNum[1].padStart(2, '0');
+  const isoDate = v.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoDate) return isoDate[1];
   const parsed = Date.parse(v);
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : v;
+  if (!Number.isFinite(parsed)) return v;
+  const date = new Date(parsed);
+  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
 };
 const parseCsv = (raw: string): StockRow[] => {
   const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
