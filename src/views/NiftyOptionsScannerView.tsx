@@ -366,8 +366,8 @@ export const NiftyOptionsScannerView: React.FC = () => {
       neutral: allExpiryAnalytics.filter(x => x.bias === 'NEUTRAL').length };
   }, [allExpiryAnalytics]);
   const momentumAlerts = useMemo(() => {
-    // Compare every eligible expiry against its latest prior-day snapshot.
-    return expiries.flatMap(expiry => {
+    // Compare only the selected expiry against its latest prior-day snapshot.
+    return (selectedExpiry ? [selectedExpiry] : []).flatMap(expiry => {
       const snapshots = history
         .filter(h => h.expiry === expiry || (!h.expiry && h.rows.some(r => r.expiry === expiry)))
         .filter(h => h.date < localDateKey())
@@ -385,7 +385,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
         return [{ ...r, previousDate: previous.date, previousLtp: old.ltp, previousOi: old.oi, priceChangePct: old.ltp > 0 ? (r.ltp - old.ltp) / old.ltp * 100 : 0, oiDelta: r.oi - old.oi, signal, signalType: signal === 'LONG BUILDUP' || signal === 'SHORT COVERING' ? 'bullish' : 'bearish' }];
       });
     }).sort((a, b) => Math.abs(b.oiDelta) - Math.abs(a.oiDelta));
-  }, [expiries, rows, history]);
+  }, [selectedExpiry, rows, history]);
   const momentumSummary = useMemo(() => ({
     long: momentumAlerts.filter(x => x.signal === 'LONG BUILDUP').length,
     short: momentumAlerts.filter(x => x.signal === 'SHORT BUILDUP').length,
@@ -551,8 +551,8 @@ export const NiftyOptionsScannerView: React.FC = () => {
     </section>
 
     <section className="rounded-2xl border border-amber-300/20 bg-[#171827] p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200">MOTI PRO · Price + OI Momentum</p><h2 className="mt-1 text-lg font-black text-white">Four OI Build-up / Unwinding Signals · All Expiries</h2></div><span className="rounded-full border border-amber-300/30 px-3 py-1 text-[10px] font-bold text-amber-100">PRIOR SNAPSHOT BASED</span></div>
-      <p className="mt-2 text-[11px] text-slate-400">प्रत्येक CE/PE strike चा सध्याचा LTP आणि OI मागील उपलब्ध prior-day snapshot शी compare केला आहे. सर्व eligible expiries एकत्र दाखवल्या आहेत.</p>
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200">MOTI PRO · Price + OI Momentum</p><h2 className="mt-1 text-lg font-black text-white">Four OI Build-up / Unwinding Signals · Selected Expiry</h2></div><span className="rounded-full border border-amber-300/30 px-3 py-1 text-[10px] font-bold text-amber-100">PRIOR SNAPSHOT BASED</span></div>
+      <p className="mt-2 text-[11px] text-slate-400">निवडलेल्या expiry मधील प्रत्येक CE/PE strike चा सध्याचा LTP आणि OI त्याच expiry च्या मागील उपलब्ध prior-day snapshot शी compare केला आहे.</p>
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div className="rounded-lg bg-emerald-300/10 p-3"><p className="text-[10px] text-emerald-200">Long Buildup</p><p className="mt-1 text-xl font-black text-white">{momentumSummary.long}</p><p className="text-[9px] text-slate-400">Price ↑ · OI ↑</p></div>
         <div className="rounded-lg bg-rose-300/10 p-3"><p className="text-[10px] text-rose-200">Short Buildup</p><p className="mt-1 text-xl font-black text-white">{momentumSummary.short}</p><p className="text-[9px] text-slate-400">Price ↓ · OI ↑</p></div>
