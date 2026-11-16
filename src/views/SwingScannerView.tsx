@@ -270,7 +270,7 @@ export const SwingScannerView: React.FC = () => {
   }, [records]);
   const candidates = useMemo(() => {
     // Bhavcopy is the source of truth for the watchlist and all technical levels.
-    // A stock must qualify on an EQ/BE Bhavcopy session (+4%, close ₹300–₹3,000).
+    // A stock must qualify on an EQ/BE Bhavcopy session (+4%, close ₹1,000–₹2,900).
     const symbols = Array.from(recordsBySymbol.entries())
       .filter(([, rows]) => rows.some(r => r.sources.includes('bhavcopy')))
       .map(([symbol]) => symbol);
@@ -284,7 +284,7 @@ export const SwingScannerView: React.FC = () => {
       const qualifiedBefore = bhavcopyRows.some(r =>
         (r.series === 'EQ' || r.series === 'BE') &&
         (r.pctChange ?? -Infinity) >= 4 &&
-        r.close !== undefined && r.close >= 300 && r.close <= 3000
+        r.close !== undefined && r.close >= 1000 && r.close <= 2900
       );
       const first = bhavcopyRows.length >= 6 ? bhavcopyRows[bhavcopyRows.length - 6] : undefined;
       const weeklyChange = bhavcopyRows.length >= 6 && first?.close
@@ -487,7 +487,7 @@ export const SwingScannerView: React.FC = () => {
       item !== null &&
       item.qualifiedBefore &&
       (item.series === 'EQ' || item.series === 'BE') &&
-      item.close !== undefined && item.close >= 300 && item.close <= 3000
+      item.close !== undefined && item.close >= 1000 && item.close <= 2900
     ).sort((a, b) => (b.weeklyChange ?? b.pctToday ?? -999) - (a.weeklyChange ?? a.pctToday ?? -999));
   }, [recordsBySymbol, latestRowsBySymbol, latestDate, bhavcopySessionDates]);
 
@@ -644,7 +644,7 @@ export const SwingScannerView: React.FC = () => {
     </div>
 
     <div className="grid gap-3 sm:grid-cols-2">
-      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Filtered stocks (EQ/BE · +4% · ₹300–₹3,000)</p><p className="mt-1 text-2xl font-black text-white">{candidates.length}</p></div>
+      <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Filtered stocks (EQ/BE · +4% · ₹1,000–₹2,900)</p><p className="mt-1 text-2xl font-black text-white">{candidates.length}</p></div>
       <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><p className="text-xs text-slate-400">Saved trading days</p><p className="mt-1 text-2xl font-black text-cyan-300">{new Set(records.map(r => r.date)).size}</p></div>
     </div>
 
@@ -653,7 +653,7 @@ export const SwingScannerView: React.FC = () => {
 
     <div className="overflow-hidden rounded-2xl border border-[#1e2e4f] bg-[#0d1527]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1e2e4f] px-4 py-3">
-        <div><h2 className="text-sm font-bold text-white">Weekly Movement & Breakout Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · New entries: EQ/BE +4% and ₹300–₹3,000 · Existing stocks stay listed while price remains ₹300–₹3,000</p></div>
+        <div><h2 className="text-sm font-bold text-white">Weekly Movement & Breakout Candidates</h2><p className="mt-1 text-[10px] text-slate-400">Latest report date: {latestDate || '—'} · New entries: EQ/BE +4% and ₹1,000–₹2,900 · Existing stocks stay listed while price remains ₹1,000–₹2,900</p></div>
         <div className="flex items-center gap-3"><button type="button" onClick={exportCsv} disabled={!sortedCandidates.length} className="inline-flex items-center gap-1 rounded-lg bg-emerald-300 px-3 py-2 text-[11px] font-bold text-slate-950 hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-40"><Download className="h-3 w-3" /> Export CSV</button><button onClick={clearHistory} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"><RefreshCw className="h-3 w-3" /> Clear history</button></div>
       </div>
       <div className="overflow-x-auto">
@@ -682,7 +682,7 @@ export const SwingScannerView: React.FC = () => {
             </tr>)}
           </tbody>
         </table>
-        {!candidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">{candidates.length ? 'या filters मध्ये stock सापडला नाही' : 'NSE reports upload कर'}</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि Advances CSV मधील वाढणारे stocks शोधण्यासाठी वापरली जाईल. एकदा +4% वरून लिस्टमध्ये आलेला stock पुढे +4% खाली गेला तरी ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहील.</p></div>}
+        {!candidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">{candidates.length ? 'या filters मध्ये stock सापडला नाही' : 'NSE reports upload कर'}</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि Advances CSV मधील वाढणारे stocks शोधण्यासाठी वापरली जाईल. एकदा +4% वरून लिस्टमध्ये आलेला stock पुढे +4% खाली गेला तरी ₹1,000–₹2,900 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहील.</p></div>}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#1e2e4f] bg-[#0a1220] px-4 py-3"><p className="text-[10px] text-slate-400">Showing <span className="font-bold text-white">{candidates.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, candidates.length)}</span> of <span className="font-bold text-white">{candidates.length}</span> watchlist stocks</p><div className="flex items-center gap-2"><button type="button" onClick={() => setCurrentPage(page => Math.max(1, page - 1))} disabled={currentPage <= 1} className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] text-slate-200 disabled:opacity-40">Previous</button><span className="text-[10px] text-slate-400">Page {currentPage} / {pageCount}</span><button type="button" onClick={() => setCurrentPage(page => Math.min(pageCount, page + 1))} disabled={currentPage >= pageCount} className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] text-slate-200 disabled:opacity-40">Next</button></div></div>
     </div>
@@ -700,7 +700,7 @@ export const SwingScannerView: React.FC = () => {
         <li>Volume analysis साठी फक्त Bhavcopy वापरली जाते: शेवटच्या उपलब्ध Bhavcopy session चा volume ÷ त्याआधीच्या 5 Bhavcopy sessions चा average. 5 जुने sessions किंवा volume data नसेल तर — दिसेल. Volume Gainers CSV या गणनेत वापरली जात नाही.</li>
         <li>Bhavcopy ZIP मधील रोजचे EQ/BE OHLCV रेकॉर्ड 5/10/20 Range Breakout आणि Darvas-style Box साठी वापरले जातात. जुन्या CSV-only डेटासाठी Top 20 appearances हा fallback आहे; त्या नोंदी सलग exchange sessions असतीलच असे नाही.</li>
         <li>NSE Cash Market Bhavcopy ZIP पूर्ण Cash Market universe मधील उपलब्ध EQ/BE records साठवण्यासाठी आहे. जुने Top 20/Volume Gainers/Advances reports स्वतंत्रपणे काम करत राहतात.</li>
-        <li>नवीन stock लिस्टमध्ये येण्यासाठी EQ/BE series, त्या दिवसाचा बदल किमान +4% आणि किंमत ₹300–₹3,000 आवश्यक आहे. एकदा आलेला stock रोज +4% राहण्याची गरज नाही; तो ₹300–₹3,000 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहतो. रेंजच्या बाहेर तात्पुरता लपतो आणि परत रेंजमध्ये आल्यावर पुन्हा दिसतो.</li>
+        <li>नवीन stock लिस्टमध्ये येण्यासाठी EQ/BE series, त्या दिवसाचा बदल किमान +4% आणि किंमत ₹1,000–₹2,900 आवश्यक आहे. एकदा आलेला stock रोज +4% राहण्याची गरज नाही; तो ₹1,000–₹2,900 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहतो. रेंजच्या बाहेर तात्पुरता लपतो आणि परत रेंजमध्ये आल्यावर पुन्हा दिसतो.</li>
       </ul>
     </div>
   </div>;
