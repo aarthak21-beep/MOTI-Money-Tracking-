@@ -320,7 +320,7 @@ export const SmartMoneyScreenerView: React.FC = () => {
     if (!visible.length) return;
     // FYERS Web watchlist import format, matching Swing Scanner export.
     const symbols = visible.map(item => 'NSE:' + item.symbol + '-' + (item.series === 'BE' ? 'BE' : 'EQ'));
-    const csv = '\\uFEFF' + symbols.join(',');
+    const csv = '\uFEFF' + symbols.join(',');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const link = document.createElement('a');
     link.href = url;
