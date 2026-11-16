@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, Upload, RefreshCw, FileSpreadsheet, Info, Download } from 'lucide-react';
+import { Activity, Upload, RefreshCw, FileSpreadsheet, Info, Download, Trash2 } from 'lucide-react';
 import { loadScannerData, saveScannerData } from '../services/cloudScannerStorage';
 
 type DailyRow = {
@@ -594,6 +594,18 @@ export const SwingScannerView: React.FC = () => {
     link.remove();
     URL.revokeObjectURL(url);
   };
+  const removeStock = async (symbol: string) => {
+    if (!window.confirm(symbol + ' ची Swing Scanner मधील सर्व दिवसांची नोंद delete करायची?')) return;
+    setLoading(true);
+    try {
+      const updated = records.filter(row => row.symbol !== symbol);
+      await saveScannerData('swing', updated);
+      setRecords(updated);
+      setMessage(symbol + ' ची Swing Scanner मधील सर्व इतिहासासह नोंद delete केली.');
+    } catch (e) {
+      setMessage(symbol + ' delete अयशस्वी: ' + (e instanceof Error ? e.message : 'Cloud save failed.'));
+    } finally { setLoading(false); }
+  };
   const clearHistory = async () => {
     if (!window.confirm('जतन केलेला NSE report history D1 मधून clear करायचा?')) return;
     setLoading(true);
@@ -659,7 +671,7 @@ export const SwingScannerView: React.FC = () => {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-left text-xs">
           <thead className="bg-[#080f1b] text-[10px] uppercase text-slate-400">
-            <tr>{[{label:'Stock',key:'symbol'},{label:'Setup',key:'setup'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Breakout Strength',key:'breakoutStrength'},{label:'Volume Confirmation',key:'volumeConfirmation'},{label:'Retest Signal',key:'retestSignal'},{label:'Retest Quality',key:'retestQuality'},{label:'Breakout Failure',key:'breakoutFailureSignal'},{label:'Consolidation Breakout',key:'consolidationBreakoutSignal'},{label:'Volume Dry-up',key:'volumeDryUpSignal'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
+            <tr>{[{label:'Stock',key:'symbol'},{label:'Setup',key:'setup'},{label:'Latest Close',key:'close'},{label:'5-Day Move',key:'weeklyChange'},{label:'Volume vs 1W Avg',key:'volumeMultiple'},{label:'Breakout Strength',key:'breakoutStrength'},{label:'Volume Confirmation',key:'volumeConfirmation'},{label:'Retest Signal',key:'retestSignal'},{label:'Retest Quality',key:'retestQuality'},{label:'Breakout Failure',key:'breakoutFailureSignal'},{label:'Consolidation Breakout',key:'consolidationBreakoutSignal'},{label:'Volume Dry-up',key:'volumeDryUpSignal'},{label:'Range Breakout 5/10/20',key:'breakout'},{label:'Darvas Box 5/10/20',key:'darvas'},{label:'Today %',key:'pctToday'},{label:'Report Sources',key:'sources'},{label:'Delete',key:'delete'}].map(col => <th key={col.key} className="px-3 py-3"><button type="button" onClick={() => toggleSort(col.key)} className="whitespace-nowrap text-left font-bold hover:text-emerald-300 focus:text-emerald-300" title="Sort this column">{col.label}{sortIndicator(col.key)}</button></th>)}</tr>
           </thead>
           <tbody className="divide-y divide-[#1e2e4f]/60">
             {visibleCandidates.map(item => <tr key={item.symbol} className="hover:bg-white/[0.03]">
@@ -679,6 +691,7 @@ export const SwingScannerView: React.FC = () => {
               <td className="px-3 py-3"><div className="space-y-1">{item.breakoutRanges.map(r => <div key={r.days}><span className="text-slate-400">{r.days}D:</span> {r.enough ? <><span className={r.breakout ? 'font-bold text-emerald-300' : 'text-slate-300'}>{r.breakout ? 'Box breakout' : r.inside ? 'Inside box' : 'Below box'}</span><span className="ml-1 text-[10px] text-slate-500">({money(r.boxLow)}–{money(r.boxHigh)})</span></> : <span className="text-slate-500">Need {r.days} daily records</span>}</div>)}</div></td>
               <td className="px-3 py-3 text-slate-200">{pct(item.pctToday)}</td>
               <td className="px-3 py-3 text-[10px] text-slate-400">{item.sources.join(', ')}</td>
+              <td className="px-3 py-3"><button type="button" onClick={() => void removeStock(item.symbol)} className="inline-flex items-center gap-1 rounded-lg border border-rose-300/20 px-2 py-1.5 text-[10px] font-semibold text-rose-300 hover:bg-rose-300/10"><Trash2 className="h-3.5 w-3.5"/>Delete</button></td>
             </tr>)}
           </tbody>
         </table>
