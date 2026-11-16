@@ -308,7 +308,12 @@ export const SmartMoneyScreenerView: React.FC = () => {
       const merged = mergeHistory(rows, parsed);
       await saveScannerData('smart-money', merged);
       setRows(merged);
-      setMessage(parsed.length + ' EQ नोंदी वाचल्या. एकूण ' + merged.length + ' दिवसनिहाय नोंदी सेव्ह झाल्या.');
+      const csvDates = [...new Set(parsed.map(r => r.date).filter(Boolean))].sort();
+      const savedDates = [...new Set(merged.map(r => r.date).filter(Boolean))].sort();
+      const csvDateSummary = csvDates.length === 0 ? 'तारीख उपलब्ध नाही' : csvDates.length === 1
+        ? csvDates[0] : csvDates[0] + ' ते ' + csvDates[csvDates.length - 1];
+      const latestSavedDate = savedDates.length ? savedDates[savedDates.length - 1] : 'उपलब्ध नाही';
+      setMessage(parsed.length + ' EQ नोंदी वाचल्या. एकूण ' + merged.length + ' दिवसनिहाय नोंदी सेव्ह झाल्या. CSV तारीख: ' + csvDateSummary + '. सेव्हमधील नवीनतम तारीख: ' + latestSavedDate + '.');
     } catch (e) { setError(e instanceof Error ? e.message : 'CSV import/save करता आला नाही.'); }
   };
   const download = () => {
