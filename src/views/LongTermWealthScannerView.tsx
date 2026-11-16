@@ -62,7 +62,7 @@ const parseCsv = (raw: string): WealthRow[] => {
       promoterHolding: num(get(c,'promoterHolding')), promoterChange: num(get(c,'promoterChange')), profits,
       latestQuarter: get(c,'latestQuarter'), lossLatest: bool(get(c,'loss')), negativeNetWorth: bool(get(c,'negative')),
       redFlags: num(get(c,'redFlags')), greenFlags: num(get(c,'greenFlags')), redFlagText: get(c,'redText'),
-      greenFlagText: get(c,'greenText'), above200Day: bool(get(c,'above200')
+      greenFlagText: get(c,'greenText'), above200Day: bool(get(c,'above200'))
     };
   }).filter(r => r.symbol && r.price !== undefined && r.price > 0);
 };
