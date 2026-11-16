@@ -73,7 +73,10 @@ const parseNseOptionChain = (text: string, filename: string): OptionRow[] => {
   for (const line of lines.slice(2)) {
     const c = splitCsvLine(line);
     const strike = fullChain ? number(c[strikeIndex]) : selectedStrike;
-    const expiry = fullChain ? defaultExpiry : parseDate(c[expiryIndex]);
+    // Prefer the expiry column when the NSE export includes it; otherwise use the expiry encoded in the filename.
+    const expiry = fullChain
+      ? (expiryIndex >= 0 ? (parseDate(c[expiryIndex] || '') || defaultExpiry) : defaultExpiry)
+      : parseDate(c[expiryIndex] || '');
     if (!(strike > 0) || !expiry) continue;
     const ceLtp = number(c[5]);
     const peLtp = number(c[17]);
