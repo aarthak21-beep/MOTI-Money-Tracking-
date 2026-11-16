@@ -527,12 +527,8 @@ export const SwingScannerView: React.FC = () => {
     if (typeof av === 'string' && typeof bv === 'string') return direction * av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
     return direction * ((av as number) - (bv as number));
   }), [candidates, sortConfig]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 50;
-  const pageCount = Math.max(1, Math.ceil(sortedCandidates.length / pageSize));
-  const visibleCandidates = sortedCandidates.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const visibleCandidates = sortedCandidates;
   const toggleSort = (key: string) => {
-    setCurrentPage(1);
     setSortConfig(current => ({
     key,
     direction: current.key === key ? (current.direction === 'desc' ? 'asc' : 'desc') : key === 'symbol' ? 'asc' : 'desc'
@@ -697,7 +693,7 @@ export const SwingScannerView: React.FC = () => {
         </table>
         {!candidates.length && <div className="p-8 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-emerald-300" /><p className="mt-3 text-sm font-bold text-white">{candidates.length ? 'या filters मध्ये stock सापडला नाही' : 'NSE reports upload कर'}</p><p className="mt-2 text-xs text-slate-400">Top 20 CSV price range साठी, Volume Gainers CSV volume comparison साठी आणि Advances CSV मधील वाढणारे stocks शोधण्यासाठी वापरली जाईल. एकदा +4% वरून लिस्टमध्ये आलेला stock पुढे +4% खाली गेला तरी ₹1,000–₹2,900 रेंजमध्ये असेपर्यंत लिस्टमध्ये राहील.</p></div>}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#1e2e4f] bg-[#0a1220] px-4 py-3"><p className="text-[10px] text-slate-400">Showing <span className="font-bold text-white">{candidates.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, candidates.length)}</span> of <span className="font-bold text-white">{candidates.length}</span> watchlist stocks</p><div className="flex items-center gap-2"><button type="button" onClick={() => setCurrentPage(page => Math.max(1, page - 1))} disabled={currentPage <= 1} className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] text-slate-200 disabled:opacity-40">Previous</button><span className="text-[10px] text-slate-400">Page {currentPage} / {pageCount}</span><button type="button" onClick={() => setCurrentPage(page => Math.min(pageCount, page + 1))} disabled={currentPage >= pageCount} className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] text-slate-200 disabled:opacity-40">Next</button></div></div>
+      <div className="border-t border-[#1e2e4f] bg-[#0a1220] px-4 py-3"><p className="text-[10px] text-slate-400">Showing all <span className="font-bold text-white">{candidates.length}</span> watchlist stocks on one page</p></div>
     </div>
     <div className="rounded-xl border border-[#1e2e4f] bg-[#0d1527] p-4"><div className="flex items-center gap-2 text-xs font-bold text-cyan-200"><Info className="h-4 w-4" /> Data notes</div>
       <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] leading-5 text-slate-400">
