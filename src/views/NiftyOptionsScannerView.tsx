@@ -278,7 +278,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const selectedTradeContract = tradeLotRows.find(r => `${r.expiry}|${r.strike}|${r.type}` === tradeContractKey) || null;
   const proRadar = useMemo(() => {
     // Build the radar independently for every eligible expiry, not just the expiry selected below.
-    return expiries.flatMap(expiry => {
+    return (selectedExpiry ? [selectedExpiry] : []).flatMap(expiry => {
       const expiryRows = rows.filter(r => r.expiry === expiry);
       const spot = expiryRows[0]?.spot || 0;
       if (!expiryRows.length || !spot) return [];
@@ -322,7 +322,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
           const rawScore = Math.round(nearAtmScore + pcrScore + oiScore + volumeScore + momentumScore + biasScore);
           const hasPriorSnapshot = Boolean(old);
           const score = hasPriorSnapshot ? Math.min(100, rawScore) : Math.min(60, rawScore);
-          const strengthScore = Math.round(Math.min(35, Math.abs(priceChangePct)) * 35 + Math.min(35, Math.abs(oiChangePct) / 5 * 35) + (medianVolume > 0 ? Math.min(30, option.volume / medianVolume * 30) : 0));
+          const strengthScore = Math.round(Math.min(35, Math.abs(priceChangePct) / 1 * 35) + Math.min(35, Math.abs(oiChangePct) / 5 * 35) + (medianVolume > 0 ? Math.min(30, option.volume / medianVolume * 30) : 0));
           const thresholdsMet = Math.abs(priceChangePct) >= 0.25 && Math.abs(oiChangePct) >= 1;
           const strength = !hasPriorSnapshot ? 'UNCONFIRMED' : signal === 'NO CLEAR CHANGE' ? 'NO CLEAR CHANGE' : !thresholdsMet || option.volume <= 0 ? 'WEAK' : strengthScore >= 75 && volumeConfirmed ? 'STRONG' : strengthScore >= 50 ? 'MEDIUM' : 'WEAK';
           const premiumPerLot = option.ltp * lotSize;
@@ -331,7 +331,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
         }).sort((a, b) => b.score - a.score).slice(0, 3).map(option => ({ ...option, expiry }));
       });
     });
-  }, [expiries, rows, history, capital, lotSize, stopPct]);
+  }, [selectedExpiry, rows, history, capital, lotSize, stopPct]);
   const allExpiryAnalytics = useMemo(() => expiries.map(expiry => {
     const expiryRows = rows.filter(r => r.expiry === expiry);
     const spot = expiryRows[0]?.spot || 0;
