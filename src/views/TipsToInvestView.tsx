@@ -156,6 +156,7 @@ const parseBhavcopy = (raw: string): Row[] => {
   const symbol = ix(symbolNames);
   const series = ix(['series', 'sctysrs']);
   const date = ix(['date1', 'date', 'traddt', 'bizdt']);
+  if (date < 0) throw new Error('Bhavcopy मध्ये trading date column सापडला नाही. DATE1 / DATE असलेली NSE file निवड.');
   const close = ix(closeNames);
   const volume = ix(volumeNames);
   const delivery = ix(['delivper', 'deliverypercentage', 'deliverypct', 'dlvrypct']);
@@ -195,6 +196,7 @@ const parseDeliveryReport = (raw: string): Map<string, number> => {
   const seriesIx = header.headers.findIndex(h => ['series', 'sctysrs'].includes(h));
   const deliveryIx = header.headers.findIndex(h => deliveryNames.includes(h));
   const dateIx = header.headers.findIndex(h => ['date1', 'date', 'traddt', 'bizdt'].includes(h));
+  if (dateIx < 0) throw new Error('Delivery report मध्ये trading date column सापडला नाही. DATE1 / DATE असलेली NSE file निवड.');
   const result = new Map<string, number>();
   for (const line of lines.slice(header.index + 1)) {
     const cells = csvLine(line, header.delimiter);
