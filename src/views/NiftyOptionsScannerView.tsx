@@ -128,12 +128,14 @@ const expiryDaysAway = (expiry: string) => {
   const expiryDate = new Date(year, month - 1, day);
   return Math.round((expiryDate.getTime() - today().getTime()) / 86400000);
 };
-const getExpiryBucket = (expiry: string): 'next' | 'two-weeks' | 'three-plus' | '' => {
+const getExpiryBucket = (expiry: string): 'next' | 'two-weeks' | 'three-weeks' | 'four-weeks' | 'five-plus' | '' => {
   const daysAway = expiryDaysAway(expiry);
   if (!Number.isFinite(daysAway) || daysAway < 7) return '';
   if (daysAway <= 13) return 'next';
   if (daysAway <= 20) return 'two-weeks';
-  return 'three-plus';
+  if (daysAway <= 27) return 'three-weeks';
+  if (daysAway <= 34) return 'four-weeks';
+  return 'five-plus';
 };
 const isEligiblePositionalExpiry = (expiry: string) => Boolean(getExpiryBucket(expiry));
 
@@ -204,7 +206,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const [capital, setCapital] = useState(6500);
   const [expiryChoice, setExpiryChoice] = useState('');
   const [tradeContractKey, setTradeContractKey] = useState('');
-  const [expiryGroup, setExpiryGroup] = useState<'next' | 'two-weeks' | 'three-plus'>('next');
+  const [expiryGroup, setExpiryGroup] = useState<'next' | 'two-weeks' | 'three-weeks' | 'four-weeks' | 'five-plus'>('next');
   const [loading, setLoading] = useState(false);
 
   const expiries = useMemo(() => Array.from(new Set(rows.map(r => r.expiry))).sort(), [rows]);
@@ -489,7 +491,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
     <div className="rounded-2xl border border-cyan-300/20 bg-gradient-to-br from-[#10243b] via-[#0d1928] to-[#0d1527] p-5 sm:p-7">
       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300"><Activity className="h-4 w-4" /> MOTI · Separate Options Module</div>
       <h1 className="mt-3 text-2xl font-black text-white sm:text-3xl">NIFTY Options Positional Scanner</h1>
-      <p className="mt-2 max-w-3xl text-sm text-slate-300">Intraday नाही. या आठवड्याची expiry वगळली आहे. पुढील आठवडा, त्यानंतरचा आठवडा किंवा 3+ आठवड्यांनंतरची expiry निवडून CE / PE positioning तपासा. OI हे positioning data आहे; ते एकटे buy signal नाही.</p>
+      <p className="mt-2 max-w-3xl text-sm text-slate-300">Intraday नाही. या आठवड्याची expiry वगळली आहे. पुढील 1, 2, 3 किंवा 4 आठवड्यांतील expiry स्वतंत्रपणे निवडा; त्यापुढील expiry 5+ Weeks मध्ये दिसेल. OI हे positioning data आहे; ते एकटे buy signal नाही.</p>
       <div className="mt-4 flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1 text-[10px] font-bold text-slate-300">NIFTY Spot (optional, NSE वर दिसणारा)
           <input type="number" min="1" step="0.05" value={manualSpot} onChange={e => setManualSpot(e.target.value)} placeholder="उदा. 25144.30" className="w-44 rounded-xl border border-slate-600 bg-[#080f1b] px-3 py-3 text-sm text-white placeholder:text-slate-500" />
@@ -506,9 +508,9 @@ export const NiftyOptionsScannerView: React.FC = () => {
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h2 className="text-sm font-bold text-white">Expiry Selection · या आठवड्याची expiry वगळलेली</h2><p className="mt-1 text-[11px] text-slate-400">सर्वात जवळची upcoming expiry वगळली आहे. त्यानंतरची expiry Next Week, पुढची 2 Weeks Ahead आणि उरलेल्या 3+ Weeks Ahead मध्ये दिसेल.</p></div>
+        <div><h2 className="text-sm font-bold text-white">Expiry Selection · या आठवड्याची expiry वगळलेली</h2><p className="mt-1 text-[11px] text-slate-400">या आठवड्याची expiry वगळली आहे. Expiry अंतरानुसार Next Week, 2 Weeks, 3 Weeks, 4 Weeks आणि 5+ Weeks असे स्वतंत्र गट आहेत.</p></div>
         <div className="flex flex-wrap gap-2">
-          {([{ id: 'next', label: 'Next Week' }, { id: 'two-weeks', label: '2 Weeks Ahead' }, { id: 'three-plus', label: '3+ Weeks Ahead' }] as const).map(g => <button key={g.id} onClick={() => { setExpiryGroup(g.id); setExpiryChoice(''); }} className={'rounded-lg border px-3 py-2 text-xs font-bold ' + (expiryGroup === g.id ? 'border-cyan-300 bg-cyan-300 text-slate-950' : 'border-slate-600 text-slate-200 hover:bg-white/5')}>{g.label}</button>)}
+          {([{ id: 'next', label: 'Next Week' }, { id: 'two-weeks', label: '2 Weeks Ahead' }, { id: 'three-weeks', label: '3 Weeks Ahead' }, { id: 'four-weeks', label: '4 Weeks Ahead' }, { id: 'five-plus', label: '5+ Weeks Ahead' }] as const).map(g => <button key={g.id} onClick={() => { setExpiryGroup(g.id); setExpiryChoice(''); }} className={'rounded-lg border px-3 py-2 text-xs font-bold ' + (expiryGroup === g.id ? 'border-cyan-300 bg-cyan-300 text-slate-950' : 'border-slate-600 text-slate-200 hover:bg-white/5')}>{g.label}</button>)}
           <select value={selectedExpiry} onChange={e => setExpiryChoice(e.target.value)} className="rounded-lg border border-slate-600 bg-[#0a1220] px-3 py-2 text-sm text-white">
             {groupExpiries.length ? groupExpiries.map(e => <option key={e} value={e}>{e}</option>) : <option value="">या गटात expiry उपलब्ध नाही</option>}
           </select>
