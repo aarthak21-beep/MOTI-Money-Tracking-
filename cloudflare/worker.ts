@@ -269,6 +269,62 @@ export default {
       return response({ error: 'Method not allowed' }, 405, origin);
     }
 
+
+    if (url.pathname === '/api/penny-history') {
+      await env.MOTI_DB.prepare(`
+        CREATE TABLE IF NOT EXISTS moti_penny_stock_history (
+          trading_date TEXT NOT NULL,
+          symbol TEXT NOT NULL,
+          row_json TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (trading_date, symbol)
+        )
+      `).run();
+
+      if (request.method === 'GET') {
+        const result = await env.MOTI_DB.prepare(
+          'SELECT row_json FROM moti_penny_stock_history ORDER BY trading_date ASC, symbol ASC'
+        ).all();
+        try {
+          return response({ rows: (result.results || []).map(item => JSON.parse(item.row_json)) }, 200, origin);
+        } catch {
+          return response({ error: 'Stored Penny Scanner history is invalid JSON' }, 500, origin);
+        }
+      }
+
+      if (request.method === 'PUT') {
+        const contentLength = Number(request.headers.get('content-length') || 0);
+        if (contentLength > 5 * 1024 * 1024) return response({ error: 'Penny history upload exceeds 5 MB' }, 413, origin);
+        let payload;
+        try { payload = await request.json(); }
+        catch { return response({ error: 'Invalid JSON body' }, 400, origin); }
+        if (!Array.isArray(payload.rows) || payload.rows.length === 0) {
+          return response({ error: 'Penny history rows are required' }, 400, origin);
+        }
+        const updatedAt = new Date().toISOString();
+        const statements = [];
+        for (const row of payload.rows) {
+          const date = String(row?.date || '');
+          const symbol = String(row?.symbol || '').trim().toUpperCase();
+          if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || !symbol || !Number.isFinite(Number(row?.close))) {
+            return response({ error: 'Each Penny Scanner row needs a valid ISO trading date, symbol and close price.' }, 400, origin);
+          }
+          const json = JSON.stringify({ ...row, date, symbol });
+          if (new TextEncoder().encode(json).byteLength > 16000) {
+            return response({ error: 'A Penny Scanner row exceeds the safe storage size.' }, 413, origin);
+          }
+          statements.push(env.MOTI_DB.prepare(
+            'INSERT INTO moti_penny_stock_history (trading_date, symbol, row_json, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(trading_date, symbol) DO UPDATE SET row_json = excluded.row_json, updated_at = excluded.updated_at'
+          ).bind(date, symbol, json, updatedAt));
+        }
+        for (let i = 0; i < statements.length; i += 80) {
+          await env.MOTI_DB.batch(statements.slice(i, i + 80));
+        }
+        return response({ ok: true, saved: statements.length, updatedAt }, 200, origin);
+      }
+      return response({ error: 'Method not allowed' }, 405, origin);
+    }
+
     if (url.pathname !== '/api/data') {
       return response({ error: 'Not found' }, 404, origin);
     }
