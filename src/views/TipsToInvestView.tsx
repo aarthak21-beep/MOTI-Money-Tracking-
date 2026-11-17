@@ -12,12 +12,12 @@ const displayDate = (value: string) => { const [y,m,d] = value.split('-'); retur
 const normalizeDateKey = (value: string) => {
   const v = (value || '').trim();
   if (!v) return '';
-  const iso = v.match(/^(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})/);
+  const iso = v.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
   if (iso) return iso[1] + '-' + iso[2].padStart(2, '0') + '-' + iso[3].padStart(2, '0');
-  const dmy = v.match(/^(\\d{1,2})[-/ ]([A-Za-z]{3}|\\d{1,2})[-/ ,](\\d{4})/);
+  const dmy = v.match(/^(\d{1,2})[-/ ]([A-Za-z]{3}|\d{1,2})[-/ ,](\d{4})/);
   if (dmy) {
     const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-    const month = /^\\d+$/.test(dmy[2]) ? Number(dmy[2]) : months.indexOf(dmy[2].toLowerCase()) + 1;
+    const month = /^\d+$/.test(dmy[2]) ? Number(dmy[2]) : months.indexOf(dmy[2].toLowerCase()) + 1;
     if (month >= 1 && month <= 12) return dmy[3] + '-' + String(month).padStart(2, '0') + '-' + dmy[1].padStart(2, '0');
   }
   return v.toLowerCase();
