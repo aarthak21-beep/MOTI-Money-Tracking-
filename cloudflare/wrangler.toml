@@ -6,3 +6,5 @@ compatibility_date = "2026-11-14"
 binding = "MOTI_DB"
 database_name = "moti-data"
 database_id = "d54b244a-77b5-4ed2-b3c5-10e4dc101b00"
+
+# Keep this Worker deployment configuration tracked in Git.
