@@ -69,11 +69,11 @@ function AuthenticatedApp() {
       profile.pinEnabled &&
       profile.pinCode &&
       lastActivity &&
-      Date.now() - lastActivity >= 2 * 60 * 1000
+      Date.now() - lastActivity >= 20 * 60 * 1000
     );
   });
 
-  // Auto-lock after 2 minutes without activity. Background time counts too.
+  // Auto-lock after 20 minutes without activity. Background time counts too.
   // The last-activity timestamp is checked again when the app becomes visible,
   // because mobile browsers may throttle timers while the app is in the background.
   const activityStorageKey = `moti_last_activity_v1_${userId}`;
@@ -81,7 +81,7 @@ function AuthenticatedApp() {
   useEffect(() => {
     if (!profile.pinEnabled || !profile.pinCode || isLocked) return;
 
-    const INACTIVITY_LIMIT_MS = 2 * 60 * 1000;
+    const INACTIVITY_LIMIT_MS = 20 * 60 * 1000;
     let timeout: ReturnType<typeof setTimeout> | undefined;
 
     const clearInactivityTimer = () => {
@@ -123,7 +123,7 @@ function AuthenticatedApp() {
     );
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Restore the last activity time so a closed/reopened app also locks after 2 minutes.
+    // Restore the last activity time so a closed/reopened app also locks after 20 minutes.
     if (!localStorage.getItem(activityStorageKey)) {
       lastActivityAt.current = Date.now();
       localStorage.setItem(activityStorageKey, String(lastActivityAt.current));
