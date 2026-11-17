@@ -9,6 +9,19 @@ const DATA_KEY = 'moti_penny_bhavcopy_v1';
 const BUY_KEY = 'moti_tips_invest_buys_v1';
 const today = () => { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 const displayDate = (value: string) => { const [y,m,d] = value.split('-'); return y && m && d ? d+'-'+m+'-'+y : value; };
+const normalizeDateKey = (value: string) => {
+  const v = (value || '').trim();
+  if (!v) return '';
+  const iso = v.match(/^(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})/);
+  if (iso) return iso[1] + '-' + iso[2].padStart(2, '0') + '-' + iso[3].padStart(2, '0');
+  const dmy = v.match(/^(\\d{1,2})[-/ ]([A-Za-z]{3}|\\d{1,2})[-/ ,](\\d{4})/);
+  if (dmy) {
+    const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    const month = /^\\d+$/.test(dmy[2]) ? Number(dmy[2]) : months.indexOf(dmy[2].toLowerCase()) + 1;
+    if (month >= 1 && month <= 12) return dmy[3] + '-' + String(month).padStart(2, '0') + '-' + dmy[1].padStart(2, '0');
+  }
+  return v.toLowerCase();
+};
 
 const num = (v: string | undefined) => {
   if (!v || !v.trim() || v.trim() === '-') return undefined;
@@ -160,9 +173,9 @@ const parseDeliveryReport = (raw: string): Map<string, number> => {
     const cells = csvLine(line, header.delimiter);
     const symbol = cells[symbolIx]?.trim().toUpperCase();
     const series = (seriesIx >= 0 ? cells[seriesIx] : 'EQ')?.trim().toUpperCase() || 'EQ';
-    const date = dateIx >= 0 ? cells[dateIx]?.trim() : '';
+    const date = dateIx >= 0 ? normalizeDateKey(cells[dateIx] || '') : '';
     const pct = num(cells[deliveryIx]);
-    if (symbol && series === 'EQ' && pct != null) result.set(symbol + '|' + date, pct);
+    if (symbol && series === 'EQ' && pct != null) { result.set(symbol + '|' + date, pct); result.set(symbol + '|', pct); }
   }
   if (!result.size) throw new Error('Delivery file मध्ये valid EQ delivery records सापडले नाहीत.');
   return result;
@@ -205,7 +218,7 @@ export const TipsToInvestView: React.FC = () => {
       if (!parsed.length) throw new Error('CM Bhavcopy मध्ये ₹5–₹30 मधील EQ शेअर्स आढळले नाहीत.');
       setBhavRows(parsed); setBhavFileName(file.name);
       if (deliveryRows) {
-        const merged = parsed.map(r => ({ ...r, deliveryPct: deliveryRows.get(r.symbol + '|' + r.date) ?? deliveryRows.get(r.symbol + '|') }));
+        const merged = parsed.map(r => ({ ...r, deliveryPct: deliveryRows.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? deliveryRows.get(r.symbol + '|') }));
         setRows(merged); localStorage.setItem(DATA_KEY, JSON.stringify(merged));
         setMessage(merged.length + ' matched ₹5–₹30 EQ शेअर्स import झाले.');
       } else setMessage('CM Bhavcopy upload झाली. आता Security-wise Delivery file upload कर.');
@@ -217,7 +230,7 @@ export const TipsToInvestView: React.FC = () => {
       const parsed = parseDeliveryReport(await readCsv(file, 'delivery'));
       setDeliveryRows(parsed); setDeliveryFileName(file.name);
       if (bhavRows) {
-        const merged = bhavRows.map(r => ({ ...r, deliveryPct: parsed.get(r.symbol + '|' + r.date) ?? parsed.get(r.symbol + '|') }));
+        const merged = bhavRows.map(r => ({ ...r, deliveryPct: parsed.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? parsed.get(r.symbol + '|') }));
         setRows(merged); localStorage.setItem(DATA_KEY, JSON.stringify(merged));
         setMessage(merged.length + ' matched ₹5–₹30 EQ शेअर्स import झाले. Delivery match नसल्यास DATA CHECK दिसेल.');
       } else setMessage('Security-wise Delivery file upload झाली. आता CM Equity Bhavcopy upload कर.');
