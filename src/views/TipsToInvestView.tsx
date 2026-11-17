@@ -292,7 +292,7 @@ export const TipsToInvestView: React.FC = () => {
       setDeliveryRows(parsed); setDeliveryFileName(file.name);
       if (bhavRows) {
         const merged = bhavRows.map(r => ({ ...r, deliveryPct: parsed.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? r.deliveryPct }));
-        setRows(merged); localStorage.setItem(DATA_KEY, JSON.stringify(merged)); await saveDailyHistory(merged);
+        setRows(merged); await saveDailyHistory(merged);
         setMessage(merged.length + ' matched ₹5–₹30 EQ शेअर्स import झाले. Delivery match नसल्यास DATA CHECK दिसेल.');
       } else setMessage('Security-wise Delivery file upload झाली. आता CM Equity Bhavcopy upload कर.');
     } catch (e) { setMessage(e instanceof Error ? e.message : 'Delivery file वाचता आली नाही.'); }
