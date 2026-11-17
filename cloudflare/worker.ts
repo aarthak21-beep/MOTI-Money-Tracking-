@@ -281,10 +281,10 @@ export default {
         )
       `).run();
 
-      // Remove legacy non-equity series (ETF, BE, BL, etc.) from Penny Scanner history.
-      // Rows without a series field are retained as EQ for backward compatibility.
+      // Purge non-EQ series and known NSE ETF/index-fund symbols from Penny Scanner history.
+      // ETF units can be in EQ series, so series alone is not a sufficient ETF test.
       await env.MOTI_DB.prepare(
-        "DELETE FROM moti_penny_stock_history WHERE upper(coalesce(json_extract(row_json, '$.series'), 'EQ')) <> 'EQ'"
+        "DELETE FROM moti_penny_stock_history WHERE upper(coalesce(json_extract(row_json, '$.series'), 'EQ')) <> 'EQ' OR upper(symbol) IN ('MOBANK10', 'ABSLPSE', 'INTERNET', 'NV20', 'BFSI', 'INSUREIETF', 'LTGILTBEES', 'MID150', 'NIF100IETF', 'NIFTYQLITY', 'AONENIFTY', 'LOWVOL1', 'LOWVOLIETF', 'TOP15IETF', 'MOMMIDCAP', 'TOP20', 'GOLDCASE', 'ALPL30IETF', 'BANK10BETF', 'GOLDADD', 'MAHKTECH', 'MOMETAL', 'MONIFTY100', 'PHARMABEES', 'SILVERADD', 'TOP100CASE', 'AONEGOLD', 'AONETOTAL', 'BSLNIFTY', 'HDFCNIF100', 'MID150CASE', 'QUAL30IETF', 'GROWWMETAL', 'GROWWNET', 'GROWWRAIL', 'GROWWRLTY', 'NIFTYBEES', 'BANKBEES', 'ITBEES', 'JUNIORBEES', 'PSUBNKBEES', 'SETFNIF50', 'MID150BEES', 'NIFTYIETF', 'CPSEETF', 'NIFTYETF', 'AUTOBEES', 'NEXT50IETF', 'MIDCAPETF', 'SETFNIFBK', 'NIFTY1', 'HDFCNIFTY', 'SETFNN50', 'NEXT50', 'NIFTYBETA', 'HDFCNIFBAN', 'HDFCMID150', 'ABSLBANETF', 'BANKETF', 'NIFTYADD', 'PSUBANKADD', 'NIFTYAXIS', 'INFRABEES', 'NIFTYBETF', 'BANKADD', 'HDFCNIFIT', 'SBIETFIT', 'MOM50', 'DIVOPPBEES', 'TECH', 'BANKBETF', 'QNIFTY', 'BNKETFAXIS', 'ABSLNN50ET', 'NETF', 'IDFNIFTYET', 'NIF100BEES', 'HDFCPSUBK', 'ITETF', 'NEXT50BETA', 'NV20BEES') OR upper(symbol) LIKE '%IETF' OR upper(symbol) LIKE '%BEES' OR upper(symbol) LIKE '%ETF' OR upper(symbol) LIKE '%CASE'"
       ).run();
 
       if (request.method === 'GET') {
