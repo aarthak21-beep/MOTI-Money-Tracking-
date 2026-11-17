@@ -25,6 +25,60 @@ const csvLine = (line: string) => {
   }
   out.push(cell.trim()); return out;
 };
+const extractCsvFromZip = async (file: File): Promise<string> => {
+  const buffer = await file.arrayBuffer();
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  const decoder = new TextDecoder();
+  let eocd = -1;
+  for (let i = Math.max(0, bytes.length - 65557); i <= bytes.length - 22; i++) {
+    if (view.getUint32(i, true) === 0x06054b50) eocd = i;
+  }
+  if (eocd < 0) throw new Error('ZIP फाइल योग्य नाही किंवा corrupt आहे.');
+  const entryCount = view.getUint16(eocd + 10, true);
+  let cursor = view.getUint32(eocd + 16, true);
+  const candidates: { name: string; text: string }[] = [];
+  for (let i = 0; i < entryCount; i++) {
+    if (view.getUint32(cursor, true) !== 0x02014b50) break;
+    const method = view.getUint16(cursor + 10, true);
+    const compressedSize = view.getUint32(cursor + 20, true);
+    const nameLength = view.getUint16(cursor + 28, true);
+    const extraLength = view.getUint16(cursor + 30, true);
+    const commentLength = view.getUint16(cursor + 32, true);
+    const localOffset = view.getUint32(cursor + 42, true);
+    const name = decoder.decode(bytes.slice(cursor + 46, cursor + 46 + nameLength));
+    cursor += 46 + nameLength + extraLength + commentLength;
+    if (!name.toLowerCase().endsWith('.csv') || name.endsWith('/')) continue;
+    if (view.getUint32(localOffset, true) !== 0x04034b50) continue;
+    const localNameLength = view.getUint16(localOffset + 26, true);
+    const localExtraLength = view.getUint16(localOffset + 28, true);
+    const start = localOffset + 30 + localNameLength + localExtraLength;
+    const compressed = bytes.slice(start, start + compressedSize);
+    let content: Uint8Array;
+    if (method === 0) content = compressed;
+    else if (method === 8) {
+      if (typeof DecompressionStream === 'undefined') throw new Error('या browser मध्ये ZIP extract support नाही. ZIP Extract करून CSV upload कर.');
+      const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw' as CompressionFormat));
+      content = new Uint8Array(await new Response(stream).arrayBuffer());
+    } else continue;
+    candidates.push({ name, text: decoder.decode(content) });
+  }
+  if (!candidates.length) throw new Error('ZIP मध्ये CSV फाइल सापडली नाही.');
+  const preferred = candidates.sort((a, b) => {
+    const score = (s: string) => /bhav|cm-|equity/i.test(s) ? 1 : 0;
+    return score(b.name) - score(a.name);
+  });
+  let lastError: unknown;
+  for (const candidate of preferred) {
+    try {
+      const parsed = parseBhavcopy(candidate.text);
+      if (parsed.length) return candidate.text;
+      lastError = new Error(candidate.name + ' मध्ये ₹1–₹50 EQ शेअर्स आढळले नाहीत.');
+    } catch (error) { lastError = error; }
+  }
+  throw lastError instanceof Error ? lastError : new Error('ZIP मधील CSV वाचता आली नाही.');
+};
+
 const parseBhavcopy = (raw: string): Row[] => {
   const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) throw new Error('CSV मध्ये Header आणि data rows असणे आवश्यक आहे.');
@@ -67,8 +121,14 @@ export const TipsToInvestView: React.FC = () => {
   };
   const upload = async (file?: File) => {
     if (!file) return;
-    try { const parsed = parseBhavcopy(await file.text()); setRows(parsed); localStorage.setItem(DATA_KEY, JSON.stringify(parsed)); setMessage(parsed.length + ' ₹1–₹50 EQ शेअर्स import झाले.'); }
-    catch (e) { setMessage(e instanceof Error ? e.message : 'CSV वाचता आले नाही.'); }
+    try {
+      const isZip = file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed';
+      const csvText = isZip ? await extractCsvFromZip(file) : await file.text();
+      const parsed = parseBhavcopy(csvText);
+      if (!parsed.length) throw new Error('या Bhavcopy मध्ये ₹1–₹50 मधील EQ शेअर्स आढळले नाहीत.');
+      setRows(parsed); localStorage.setItem(DATA_KEY, JSON.stringify(parsed));
+      setMessage(parsed.length + ' ₹1–₹50 EQ शेअर्स import झाले.' + (isZip ? ' ZIP मधून CSV आपोआप extract केली.' : ''));
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'फाइल वाचता आली नाही.'); }
   };
   const removeTips = (id: string) => persistTips(tips.filter(x => x.id !== id));
   const addBuy = () => {
@@ -89,9 +149,9 @@ export const TipsToInvestView: React.FC = () => {
     </div>
     <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
       <section className="rounded-2xl border border-white/10 bg-[#0b1421] p-4 space-y-3"><h2 className="font-bold">Add weekly Tips</h2><label className="block text-xs text-slate-400">रक्कम (₹)</label><input value={amount} onChange={e=>setAmount(e.target.value)} type="number" min="1" placeholder="उदा. 250" className="w-full rounded-lg border border-white/10 bg-[#050a12] px-3 py-2 text-sm outline-none focus:border-emerald-400"/><label className="block text-xs text-slate-400">Note</label><input value={note} onChange={e=>setNote(e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#050a12] px-3 py-2 text-sm outline-none focus:border-emerald-400"/><button onClick={addTips} className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-400 px-3 py-2 text-sm font-bold text-slate-950"><Plus className="h-4 w-4"/> Add to Wallet</button><div className="max-h-48 space-y-2 overflow-auto">{tips.map(t=><div key={t.id} className="flex items-center justify-between rounded-lg bg-white/[0.04] p-2 text-xs"><span><b>₹{t.amount}</b><span className="ml-2 text-slate-400">{displayDate(t.date)} · {t.note}</span></span><button onClick={()=>removeTips(t.id)} title="Delete entry" className="text-slate-500 hover:text-rose-400"><Trash2 className="h-3.5 w-3.5"/></button></div>)}</div><div className="border-t border-white/10 pt-3 space-y-2"><h3 className="text-sm font-bold">Buy Entry</h3><div className="grid grid-cols-2 gap-2"><input value={buySymbol} onChange={e=>setBuySymbol(e.target.value)} placeholder="Symbol (उदा. ABC)" className="rounded-lg border border-white/10 bg-[#050a12] px-3 py-2 text-xs"/><input value={buyDate} onChange={e=>setBuyDate(e.target.value)} type="date" className="rounded-lg border border-white/10 bg-[#050a12] px-3 py-2 text-xs"/><input value={buyQuantity} onChange={e=>setBuyQuantity(e.target.value)} type="number" min="1" step="1" placeholder="Quantity" className="rounded-lg border border-white/10 bg-[#050a12] px-3 py-2 text-xs"/><input value={buyPrice} onChange={e=>setBuyPrice(e.target.value)} type="number" min="0.01" step="0.01" placeholder="Buy price / share" className="rounded-lg border border-white/10 bg-[#050a12] px-3 py-2 text-xs"/></div><p className="text-[11px] text-slate-400">Total: ₹{((Number(buyQuantity)||0)*(Number(buyPrice)||0)).toLocaleString('en-IN')} · Available: ₹{availableBalance.toLocaleString('en-IN')}</p><button onClick={addBuy} className="w-full rounded-lg bg-sky-400 px-3 py-2 text-sm font-bold text-slate-950">Save Buy & Deduct Wallet</button>{buys.length>0 && <div className="max-h-36 space-y-2 overflow-auto">{buys.map(b=><div key={b.id} className="flex items-center justify-between rounded-lg bg-white/[0.04] p-2 text-xs"><span><b>{b.symbol}</b> · {b.quantity} × ₹{b.price.toFixed(2)} = ₹{b.total.toLocaleString('en-IN')}<span className="ml-2 text-slate-400">{displayDate(b.date)}</span></span><button onClick={()=>removeBuy(b.id)} title="Delete buy (refund wallet)" className="text-slate-500 hover:text-rose-400"><Trash2 className="h-3.5 w-3.5"/></button></div>)}</div>}</div></section>
-      <section className="rounded-2xl border border-white/10 bg-[#0b1421] p-4 space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold">Penny Stock Scanner</h2><p className="text-xs text-slate-400">NSE Equity Bhavcopy CSV upload कर</p></div><label className="flex cursor-pointer items-center gap-2 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs font-semibold text-emerald-200"><Upload className="h-4 w-4"/> Upload CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={e=>upload(e.target.files?.[0])}/></label></div><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search symbol..." className="w-full rounded-lg border border-white/10 bg-[#050a12] py-2 pl-9 pr-3 text-sm"/></div>
+      <section className="rounded-2xl border border-white/10 bg-[#0b1421] p-4 space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold">Penny Stock Scanner</h2><p className="text-xs text-slate-400">NSE Equity Bhavcopy CSV किंवा ZIP upload कर</p></div><label className="flex cursor-pointer items-center gap-2 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs font-semibold text-emerald-200"><Upload className="h-4 w-4"/> Upload CSV / ZIP<input type="file" accept=".csv,.zip,text/csv,application/zip" className="hidden" onChange={e=>upload(e.target.files?.[0])}/></label></div><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search symbol..." className="w-full rounded-lg border border-white/10 bg-[#050a12] py-2 pl-9 pr-3 text-sm"/></div>
       {message && <p className="text-xs text-emerald-300">{message}</p>}
-      {ranked.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-500"><tr><th className="py-2">Symbol</th><th>Close</th><th>Volume</th><th>Delivery</th><th>Score</th><th>View</th></tr></thead><tbody>{ranked.slice(0,100).map(r=><tr key={r.symbol} className="border-t border-white/[0.06]"><td className="py-2 font-bold">{r.symbol}<div className="text-[10px] font-normal text-slate-500">{r.date}</div></td><td>₹{r.close.toFixed(2)}</td><td>{r.volume.toLocaleString('en-IN')}</td><td>{r.deliveryPct == null ? '—' : r.deliveryPct.toFixed(1)+'%'}</td><td className="font-bold">{r.score}/80</td><td><span className={r.rating==='WATCH'?'text-emerald-300':r.rating==='RESEARCH'?'text-amber-300':'text-rose-300'}>{r.rating}</span></td></tr>)}</tbody></table></div> : <div className="rounded-xl border border-dashed border-white/10 p-8 text-center"><TrendingUp className="mx-auto h-7 w-7 text-slate-500"/><p className="mt-2 text-sm font-semibold">अजून Bhavcopy upload केलेली नाही</p><p className="mt-1 text-xs text-slate-500">NSE ची latest Equity Bhavcopy CSV upload केल्यावर ₹1–₹50 शेअर्स दिसतील.</p></div>}
+      {ranked.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-500"><tr><th className="py-2">Symbol</th><th>Close</th><th>Volume</th><th>Delivery</th><th>Score</th><th>View</th></tr></thead><tbody>{ranked.slice(0,100).map(r=><tr key={r.symbol} className="border-t border-white/[0.06]"><td className="py-2 font-bold">{r.symbol}<div className="text-[10px] font-normal text-slate-500">{r.date}</div></td><td>₹{r.close.toFixed(2)}</td><td>{r.volume.toLocaleString('en-IN')}</td><td>{r.deliveryPct == null ? '—' : r.deliveryPct.toFixed(1)+'%'}</td><td className="font-bold">{r.score}/80</td><td><span className={r.rating==='WATCH'?'text-emerald-300':r.rating==='RESEARCH'?'text-amber-300':'text-rose-300'}>{r.rating}</span></td></tr>)}</tbody></table></div> : <div className="rounded-xl border border-dashed border-white/10 p-8 text-center"><TrendingUp className="mx-auto h-7 w-7 text-slate-500"/><p className="mt-2 text-sm font-semibold">अजून Bhavcopy upload केलेली नाही</p><p className="mt-1 text-xs text-slate-500">NSE ची latest Equity Bhavcopy CSV किंवा ZIP upload केल्यावर ₹1–₹50 शेअर्स दिसतील.</p></div>}
       <div className="flex gap-2 rounded-lg bg-amber-400/5 p-3 text-[11px] leading-relaxed text-amber-200"><ShieldAlert className="h-4 w-4 shrink-0"/><span>हा प्राथमिक volume/delivery screen आहे; Fundamentals, promoter pledge, liquidity spread किंवा live price तपासत नाही. Score म्हणजे Buy recommendation नाही. CSV ची तारीख तपासूनच निर्णय घे.</span></div></section>
     </div>
   </div>;
