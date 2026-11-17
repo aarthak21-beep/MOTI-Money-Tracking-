@@ -306,7 +306,7 @@ export default {
         for (const row of payload.rows) {
           const date = String(row?.date || '');
           const symbol = String(row?.symbol || '').trim().toUpperCase();
-          if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || !symbol || !Number.isFinite(Number(row?.close))) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !symbol || !Number.isFinite(Number(row?.close))) {
             return response({ error: 'Each Penny Scanner row needs a valid ISO trading date, symbol and close price.' }, 400, origin);
           }
           const json = JSON.stringify({ ...row, date, symbol });
