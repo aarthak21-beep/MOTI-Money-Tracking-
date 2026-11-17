@@ -159,7 +159,7 @@ const parseBhavcopy = (raw: string): Row[] => {
   const close = ix(closeNames);
   const volume = ix(volumeNames);
   const delivery = ix(['delivper', 'deliverypercentage', 'deliverypct', 'dlvrypct']);
-  const turnover = ix(['turnoverlacs', 'turnover', 'ttltrfval']);
+  const turnover = ix(['turnoverlacs', 'turnover', 'ttltrfval', 'tottrdval', 'ttltrdval']);
   return lines.slice(header.index + 1).map(line => {
     const row = csvLine(line, delimiter);
     return {
@@ -169,7 +169,7 @@ const parseBhavcopy = (raw: string): Row[] => {
       close: num(row[close]) || 0,
       volume: num(row[volume]) || 0,
       deliveryPct: delivery >= 0 ? num(row[delivery]) : undefined,
-      turnover: turnover >= 0 ? (headers[turnover] === 'ttltrfval' ? (num(row[turnover]) || 0) / 100000 : num(row[turnover])) : undefined
+      turnover: turnover >= 0 ? (['ttltrfval', 'tottrdval', 'ttltrdval'].includes(headers[turnover]) ? (num(row[turnover]) || 0) / 100000 : num(row[turnover])) : undefined
     };
   }).filter(r => r.symbol && r.series === 'EQ' && !isEtfSymbol(r.symbol) && r.close >= 5 && r.close <= 30 && r.volume > 0);
 };
