@@ -281,9 +281,15 @@ export default {
         )
       `).run();
 
+      // Remove legacy non-equity series (ETF, BE, BL, etc.) from Penny Scanner history.
+      // Rows without a series field are retained as EQ for backward compatibility.
+      await env.MOTI_DB.prepare(
+        "DELETE FROM moti_penny_stock_history WHERE upper(coalesce(json_extract(row_json, '$.series'), 'EQ')) <> 'EQ'"
+      ).run();
+
       if (request.method === 'GET') {
         const result = await env.MOTI_DB.prepare(
-          'SELECT row_json FROM moti_penny_stock_history ORDER BY trading_date ASC, symbol ASC'
+          "SELECT row_json FROM moti_penny_stock_history WHERE upper(coalesce(json_extract(row_json, '$.series'), 'EQ')) = 'EQ' ORDER BY trading_date ASC, symbol ASC"
         ).all();
         try {
           return response({ rows: (result.results || []).map(item => JSON.parse(item.row_json)) }, 200, origin);
