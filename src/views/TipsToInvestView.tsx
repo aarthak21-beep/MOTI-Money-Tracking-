@@ -82,29 +82,42 @@ const extractCsvFromZip = async (file: File): Promise<string> => {
 const parseBhavcopy = (raw: string): Row[] => {
   const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
   if (lines.length < 2) throw new Error('CSV मध्ये Header आणि data rows असणे आवश्यक आहे.');
-  const sample = lines.slice(0, 12);
   const delimiters = [',', ';', '\t', '|'];
-  const delimiter = delimiters.sort((a, b) =>
-    (sample[0].split(b).length - 1) - (sample[0].split(a).length - 1)
-  )[0];
   const normalize = (value: string) => value.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  const header = sample.map((line, index) => ({ index, headers: csvLine(line, delimiter).map(normalize) }))
-    .find(x =>
-      x.headers.some(h => ['symbol', 'tckrsymb'].includes(h)) &&
-      x.headers.some(h => ['closeprice', 'close', 'lastprice', 'clspric', 'lastpric'].includes(h)) &&
-      x.headers.some(h => ['ttltrdqty', 'volume', 'totaltradedquantity', 'ttltradgvol'].includes(h))
-    );
+  const symbolNames = ['symbol', 'tckrsymb'];
+  const closeNames = ['closeprice', 'close', 'lastprice', 'clspric', 'lastpric'];
+  const volumeNames = ['ttltrdqty', 'volume', 'totaltradedquantity', 'ttltradgvol'];
+  const candidates = lines.slice(0, 20).map((line, index) => {
+    const parsed = delimiters.map(delimiter => ({
+      delimiter,
+      headers: csvLine(line, delimiter).map(normalize)
+    }));
+    const best = parsed.sort((a, b) => {
+      const score = (headers: string[]) =>
+        Number(headers.some(h => symbolNames.includes(h))) +
+        Number(headers.some(h => closeNames.includes(h))) +
+        Number(headers.some(h => volumeNames.includes(h)));
+      return score(b.headers) - score(a.headers) || b.headers.length - a.headers.length;
+    })[0];
+    const score =
+      Number(best.headers.some(h => symbolNames.includes(h))) +
+      Number(best.headers.some(h => closeNames.includes(h))) +
+      Number(best.headers.some(h => volumeNames.includes(h)));
+    return { index, ...best, score };
+  });
+  const header = candidates.find(x => x.score === 3);
   if (!header) {
-    const preview = csvLine(sample[0], delimiter).slice(0, 8).join(', ');
-    throw new Error('Bhavcopy header match झाला नाही. File headers: ' + preview + '. CM Equity Bhavcopy CSV निवड.');
+    const best = candidates.sort((a, b) => b.score - a.score || b.headers.length - a.headers.length)[0];
+    throw new Error('Bhavcopy header match झाला नाही. File headers: ' + best.headers.slice(0, 16).join(', ') + '. SYMBOL, CLOSE_PRICE आणि TTL_TRD_QNTY असलेली CM Equity Bhavcopy CSV निवड.');
   }
   const headers = header.headers;
+  const delimiter = header.delimiter;
   const ix = (names: string[]) => headers.findIndex(h => names.includes(h));
-  const symbol = ix(['symbol', 'tckrsymb']);
+  const symbol = ix(symbolNames);
   const series = ix(['series', 'sctysrs']);
   const date = ix(['date1', 'date', 'traddt', 'bizdt']);
-  const close = ix(['closeprice', 'close', 'lastprice', 'clspric', 'lastpric']);
-  const volume = ix(['ttltrdqty', 'volume', 'totaltradedquantity', 'ttltradgvol']);
+  const close = ix(closeNames);
+  const volume = ix(volumeNames);
   const delivery = ix(['delivper', 'deliverypercentage', 'deliverypct', 'dlvrypct']);
   const turnover = ix(['turnoverlacs', 'turnover', 'ttltrfval']);
   return lines.slice(header.index + 1).map(line => {
