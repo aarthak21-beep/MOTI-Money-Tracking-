@@ -86,3 +86,16 @@ export const loadNiftyOptionsHistory = async <T,>(): Promise<T[]> => {
 export const saveNiftyOptionsSnapshot = async <T,>(snapshot: T): Promise<void> => {
   await request('/api/nifty-options/history', { method: 'PUT', body: JSON.stringify({ snapshot }) });
 };
+
+export const loadPennyStockHistory = async <T,>(): Promise<T[]> => {
+  const result = await request<{ rows: T[] }>('/api/penny-history');
+  return result.rows || [];
+};
+
+export const savePennyStockHistory = async <T,>(rows: T[]): Promise<void> => {
+  if (!rows.length) return;
+  await request('/api/penny-history', {
+    method: 'PUT',
+    body: JSON.stringify({ rows }),
+  });
+};
