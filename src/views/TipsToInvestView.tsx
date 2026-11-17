@@ -82,55 +82,32 @@ const extractCsvFromZip = async (file: File): Promise<string> => {
 const parseBhavcopy = (raw: string): Row[] => {
   const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
   if (lines.length < 2) throw new Error('CSV मध्ये Header आणि data rows असणे आवश्यक आहे.');
-  // Detect comma, semicolon or tab-delimited NSE exports and normalize header names.
   const sample = lines.slice(0, 12);
-  const delimiter = [',', ';', '\\t', '|'].map(d => ({ d, count: (sample[0].match(new RegExp(d === '\\t' ? '\\t' : d.replace(/[.*+?^$\\{\\}()|[\\]\\\\]/g, '\\\\const parseBhavcopy = (raw: string): Row[] => {
-  const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
-  if (lines.length < 2) throw new Error('CSV मध्ये Header आणि data rows असणे आवश्यक आहे.');
-  // NSE has legacy CM bhavcopy headers and newer UDiFF headers (TckrSymb, ClsPric, TtlTradgVol).
-  const headerIndex = lines.findIndex((line, index) => index < 12 && /symbol|tckrsymb/i.test(line) && /closeprice|clspric|lastprice/i.test(line));
-  const start = headerIndex >= 0 ? headerIndex : 0;
-  const headers = csvLine(lines[start]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
-  const ix = (names: string[]) => headers.findIndex(h => names.includes(h));
-  const symbol = ix(['symbol','tckrsymb']); const series = ix(['series','sctysrs']); const date = ix(['date1','date','traddt','bizdt']);
-  const close = ix(['closeprice','close','lastprice','clspric','lastpric']);
-  const volume = ix(['ttltrdqty','volume','totaltradedquantity','ttltradgvol']);
-  const delivery = ix(['delivper','deliverypercentage','deliverypct','dlvrypct']);
-  const turnover = ix(['turnoverlacs','turnover','ttltrfval']);
-  if ([symbol, close, volume].some(i => i < 0)) {
-    throw new Error('Bhavcopy header match झाला नाही. Legacy: SYMBOL/CLOSE_PRICE/TTL_TRD_QNTY किंवा NSE UDiFF: TckrSymb/ClsPric/TtlTradgVol असलेली CM Equity Bhavcopy निवड.');
-  }
-  return lines.slice(start + 1).map(line => {
-    const row = csvLine(line);
-    return {
-      symbol: row[symbol]?.trim().toUpperCase(),
-      series: (series >= 0 ? row[series] : 'EQ')?.trim().toUpperCase() || 'EQ',
-      date: date >= 0 ? row[date] : '',
-      close: num(row[close]) || 0,
-      volume: num(row[volume]) || 0,
-      deliveryPct: delivery >= 0 ? num(row[delivery]) : undefined,
-      turnover: turnover >= 0 ? (headers[turnover] === 'ttltrfval' ? (num(row[turnover]) || 0) / 100000 : num(row[turnover])) : undefined
-    };
-  }).filter(r => r.symbol && r.series === 'EQ' && r.close >= 1 && r.close <= 50 && r.volume > 0);
-};'), 'g')) || []).length })).sort((a,b) => b.count-a.count)[0]?.d || ',';
+  const delimiters = [',', ';', '\t', '|'];
+  const delimiter = delimiters.sort((a, b) =>
+    (sample[0].split(b).length - 1) - (sample[0].split(a).length - 1)
+  )[0];
   const normalize = (value: string) => value.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  const parsedHeaders = sample.map((line, index) => ({ index, headers: csvLine(line, delimiter).map(normalize) }));
-  const header = parsedHeaders.find(x => x.headers.some(h => ['symbol','tckrsymb'].includes(h)) &&
-    x.headers.some(h => ['closeprice','close','lastprice','clspric','lastpric'].includes(h)) &&
-    x.headers.some(h => ['ttltrdqty','volume','totaltradedquantity','ttltradgvol'].includes(h)));
+  const header = sample.map((line, index) => ({ index, headers: csvLine(line, delimiter).map(normalize) }))
+    .find(x =>
+      x.headers.some(h => ['symbol', 'tckrsymb'].includes(h)) &&
+      x.headers.some(h => ['closeprice', 'close', 'lastprice', 'clspric', 'lastpric'].includes(h)) &&
+      x.headers.some(h => ['ttltrdqty', 'volume', 'totaltradedquantity', 'ttltradgvol'].includes(h))
+    );
   if (!header) {
-    const preview = parsedHeaders[0]?.headers.slice(0, 8).join(', ');
-    throw new Error('Bhavcopy header match झाला नाही. File मधील सुरुवातीचे headers: ' + (preview || 'वाचता आले नाहीत') + '. CM Equity Bhavcopy CSV निवड.');
+    const preview = csvLine(sample[0], delimiter).slice(0, 8).join(', ');
+    throw new Error('Bhavcopy header match झाला नाही. File headers: ' + preview + '. CM Equity Bhavcopy CSV निवड.');
   }
-  const start = header.index;
   const headers = header.headers;
   const ix = (names: string[]) => headers.findIndex(h => names.includes(h));
-  const symbol = ix(['symbol','tckrsymb']); const series = ix(['series','sctysrs']); const date = ix(['date1','date','traddt','bizdt']);
-  const close = ix(['closeprice','close','lastprice','clspric','lastpric']);
-  const volume = ix(['ttltrdqty','volume','totaltradedquantity','ttltradgvol']);
-  const delivery = ix(['delivper','deliverypercentage','deliverypct','dlvrypct']);
-  const turnover = ix(['turnoverlacs','turnover','ttltrfval']);
-  return lines.slice(start + 1).map(line => {
+  const symbol = ix(['symbol', 'tckrsymb']);
+  const series = ix(['series', 'sctysrs']);
+  const date = ix(['date1', 'date', 'traddt', 'bizdt']);
+  const close = ix(['closeprice', 'close', 'lastprice', 'clspric', 'lastpric']);
+  const volume = ix(['ttltrdqty', 'volume', 'totaltradedquantity', 'ttltradgvol']);
+  const delivery = ix(['delivper', 'deliverypercentage', 'deliverypct', 'dlvrypct']);
+  const turnover = ix(['turnoverlacs', 'turnover', 'ttltrfval']);
+  return lines.slice(header.index + 1).map(line => {
     const row = csvLine(line, delimiter);
     return {
       symbol: row[symbol]?.trim().toUpperCase(),
@@ -143,7 +120,6 @@ const parseBhavcopy = (raw: string): Row[] => {
     };
   }).filter(r => r.symbol && r.series === 'EQ' && r.close >= 1 && r.close <= 50 && r.volume > 0);
 };
-
 export const TipsToInvestView: React.FC = () => {
   const [tips, setTips] = useState<TipEntry[]>(() => { try { return JSON.parse(localStorage.getItem(WALLET_KEY) || '[]'); } catch { return []; } });
   const [rows, setRows] = useState<Row[]>(() => { try { return JSON.parse(localStorage.getItem(DATA_KEY) || '[]'); } catch { return []; } });
