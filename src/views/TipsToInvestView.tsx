@@ -7,7 +7,7 @@ type BuyEntry = { id: string; date: string; symbol: string; quantity: number; pr
 const WALLET_KEY = 'moti_tips_invest_wallet_v1';
 const DATA_KEY = 'moti_penny_bhavcopy_v1';
 const BUY_KEY = 'moti_tips_invest_buys_v1';
-const today = () => new Date().toISOString().slice(0,10);
+const today = () => { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 const displayDate = (value: string) => { const [y,m,d] = value.split('-'); return y && m && d ? d+'-'+m+'-'+y : value; };
 
 const num = (v: string | undefined) => {
@@ -62,7 +62,7 @@ export const TipsToInvestView: React.FC = () => {
   const addTips = () => {
     const value = Number(amount);
     if (!Number.isFinite(value) || value <= 0) { setMessage('योग्य Tips रक्कम टाक.'); return; }
-    persistTips([{ id: String(Date.now()), date: new Date().toISOString().slice(0,10), amount: value, note }, ...tips]);
+    persistTips([{ id: String(Date.now()), date: today(), amount: value, note }, ...tips]);
     setAmount(''); setMessage('Tips Wallet मध्ये जमा झाले.');
   };
   const upload = async (file?: File) => {
