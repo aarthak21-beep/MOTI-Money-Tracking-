@@ -4,6 +4,11 @@ import { Wallet, Upload, Plus, Trash2, ShieldAlert, Search, TrendingUp } from 'l
 // @ts-ignore Vite supports JSON module imports.
 import fundamentalsData from '../data/pennyFundamentals.json';
 
+const ETF_SYMBOLS = new Set<string>(["MOBANK10","ABSLPSE","INTERNET","NV20","BFSI","INSUREIETF","LTGILTBEES","MID150","NIF100IETF","NIFTYQLITY","AONENIFTY","LOWVOL1","LOWVOLIETF","TOP15IETF","MOMMIDCAP","TOP20","GOLDCASE","ALPL30IETF","BANK10BETF","GOLDADD","MAHKTECH","MOMETAL","MONIFTY100","PHARMABEES","SILVERADD","TOP100CASE","AONEGOLD","AONETOTAL","BSLNIFTY","HDFCNIF100","MID150CASE","QUAL30IETF","GROWWMETAL","GROWWNET","GROWWRAIL","GROWWRLTY","NIFTYBEES","BANKBEES","ITBEES","JUNIORBEES","PSUBNKBEES","SETFNIF50","MID150BEES","NIFTYIETF","CPSEETF","NIFTYETF","AUTOBEES","NEXT50IETF","MIDCAPETF","SETFNIFBK","NIFTY1","HDFCNIFTY","SETFNN50","NEXT50","NIFTYBETA","HDFCNIFBAN","HDFCMID150","ABSLBANETF","BANKETF","NIFTYADD","PSUBANKADD","NIFTYAXIS","INFRABEES","NIFTYBETF","BANKADD","HDFCNIFIT","SBIETFIT","MOM50","DIVOPPBEES","TECH","BANKBETF","QNIFTY","BNKETFAXIS","ABSLNN50ET","NETF","IDFNIFTYET","NIF100BEES","HDFCPSUBK","ITETF","NEXT50BETA","NV20BEES"]);
+const isEtfSymbol = (symbol: string) => {
+  const value = (symbol || '').trim().toUpperCase();
+  return ETF_SYMBOLS.has(value) || /(IETF|BEES|ETF|CASE)$/.test(value);
+};
 type Row = { symbol: string; series: string; date: string; close: number; volume: number; deliveryPct?: number; turnover?: number };
 type TipEntry = { id: string; date: string; amount: number; note: string };
 type BuyEntry = { id: string; date: string; symbol: string; quantity: number; price: number; total: number };
@@ -166,7 +171,7 @@ const parseBhavcopy = (raw: string): Row[] => {
       deliveryPct: delivery >= 0 ? num(row[delivery]) : undefined,
       turnover: turnover >= 0 ? (headers[turnover] === 'ttltrfval' ? (num(row[turnover]) || 0) / 100000 : num(row[turnover])) : undefined
     };
-  }).filter(r => r.symbol && r.series === 'EQ' && r.close >= 5 && r.close <= 30 && r.volume > 0);
+  }).filter(r => r.symbol && r.series === 'EQ' && !isEtfSymbol(r.symbol) && r.close >= 5 && r.close <= 30 && r.volume > 0);
 };
 
 const parseDeliveryReport = (raw: string): Map<string, number> => {
@@ -197,7 +202,7 @@ const parseDeliveryReport = (raw: string): Map<string, number> => {
     const series = (seriesIx >= 0 ? cells[seriesIx] : 'EQ')?.trim().toUpperCase() || 'EQ';
     const date = dateIx >= 0 ? normalizeDateKey(cells[dateIx] || '') : '';
     const pct = num(cells[deliveryIx]);
-    if (symbol && series === 'EQ' && pct != null) { result.set(symbol + '|' + date, pct); }
+    if (symbol && series === 'EQ' && !isEtfSymbol(symbol) && pct != null) { result.set(symbol + '|' + date, pct); }
   }
   if (!result.size) throw new Error('Delivery file मध्ये valid EQ delivery records सापडले नाहीत.');
   return result;
@@ -237,7 +242,7 @@ export const TipsToInvestView: React.FC = () => {
         const merged = new Map<string, Row>();
         [...saved, ...legacy].forEach(row => {
           const normalized = { ...row, date: normalizeDateKey(row.date) };
-          if (normalized.date && normalized.symbol) merged.set(normalized.symbol + '|' + normalized.date, normalized);
+          if (normalized.date && normalized.symbol && !isEtfSymbol(normalized.symbol)) merged.set(normalized.symbol + '|' + normalized.date, normalized);
         });
         const allRows = Array.from(merged.values());
         const legacyRows = allRows.filter(row => !saved.some(item =>
