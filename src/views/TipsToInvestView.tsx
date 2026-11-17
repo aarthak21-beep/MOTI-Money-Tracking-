@@ -218,7 +218,7 @@ export const TipsToInvestView: React.FC = () => {
       if (!parsed.length) throw new Error('CM Bhavcopy मध्ये ₹5–₹30 मधील EQ शेअर्स आढळले नाहीत.');
       setBhavRows(parsed); setBhavFileName(file.name);
       if (deliveryRows) {
-        const merged = parsed.map(r => ({ ...r, deliveryPct: deliveryRows.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? deliveryRows.get(r.symbol + '|') }));
+        const merged = parsed.map(r => ({ ...r, deliveryPct: deliveryRows.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? deliveryRows.get(r.symbol + '|') ?? r.deliveryPct }));
         setRows(merged); localStorage.setItem(DATA_KEY, JSON.stringify(merged));
         setMessage(merged.length + ' matched ₹5–₹30 EQ शेअर्स import झाले.');
       } else setMessage('CM Bhavcopy upload झाली. आता Security-wise Delivery file upload कर.');
@@ -230,7 +230,7 @@ export const TipsToInvestView: React.FC = () => {
       const parsed = parseDeliveryReport(await readCsv(file, 'delivery'));
       setDeliveryRows(parsed); setDeliveryFileName(file.name);
       if (bhavRows) {
-        const merged = bhavRows.map(r => ({ ...r, deliveryPct: parsed.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? parsed.get(r.symbol + '|') }));
+        const merged = bhavRows.map(r => ({ ...r, deliveryPct: parsed.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? parsed.get(r.symbol + '|') ?? r.deliveryPct }));
         setRows(merged); localStorage.setItem(DATA_KEY, JSON.stringify(merged));
         setMessage(merged.length + ' matched ₹5–₹30 EQ शेअर्स import झाले. Delivery match नसल्यास DATA CHECK दिसेल.');
       } else setMessage('Security-wise Delivery file upload झाली. आता CM Equity Bhavcopy upload कर.');
