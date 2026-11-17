@@ -302,7 +302,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
     const type = summary.bias === 'BULLISH' ? 'CE' : 'PE';
     return rangeRows.filter(r => r.type === type).sort((a, b) => b.changeOi - a.changeOi).slice(0, 5);
   }, [chain, rangeRows, summary]);
-  const tradeContracts = useMemo(() => rangeRows.filter(r => r.ltp > 0).slice().sort((a, b) => Math.abs(a.strike - summary.spot) - Math.abs(b.strike - summary.spot) || a.type.localeCompare(b.type)), [rangeRows, summary.spot]);
+  const tradeContracts = useMemo(() => rangeRows.filter(r => r.ltp > 0 && r.ltp * lotSize <= 10000).slice().sort((a, b) => Math.abs(a.strike - summary.spot) - Math.abs(b.strike - summary.spot) || a.type.localeCompare(b.type)), [rangeRows, summary.spot, lotSize]);
   const tradeLotRows = tradeContracts.map(r => { const perLotRisk = r.ltp * (stopPct / 100) * lotSize; const premiumPerLot = r.ltp * lotSize; const riskLots = perLotRisk > 0 ? Math.floor(1500 / perLotRisk) : 0; const capitalLots = premiumPerLot > 0 ? Math.floor(capital / premiumPerLot) : 0; return { ...r, perLotRisk, premiumPerLot, maxLots: Math.min(riskLots, capitalLots) }; }).filter(r => r.maxLots > 0 && r.perLotRisk <= 1500 && r.premiumPerLot <= capital);
   const selectedTradeContract = tradeLotRows.find(r => `${r.expiry}|${r.strike}|${r.type}` === tradeContractKey) || null;
   const proRadar = useMemo(() => {
@@ -326,7 +326,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
       const previousByContract = new Map((previous?.rows || []).filter(r => r.expiry === expiry).map(r => [`${r.strike}-${r.type}`, r]));
       const types: ('CE' | 'PE')[] = bias === 'BULLISH' ? ['CE'] : bias === 'BEARISH' ? ['PE'] : ['CE', 'PE'];
       return types.flatMap(type => {
-        const eligibleOptions = expiryRangeRows.filter(r => r.type === type && r.ltp > 0);
+        const eligibleOptions = expiryRangeRows.filter(r => r.type === type && r.ltp > 0 && r.ltp * lotSize <= 10000);
         const maxVolume = Math.max(1, ...eligibleOptions.map(r => r.volume));
         const supportiveOi = type === 'CE' ? peChg > 0 && ceChg <= 0 : ceChg > 0 && peChg <= 0;
         return eligibleOptions.map(option => {
@@ -695,7 +695,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
             <td className="p-2 font-bold">{fmt(r.strike)}</td><td className="p-2">{r.type}</td><td className="p-2">₹{fmt(r.ltp)}</td><td className="p-2">₹{fmt(r.premiumPerLot)}</td><td className="p-2">₹{fmt(r.perLotRisk)}</td><td className="p-2 font-bold">{r.maxLots}</td>
           </tr>)}</tbody>
         </table>
-        <p className="mt-1 text-[10px] text-slate-500">इथे फक्त तुझ्या capital मध्ये premium परवडणारे आणि प्रति lot SL risk ₹1,500 च्या आत असलेले strikes दाखवले आहेत.</p>
+        <p className="mt-1 text-[10px] text-slate-500">इथे प्रति lot premium ₹10,000 पर्यंत, capital मध्ये परवडणारे आणि प्रति lot SL risk ₹1,500 च्या आत असलेले strikes दाखवले आहेत.</p>
       </div>}
       {selectedTradeContract && stopPct > 0 && stopPct <= 80 && targetPct > 0 && targetPct <= 200 && lotSize > 0 ? (() => {
         const entry = selectedTradeContract.ltp;
