@@ -6,9 +6,7 @@ type Row = { symbol: string; series: string; date: string; close: number; volume
 type TipEntry = { id: string; date: string; amount: number; note: string };
 type BuyEntry = { id: string; date: string; symbol: string; quantity: number; price: number; total: number };
 const WALLET_KEY = 'moti_tips_invest_wallet_v1';
-const DATA_KEY = 'moti_penny_bhavcopy_v1';
 const BUY_KEY = 'moti_tips_invest_buys_v1';
-const HISTORY_KEY = 'moti_penny_bhavcopy_history_v1';
 const today = () => { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 const displayDate = (value: string) => { const [y,m,d] = value.split('-'); return y && m && d ? d+'-'+m+'-'+y : value; };
 const normalizeDateKey = (value: string) => {
@@ -184,7 +182,7 @@ const parseDeliveryReport = (raw: string): Map<string, number> => {
 };
 export const TipsToInvestView: React.FC = () => {
   const [tips, setTips] = useState<TipEntry[]>(() => { try { return JSON.parse(localStorage.getItem(WALLET_KEY) || '[]'); } catch { return []; } });
-  const [rows, setRows] = useState<Row[]>(() => { try { return JSON.parse(localStorage.getItem(DATA_KEY) || '[]'); } catch { return []; } });
+  const [rows, setRows] = useState<Row[]>([]);
   const [history, setHistory] = useState<Row[]>([]);
   const [bhavRows, setBhavRows] = useState<Row[] | null>(null); const [deliveryRows, setDeliveryRows] = useState<Map<string, number> | null>(null);
   const [bhavFileName, setBhavFileName] = useState(''); const [deliveryFileName, setDeliveryFileName] = useState('');
@@ -205,6 +203,7 @@ export const TipsToInvestView: React.FC = () => {
   }).filter(r => !query || r.symbol.includes(query.toUpperCase())).sort((a,b) => b.score-a.score), [rows, query]);
   useEffect(() => {
     let active = true;
+    try { localStorage.removeItem('moti_penny_bhavcopy_v1'); localStorage.removeItem('moti_penny_bhavcopy_history_v1'); } catch { /* storage may be unavailable */ }
     loadPennyStockHistory<Row>().then(saved => {
       if (!active) return;
       setHistory(saved);
@@ -258,7 +257,7 @@ export const TipsToInvestView: React.FC = () => {
       setBhavRows(parsed); setBhavFileName(file.name);
       if (deliveryRows) {
         const merged = parsed.map(r => ({ ...r, deliveryPct: deliveryRows.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? r.deliveryPct }));
-        setRows(merged); localStorage.setItem(DATA_KEY, JSON.stringify(merged)); await saveDailyHistory(merged);
+        setRows(merged); await saveDailyHistory(merged);
         setMessage(merged.length + ' matched ₹5–₹30 EQ शेअर्स import झाले.');
       } else setMessage('CM Bhavcopy upload झाली. आता Security-wise Delivery file upload कर.');
     } catch (e) { setMessage(e instanceof Error ? e.message : 'CM Bhavcopy वाचता आली नाही.'); }
