@@ -80,17 +80,32 @@ const extractCsvFromZip = async (file: File): Promise<string> => {
 };
 
 const parseBhavcopy = (raw: string): Row[] => {
-  const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
+  const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
   if (lines.length < 2) throw new Error('CSV मध्ये Header आणि data rows असणे आवश्यक आहे.');
-  const headers = csvLine(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+  // NSE has legacy CM bhavcopy headers and newer UDiFF headers (TckrSymb, ClsPric, TtlTradgVol).
+  const headerIndex = lines.findIndex((line, index) => index < 12 && /symbol|tckrsymb/i.test(line) && /closeprice|clspric|lastprice/i.test(line));
+  const start = headerIndex >= 0 ? headerIndex : 0;
+  const headers = csvLine(lines[start]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
   const ix = (names: string[]) => headers.findIndex(h => names.includes(h));
-  const symbol = ix(['symbol']); const series = ix(['series']); const date = ix(['date1','date']);
-  const close = ix(['closeprice','close','lastprice']); const volume = ix(['ttltrdqty','volume','totaltradedquantity']);
-  const delivery = ix(['delivper','deliverypercentage','deliverypct']); const turnover = ix(['turnoverlacs','turnover']);
-  if ([symbol, close, volume].some(i => i < 0)) throw new Error('NSE Bhavcopy format ओळखता आला नाही. SYMBOL, CLOSE_PRICE आणि TTL_TRD_QNTY columns आवश्यक आहेत.');
-  return lines.slice(1).map(line => {
-    const c = csvLine(line);
-    return { symbol: c[symbol]?.trim().toUpperCase(), series: series >= 0 ? c[series] : 'EQ', date: date >= 0 ? c[date] : '', close: num(c[close]) || 0, volume: num(c[volume]) || 0, deliveryPct: delivery >= 0 ? num(c[delivery]) : undefined, turnover: turnover >= 0 ? num(c[turnover]) : undefined };
+  const symbol = ix(['symbol','tckrsymb']); const series = ix(['series','sctysrs']); const date = ix(['date1','date','traddt','bizdt']);
+  const close = ix(['closeprice','close','lastprice','clspric','lastpric']);
+  const volume = ix(['ttltrdqty','volume','totaltradedquantity','ttltradgvol']);
+  const delivery = ix(['delivper','deliverypercentage','deliverypct','dlvrypct']);
+  const turnover = ix(['turnoverlacs','turnover','ttltrfval']);
+  if ([symbol, close, volume].some(i => i < 0)) {
+    throw new Error('Bhavcopy header match झाला नाही. Legacy: SYMBOL/CLOSE_PRICE/TTL_TRD_QNTY किंवा NSE UDiFF: TckrSymb/ClsPric/TtlTradgVol असलेली CM Equity Bhavcopy निवड.');
+  }
+  return lines.slice(start + 1).map(line => {
+    const row = csvLine(line);
+    return {
+      symbol: row[symbol]?.trim().toUpperCase(),
+      series: (series >= 0 ? row[series] : 'EQ')?.trim().toUpperCase() || 'EQ',
+      date: date >= 0 ? row[date] : '',
+      close: num(row[close]) || 0,
+      volume: num(row[volume]) || 0,
+      deliveryPct: delivery >= 0 ? num(row[delivery]) : undefined,
+      turnover: turnover >= 0 ? num(row[turnover]) : undefined
+    };
   }).filter(r => r.symbol && r.series === 'EQ' && r.close >= 1 && r.close <= 50 && r.volume > 0);
 };
 
