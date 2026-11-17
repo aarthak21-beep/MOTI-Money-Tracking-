@@ -86,7 +86,7 @@ const parseBhavcopy = (raw: string): Row[] => {
   const normalize = (value: string) => value.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   const symbolNames = ['symbol', 'tckrsymb'];
   const closeNames = ['closeprice', 'close', 'lastprice', 'clspric', 'lastpric'];
-  const volumeNames = ['ttltrdqty', 'volume', 'totaltradedquantity', 'ttltradgvol'];
+  const volumeNames = ['ttltrdqnty', 'ttltrdqty', 'volume', 'totaltradedquantity', 'ttltradgvol'];
   const candidates = lines.slice(0, 20).map((line, index) => {
     const parsed = delimiters.map(delimiter => ({
       delimiter,
