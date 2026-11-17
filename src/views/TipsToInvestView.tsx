@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { loadPennyStockHistory, savePennyStockHistory } from '../services/cloudScannerStorage';
 import { Wallet, Upload, Plus, Trash2, ShieldAlert, Search, TrendingUp } from 'lucide-react';
 
 type Row = { symbol: string; series: string; date: string; close: number; volume: number; deliveryPct?: number; turnover?: number };
@@ -184,7 +185,7 @@ const parseDeliveryReport = (raw: string): Map<string, number> => {
 export const TipsToInvestView: React.FC = () => {
   const [tips, setTips] = useState<TipEntry[]>(() => { try { return JSON.parse(localStorage.getItem(WALLET_KEY) || '[]'); } catch { return []; } });
   const [rows, setRows] = useState<Row[]>(() => { try { return JSON.parse(localStorage.getItem(DATA_KEY) || '[]'); } catch { return []; } });
-  const [history, setHistory] = useState<Row[]>(() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; } });
+  const [history, setHistory] = useState<Row[]>([]);
   const [bhavRows, setBhavRows] = useState<Row[] | null>(null); const [deliveryRows, setDeliveryRows] = useState<Map<string, number> | null>(null);
   const [bhavFileName, setBhavFileName] = useState(''); const [deliveryFileName, setDeliveryFileName] = useState('');
   const [buys, setBuys] = useState<BuyEntry[]>(() => { try { return JSON.parse(localStorage.getItem(BUY_KEY) || '[]'); } catch { return []; } });
@@ -202,11 +203,29 @@ export const TipsToInvestView: React.FC = () => {
     const rating = r.deliveryPct == null ? 'DATA CHECK' : score >= 55 ? 'WATCH' : score >= 35 ? 'RESEARCH' : 'AVOID';
     return { ...r, score, rating };
   }).filter(r => !query || r.symbol.includes(query.toUpperCase())).sort((a,b) => b.score-a.score), [rows, query]);
-  const saveDailyHistory = (incoming: Row[]) => {
+  useEffect(() => {
+    let active = true;
+    loadPennyStockHistory<Row>().then(saved => {
+      if (!active) return;
+      setHistory(saved);
+      const latestDate = saved.reduce((latest, row) => {
+        const date = normalizeDateKey(row.date);
+        return date > latest ? date : latest;
+      }, '');
+      if (latestDate) setRows(saved.filter(row => normalizeDateKey(row.date) === latestDate));
+    }).catch(error => {
+      if (active) setMessage('D1 history load failed: ' + (error instanceof Error ? error.message : 'Cloud storage error'));
+    });
+    return () => { active = false; };
+  }, []);
+
+  const saveDailyHistory = async (incoming: Row[]) => {
+    const normalized = incoming.map(row => ({ ...row, date: normalizeDateKey(row.date) }));
+    await savePennyStockHistory(normalized);
     const keyed = new Map<string, Row>();
-    [...history, ...incoming].forEach(r => keyed.set(r.symbol + '|' + normalizeDateKey(r.date), r));
+    [...history, ...normalized].forEach(row => keyed.set(row.symbol + '|' + normalizeDateKey(row.date), row));
     const next = Array.from(keyed.values()).sort((a, b) => normalizeDateKey(a.date).localeCompare(normalizeDateKey(b.date)) || a.symbol.localeCompare(b.symbol));
-    setHistory(next); localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+    setHistory(next);
   };
   const historyDays = new Set(history.map(r => normalizeDateKey(r.date)).filter(Boolean)).size;
   const marketView = (symbol: string) => {
@@ -239,7 +258,7 @@ export const TipsToInvestView: React.FC = () => {
       setBhavRows(parsed); setBhavFileName(file.name);
       if (deliveryRows) {
         const merged = parsed.map(r => ({ ...r, deliveryPct: deliveryRows.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? r.deliveryPct }));
-        setRows(merged); localStorage.setItem(DATA_KEY, JSON.stringify(merged)); saveDailyHistory(merged);
+        setRows(merged); localStorage.setItem(DATA_KEY, JSON.stringify(merged)); await saveDailyHistory(merged);
         setMessage(merged.length + ' matched ₹5–₹30 EQ शेअर्स import झाले.');
       } else setMessage('CM Bhavcopy upload झाली. आता Security-wise Delivery file upload कर.');
     } catch (e) { setMessage(e instanceof Error ? e.message : 'CM Bhavcopy वाचता आली नाही.'); }
@@ -251,7 +270,7 @@ export const TipsToInvestView: React.FC = () => {
       setDeliveryRows(parsed); setDeliveryFileName(file.name);
       if (bhavRows) {
         const merged = bhavRows.map(r => ({ ...r, deliveryPct: parsed.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? r.deliveryPct }));
-        setRows(merged); localStorage.setItem(DATA_KEY, JSON.stringify(merged));
+        setRows(merged); localStorage.setItem(DATA_KEY, JSON.stringify(merged)); await saveDailyHistory(merged);
         setMessage(merged.length + ' matched ₹5–₹30 EQ शेअर्स import झाले. Delivery match नसल्यास DATA CHECK दिसेल.');
       } else setMessage('Security-wise Delivery file upload झाली. आता CM Equity Bhavcopy upload कर.');
     } catch (e) { setMessage(e instanceof Error ? e.message : 'Delivery file वाचता आली नाही.'); }
@@ -275,7 +294,7 @@ export const TipsToInvestView: React.FC = () => {
     </div>
     <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
       <section className="rounded-2xl border border-white/10 bg-[#0b1421] p-4 space-y-3"><h2 className="font-bold">Add weekly Tips</h2><label className="block text-xs text-slate-400">रक्कम (₹)</label><input value={amount} onChange={e=>setAmount(e.target.value)} type="number" min="1" placeholder="उदा. 250" className="w-full rounded-lg border border-white/10 bg-[#050a12] px-3 py-2 text-sm outline-none focus:border-emerald-400"/><label className="block text-xs text-slate-400">Note</label><input value={note} onChange={e=>setNote(e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#050a12] px-3 py-2 text-sm outline-none focus:border-emerald-400"/><button onClick={addTips} className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-400 px-3 py-2 text-sm font-bold text-slate-950"><Plus className="h-4 w-4"/> Add to Wallet</button><div className="max-h-48 space-y-2 overflow-auto">{tips.map(t=><div key={t.id} className="flex items-center justify-between rounded-lg bg-white/[0.04] p-2 text-xs"><span><b>₹{t.amount}</b><span className="ml-2 text-slate-400">{displayDate(t.date)} · {t.note}</span></span><button onClick={()=>removeTips(t.id)} title="Delete entry" className="text-slate-500 hover:text-rose-400"><Trash2 className="h-3.5 w-3.5"/></button></div>)}</div><div className="border-t border-white/10 pt-3 space-y-2"><h3 className="text-sm font-bold">Buy Entry</h3><div className="grid grid-cols-2 gap-2"><input value={buySymbol} onChange={e=>setBuySymbol(e.target.value)} placeholder="Symbol (उदा. ABC)" className="rounded-lg border border-white/10 bg-[#050a12] px-3 py-2 text-xs"/><input value={buyDate} onChange={e=>setBuyDate(e.target.value)} type="date" className="rounded-lg border border-white/10 bg-[#050a12] px-3 py-2 text-xs"/><input value={buyQuantity} onChange={e=>setBuyQuantity(e.target.value)} type="number" min="1" step="1" placeholder="Quantity" className="rounded-lg border border-white/10 bg-[#050a12] px-3 py-2 text-xs"/><input value={buyPrice} onChange={e=>setBuyPrice(e.target.value)} type="number" min="0.01" step="0.01" placeholder="Buy price / share" className="rounded-lg border border-white/10 bg-[#050a12] px-3 py-2 text-xs"/></div><p className="text-[11px] text-slate-400">Total: ₹{((Number(buyQuantity)||0)*(Number(buyPrice)||0)).toLocaleString('en-IN')} · Available: ₹{availableBalance.toLocaleString('en-IN')}</p><button onClick={addBuy} className="w-full rounded-lg bg-sky-400 px-3 py-2 text-sm font-bold text-slate-950">Save Buy & Deduct Wallet</button>{buys.length>0 && <div className="max-h-36 space-y-2 overflow-auto">{buys.map(b=><div key={b.id} className="flex items-center justify-between rounded-lg bg-white/[0.04] p-2 text-xs"><span><b>{b.symbol}</b> · {b.quantity} × ₹{b.price.toFixed(2)} = ₹{b.total.toLocaleString('en-IN')}<span className="ml-2 text-slate-400">{displayDate(b.date)}</span></span><button onClick={()=>removeBuy(b.id)} title="Delete buy (refund wallet)" className="text-slate-500 hover:text-rose-400"><Trash2 className="h-3.5 w-3.5"/></button></div>)}</div>}</div></section>
-      <section className="rounded-2xl border border-white/10 bg-[#0b1421] p-4 space-y-3"><div><h2 className="font-bold">Penny Stock Scanner · ₹5–₹30</h2><p className="text-xs text-slate-400">दोन्ही NSE files upload कर. प्रत्येक trading date चा data history मध्ये जतन होईल; जुना data replace होणार नाही.</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><label className="flex cursor-pointer flex-col gap-1 rounded-lg border border-emerald-300/30 bg-emerald-300/10 p-3 text-xs font-semibold text-emerald-200"><span className="flex items-center gap-2"><Upload className="h-4 w-4"/> 1. CM Equity Bhavcopy · CSV / ZIP</span><span className="truncate text-[10px] font-normal text-slate-400">{bhavFileName || 'Price, volume, turnover'}</span><input type="file" accept=".csv,.zip,text/csv,application/zip" className="hidden" onChange={e=>uploadBhavcopy(e.target.files?.[0])}/></label><label className="flex cursor-pointer flex-col gap-1 rounded-lg border border-sky-300/30 bg-sky-300/10 p-3 text-xs font-semibold text-sky-200"><span className="flex items-center gap-2"><Upload className="h-4 w-4"/> 2. Security-wise Delivery · CSV / ZIP</span><span className="truncate text-[10px] font-normal text-slate-400">{deliveryFileName || 'Delivery quantity and percentage'}</span><input type="file" accept=".csv,.zip,text/csv,application/zip" className="hidden" onChange={e=>uploadDelivery(e.target.files?.[0])}/></label></div></div><p className="text-[11px] text-emerald-300">Saved history: {historyDays} trading days · {history.length} symbol-day records</p><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search symbol..." className="w-full rounded-lg border border-white/10 bg-[#050a12] py-2 pl-9 pr-3 text-sm"/></div>
+      <section className="rounded-2xl border border-white/10 bg-[#0b1421] p-4 space-y-3"><div><h2 className="font-bold">Penny Stock Scanner · ₹5–₹30</h2><p className="text-xs text-slate-400">दोन्ही NSE files upload कर. प्रत्येक trading date चा data history मध्ये जतन होईल; जुना data D1 cloud मध्ये जतन होईल; तो replace होणार नाही.</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><label className="flex cursor-pointer flex-col gap-1 rounded-lg border border-emerald-300/30 bg-emerald-300/10 p-3 text-xs font-semibold text-emerald-200"><span className="flex items-center gap-2"><Upload className="h-4 w-4"/> 1. CM Equity Bhavcopy · CSV / ZIP</span><span className="truncate text-[10px] font-normal text-slate-400">{bhavFileName || 'Price, volume, turnover'}</span><input type="file" accept=".csv,.zip,text/csv,application/zip" className="hidden" onChange={e=>uploadBhavcopy(e.target.files?.[0])}/></label><label className="flex cursor-pointer flex-col gap-1 rounded-lg border border-sky-300/30 bg-sky-300/10 p-3 text-xs font-semibold text-sky-200"><span className="flex items-center gap-2"><Upload className="h-4 w-4"/> 2. Security-wise Delivery · CSV / ZIP</span><span className="truncate text-[10px] font-normal text-slate-400">{deliveryFileName || 'Delivery quantity and percentage'}</span><input type="file" accept=".csv,.zip,text/csv,application/zip" className="hidden" onChange={e=>uploadDelivery(e.target.files?.[0])}/></label></div></div><p className="text-[11px] text-emerald-300">D1 Cloud history: {historyDays} trading days · {history.length} symbol-day records</p><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search symbol..." className="w-full rounded-lg border border-white/10 bg-[#050a12] py-2 pl-9 pr-3 text-sm"/></div>
       {message && <p className="text-xs text-emerald-300">{message}</p>}
       {ranked.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-500"><tr><th className="py-2">Symbol</th><th>Close</th><th>Volume</th><th>Delivery</th><th>Score</th><th>Market Trend</th><th>Company Quality</th></tr></thead><tbody>{ranked.slice(0,100).map(r=><tr key={r.symbol} className="border-t border-white/[0.06]"><td className="py-2 font-bold">{r.symbol}<div className="text-[10px] font-normal text-slate-500">{r.date}</div></td><td>₹{r.close.toFixed(2)}</td><td>{r.volume.toLocaleString('en-IN')}</td><td>{r.deliveryPct == null ? '—' : r.deliveryPct.toFixed(1)+'%'}</td><td className="font-bold">{r.score}/80</td><td><span className={marketView(r.symbol)==='POSITIVE TREND'?'text-emerald-300':marketView(r.symbol)==='WEAK TREND'?'text-rose-300':'text-amber-300'}>{marketView(r.symbol)}</span><div className="text-[10px] text-slate-500">{r.rating} · daily activity</div></td><td className="text-amber-300">FUNDAMENTALS NEEDED</td></tr>)}</tbody></table></div> : <div className="rounded-xl border border-dashed border-white/10 p-8 text-center"><TrendingUp className="mx-auto h-7 w-7 text-slate-500"/><p className="mt-2 text-sm font-semibold">अजून Bhavcopy upload केलेली नाही</p><p className="mt-1 text-xs text-slate-500">CM Equity Bhavcopy आणि Security-wise Delivery दोन्ही files upload केल्यावर ₹5–₹30 शेअर्स दिसतील.</p></div>}
       <div className="flex gap-2 rounded-lg bg-amber-400/5 p-3 text-[11px] leading-relaxed text-amber-200"><ShieldAlert className="h-4 w-4 shrink-0"/><span>हा प्राथमिक screen आहे; Market Trend हा फक्त 3 दिवसांच्या price/delivery activity वर आधारित आहे. Company Quality साठी audited financials, debt, profit growth, ROE आणि promoter pledge data आवश्यक आहे; ते नसताना GOOD/BAD label दिले जात नाही. दोन्ही files मधील Symbol/Date match न झाल्यास Delivery % रिकामी राहील आणि DATA CHECK दिसेल—अशा शेअरला WATCH समजू नको. Score म्हणजे Buy recommendation नाही.</span></div></section>
