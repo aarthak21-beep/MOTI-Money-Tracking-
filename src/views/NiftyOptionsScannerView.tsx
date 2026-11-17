@@ -8,7 +8,7 @@ type OptionRow = {
 };
 const STORAGE_KEY = 'moti_nifty_options_chain_v1';
 const HISTORY_KEY = 'moti_nifty_options_history_v1';
-type DailySnapshot = { date: string; expiry?: string; spot: number; rows: Array<{ expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number; changeOi?: number; volume?: number }> };
+type DailySnapshot = { date: string; expiry?: string; spot: number; rows: Array<{ expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number; changeOi?: number; volume?: number; iv?: number }> };
 const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
 const number = (v?: string) => {
   if (!v || v.trim() === '-' || v.trim() === '—') return 0;
@@ -138,6 +138,30 @@ const getExpiryBucket = (expiry: string): 'next' | 'two-weeks' | 'three-weeks' |
   return 'five-plus';
 };
 const isEligiblePositionalExpiry = (expiry: string) => Boolean(getExpiryBucket(expiry));
+
+const normalCdf = (x: number) => {
+  const ax = Math.abs(x), t = 1 / (1 + 0.2316419 * ax);
+  const density = Math.exp(-ax * ax / 2) / Math.sqrt(2 * Math.PI);
+  const tail = density * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  return x >= 0 ? 1 - tail : tail;
+};
+// Black-Scholes theta estimate per calendar day, using only uploaded EOD CSV values.
+const estimateDailyTheta = (row: OptionRow) => {
+  const iv = Number(row.iv), days = expiryDaysAway(row.expiry);
+  if (!(iv > 0) || !(row.spot > 0) || !(row.strike > 0) || !(row.ltp > 0) || !(days > 0)) return null;
+  const sigma = iv > 1 ? iv / 100 : iv;
+  if (!(sigma > 0 && sigma < 5)) return null;
+  const t = days / 365, rate = 0.065;
+  const d1 = (Math.log(row.spot / row.strike) + (rate + sigma * sigma / 2) * t) / (sigma * Math.sqrt(t));
+  const d2 = d1 - sigma * Math.sqrt(t), pdf = Math.exp(-d1 * d1 / 2) / Math.sqrt(2 * Math.PI);
+  const common = -(row.spot * pdf * sigma) / (2 * Math.sqrt(t) * 365);
+  const theta = row.type === 'CE'
+    ? common - rate * row.strike * Math.exp(-rate * t) * normalCdf(d2) / 365
+    : common + rate * row.strike * Math.exp(-rate * t) * normalCdf(-d2) / 365;
+  const daily = Math.max(0, -theta);
+  return { daily, pct: daily / row.ltp * 100, iv: sigma * 100, days };
+};
+
 
 export const NiftyOptionsScannerView: React.FC = () => {
   const [rows, setRows] = useState<OptionRow[]>(() => {
@@ -464,7 +488,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
       setRows(mergedRows);
       const now = new Date();
       const snapshotDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const snapshot: DailySnapshot = { date: snapshotDate, spot: parsed[0]?.spot || 0, rows: parsed.map(r => ({ expiry: r.expiry, strike: r.strike, type: r.type, ltp: r.ltp, oi: r.oi, changeOi: r.changeOi, volume: r.volume })) };
+      const snapshot: DailySnapshot = { date: snapshotDate, spot: parsed[0]?.spot || 0, rows: parsed.map(r => ({ expiry: r.expiry, strike: r.strike, type: r.type, ltp: r.ltp, oi: r.oi, changeOi: r.changeOi, volume: r.volume, iv: r.iv })) };
       // Worker stores each expiry independently under (upload date + expiry).
       await saveNiftyOptionsSnapshot(snapshot);
       const cloudHistory = await loadNiftyOptionsHistory<DailySnapshot>();
@@ -551,7 +575,7 @@ export const NiftyOptionsScannerView: React.FC = () => {
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><span className="text-slate-500">Entry reference</span><p className="font-bold text-white">₹{fmt(option.ltp)}</p></div><div><span className="text-slate-500">Stop reference</span><p className="font-bold text-rose-300">₹{fmt(stop)}</p></div><div><span className="text-slate-500">Target reference</span><p className="font-bold text-emerald-300">₹{fmt(target)}</p></div><div><span className="text-slate-500">ATM पासून अंतर</span><p className="font-bold text-white">{fmt(option.distance)}%</p></div></div>
           <p className="mt-3 border-t border-slate-700 pt-2 text-[10px] text-slate-400">Price + OI: {option.signal} · Volume {option.volumeConfirmed ? 'CONFIRMED' : 'NOT CONFIRMED'} · {option.hasPriorSnapshot ? 'Prior snapshot available' : 'No prior snapshot; strength unconfirmed'}</p></div>; })}
       </div>}
-      <p className="mt-3 text-[10px] text-amber-200/80">हे फक्त CSV मधील उपलब्ध डेटावरचे संकेत आहेत; Entry/SL/Target indicative आहेत. Live premium feed, bid-ask spread, IV/Greeks आणि liquidity तपासल्याशिवाय प्रत्यक्ष ट्रेड करू नका.</p>
+      <p className="mt-3 text-[10px] text-amber-200/80">हे फक्त CSV मधील उपलब्ध डेटावरचे संकेत आहेत; Entry/SL/Target indicative आहेत. हा EOD estimate आहे; उद्या entry घेण्यापूर्वी market-open price, spot direction आणि IV पुन्हा तपासा. या planner मध्ये live data वापरलेला नाही.</p>
     </section>
 
     <div className="grid gap-3 sm:grid-cols-3">
@@ -636,6 +660,15 @@ export const NiftyOptionsScannerView: React.FC = () => {
     </div>
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
+    <section className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-white">EOD Analysis · Tomorrow Trade Planner</h2><p className="mt-1 text-[11px] text-slate-400">फक्त upload केलेल्या market-close CSV वर आधारित. Live feed वापरलेला नाही.</p></div><span className="rounded-lg bg-cyan-300/10 px-3 py-2 text-[10px] font-bold text-cyan-200">EOD · 1-day Theta estimate</span></div>
+      <p className="mt-2 text-[10px] leading-5 text-slate-500">Theta हा Black-Scholes estimate आहे: CSV IV, Spot, Strike, Expiry आणि 6.5% गृहीत interest rate वापरून पुढील 1 calendar day साठी. IV नसल्यास estimate दाखवला जाणार नाही. प्रत्यक्ष premium बदल market move, IV आणि weekend/holiday मुळे वेगळा असू शकतो.</p>
+      {(() => {
+        const ranked = rangeRows.map(r => ({ ...r, theta: estimateDailyTheta(r) })).filter(r => r.theta && r.ltp > 0).sort((a, b) => (a.theta!.pct - b.theta!.pct) || (b.volume - a.volume)).slice(0, 12);
+        return ranked.length ? <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Strike','Type','EOD LTP','IV','Est. Theta / day','Est. Decay %','Decay Risk','OI / Volume'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{ranked.map(r => { const risk = r.theta!.pct >= 3 ? 'HIGH' : r.theta!.pct >= 1.5 ? 'MEDIUM' : 'LOW'; return <tr key={r.expiry + r.strike + r.type}><td className="px-3 py-2 font-bold text-white">{fmt(r.strike)}</td><td className="px-3 py-2">{r.type}</td><td className="px-3 py-2">₹{fmt(r.ltp)}</td><td className="px-3 py-2">{r.theta!.iv.toFixed(2)}%</td><td className="px-3 py-2 text-amber-200">₹{fmt(r.theta!.daily)}</td><td className="px-3 py-2">{r.theta!.pct.toFixed(2)}%</td><td className={'px-3 py-2 font-bold ' + (risk === 'HIGH' ? 'text-rose-300' : risk === 'MEDIUM' ? 'text-amber-200' : 'text-emerald-300')}>{risk}</td><td className="px-3 py-2">{fmt(r.oi)} / {fmt(r.volume)}</td></tr>; })}</tbody></table></div> : <p className="mt-3 rounded-lg bg-[#080f1b] p-3 text-xs text-amber-200">या expiry च्या CSV मध्ये वैध IV उपलब्ध नाही किंवा expiry data अपुरा आहे. IV असलेला NSE EOD Option Chain CSV upload करा.</p>;
+      })()}
+    </section>
+
       <h2 className="text-sm font-bold text-white">Indicative Trade Planning · Risk cap ₹1,500</h2>
       <p className="mt-1 text-[11px] text-slate-400">Entry = निवडलेल्या contract चा uploaded LTP. Stop-loss / Target हे editable premium risk levels आहेत; forecast नाहीत. Max lots = ₹1,500 ÷ (प्रति lot stop-loss risk). Brokerage, slippage व taxes यात समाविष्ट नाहीत.</p>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
