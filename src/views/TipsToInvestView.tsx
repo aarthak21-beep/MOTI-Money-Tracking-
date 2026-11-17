@@ -135,9 +135,9 @@ const parseBhavcopy = (raw: string): Row[] => {
 };
 
 const parseDeliveryReport = (raw: string): Map<string, number> => {
-  const lines = raw.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(line => line.trim());
-  const delimiters = [',', ';', '\\t', '|'];
-  const normalize = (v: string) => v.replace(/^\\uFEFF/, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
+  const delimiters = [',', ';', '\t', '|'];
+  const normalize = (v: string) => v.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   const symbolNames = ['symbol', 'tckrsymb'];
   const deliveryNames = ['delivper', 'deliverypercentage', 'deliverypct', 'dlvrypct'];
   let header: { index: number; delimiter: string; headers: string[] } | undefined;
