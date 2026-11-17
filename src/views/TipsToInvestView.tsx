@@ -220,6 +220,17 @@ export const TipsToInvestView: React.FC = () => {
   const totalTips = tips.reduce((s, x) => s + x.amount, 0);
   const totalBuys = buys.reduce((s, x) => s + x.total, 0);
   const availableBalance = totalTips - totalBuys;
+  const marketView = (symbol: string) => {
+    const series = history.filter(r => r.symbol === symbol).sort((a, b) => normalizeDateKey(a.date).localeCompare(normalizeDateKey(b.date)));
+    if (series.length < 3) return 'HISTORY NEEDED';
+    const recent = series.slice(-3);
+    if (recent.some(r => r.deliveryPct == null)) return 'HISTORY NEEDED';
+    const avgDelivery = recent.reduce((s, r) => s + (r.deliveryPct as number), 0) / recent.length;
+    const rising = recent[2].close > recent[0].close;
+    if (avgDelivery >= 50 && rising) return 'POSITIVE TREND';
+    if (avgDelivery < 25 && !rising) return 'WEAK TREND';
+    return 'MIXED TREND';
+  };
   const ranked = useMemo(() => rows.map(r => {
     const activityScore = Math.round(Math.min(80,
       (r.deliveryPct == null ? 0 : Math.min(25, r.deliveryPct / 4)) +
@@ -290,17 +301,6 @@ export const TipsToInvestView: React.FC = () => {
     setHistory(next);
   };
   const historyDays = new Set(history.map(r => normalizeDateKey(r.date)).filter(Boolean)).size;
-  const marketView = (symbol: string) => {
-    const series = history.filter(r => r.symbol === symbol).sort((a, b) => normalizeDateKey(a.date).localeCompare(normalizeDateKey(b.date)));
-    if (series.length < 3) return 'HISTORY NEEDED';
-    const recent = series.slice(-3);
-    if (recent.some(r => r.deliveryPct == null)) return 'HISTORY NEEDED';
-    const avgDelivery = recent.reduce((s, r) => s + (r.deliveryPct as number), 0) / recent.length;
-    const rising = recent[2].close > recent[0].close;
-    if (avgDelivery >= 50 && rising) return 'POSITIVE TREND';
-    if (avgDelivery < 25 && !rising) return 'WEAK TREND';
-    return 'MIXED TREND';
-  };
   const persistTips = (next: TipEntry[]) => { setTips(next); localStorage.setItem(WALLET_KEY, JSON.stringify(next)); };
   const addTips = () => {
     const value = Number(amount);
