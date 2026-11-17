@@ -40,14 +40,17 @@ const normalizeDateKey = (value: string) => {
   const v = (value || '').trim();
   if (!v) return '';
   const iso = v.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-  if (iso) return iso[1] + '-' + iso[2].padStart(2, '0') + '-' + iso[3].padStart(2, '0');
-  const dmy = v.match(/^(\d{1,2})[-/ ]([A-Za-z]{3}|\d{1,2})[-/ ,](\d{4})/);
-  if (dmy) {
+  let year = 0, month = 0, day = 0;
+  if (iso) { year = Number(iso[1]); month = Number(iso[2]); day = Number(iso[3]); }
+  else {
+    const dmy = v.match(/^(\d{1,2})[-/ ]([A-Za-z]{3}|\d{1,2})[-/ ,](\d{4})/);
+    if (!dmy) return '';
     const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-    const month = /^\d+$/.test(dmy[2]) ? Number(dmy[2]) : months.indexOf(dmy[2].toLowerCase()) + 1;
-    if (month >= 1 && month <= 12) return dmy[3] + '-' + String(month).padStart(2, '0') + '-' + dmy[1].padStart(2, '0');
+    year = Number(dmy[3]); month = /^\d+$/.test(dmy[2]) ? Number(dmy[2]) : months.indexOf(dmy[2].toLowerCase()) + 1; day = Number(dmy[1]);
   }
-  return v.toLowerCase();
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (!year || parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) return '';
+  return year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
 };
 
 const num = (v: string | undefined) => {
@@ -172,7 +175,7 @@ const parseBhavcopy = (raw: string): Row[] => {
       deliveryPct: delivery >= 0 ? num(row[delivery]) : undefined,
       turnover: turnover >= 0 ? (['ttltrfval', 'tottrdval', 'ttltrdval'].includes(headers[turnover]) ? (num(row[turnover]) || 0) / 100000 : num(row[turnover])) : undefined
     };
-  }).filter(r => r.symbol && r.series === 'EQ' && !isEtfSymbol(r.symbol) && r.close >= 5 && r.close <= 30 && r.volume > 0);
+  }).filter(r => r.symbol && r.date && r.series === 'EQ' && !isEtfSymbol(r.symbol) && r.close >= 5 && r.close <= 30 && r.volume > 0);
 };
 
 const parseDeliveryReport = (raw: string): Map<string, number> => {
@@ -204,7 +207,7 @@ const parseDeliveryReport = (raw: string): Map<string, number> => {
     const series = (seriesIx >= 0 ? cells[seriesIx] : 'EQ')?.trim().toUpperCase() || 'EQ';
     const date = dateIx >= 0 ? normalizeDateKey(cells[dateIx] || '') : '';
     const pct = num(cells[deliveryIx]);
-    if (symbol && series === 'EQ' && !isEtfSymbol(symbol) && pct != null) { result.set(symbol + '|' + date, pct); }
+    if (symbol && date && series === 'EQ' && !isEtfSymbol(symbol) && pct != null) { result.set(symbol + '|' + date, pct); }
   }
   if (!result.size) throw new Error('Delivery file मध्ये valid EQ delivery records सापडले नाहीत.');
   return result;
