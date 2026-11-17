@@ -176,7 +176,7 @@ const parseDeliveryReport = (raw: string): Map<string, number> => {
     const series = (seriesIx >= 0 ? cells[seriesIx] : 'EQ')?.trim().toUpperCase() || 'EQ';
     const date = dateIx >= 0 ? normalizeDateKey(cells[dateIx] || '') : '';
     const pct = num(cells[deliveryIx]);
-    if (symbol && series === 'EQ' && pct != null) { result.set(symbol + '|' + date, pct); result.set(symbol + '|', pct); }
+    if (symbol && series === 'EQ' && pct != null) { result.set(symbol + '|' + date, pct); }
   }
   if (!result.size) throw new Error('Delivery file मध्ये valid EQ delivery records सापडले नाहीत.');
   return result;
@@ -213,7 +213,8 @@ export const TipsToInvestView: React.FC = () => {
     const series = history.filter(r => r.symbol === symbol).sort((a, b) => normalizeDateKey(a.date).localeCompare(normalizeDateKey(b.date)));
     if (series.length < 3) return 'HISTORY NEEDED';
     const recent = series.slice(-3);
-    const avgDelivery = recent.reduce((s, r) => s + (r.deliveryPct || 0), 0) / recent.length;
+    if (recent.some(r => r.deliveryPct == null)) return 'HISTORY NEEDED';
+    const avgDelivery = recent.reduce((s, r) => s + (r.deliveryPct as number), 0) / recent.length;
     const rising = recent[2].close > recent[0].close;
     if (avgDelivery >= 50 && rising) return 'POSITIVE TREND';
     if (avgDelivery < 25 && !rising) return 'WEAK TREND';
@@ -237,7 +238,7 @@ export const TipsToInvestView: React.FC = () => {
       if (!parsed.length) throw new Error('CM Bhavcopy मध्ये ₹5–₹30 मधील EQ शेअर्स आढळले नाहीत.');
       setBhavRows(parsed); setBhavFileName(file.name);
       if (deliveryRows) {
-        const merged = parsed.map(r => ({ ...r, deliveryPct: deliveryRows.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? deliveryRows.get(r.symbol + '|') ?? r.deliveryPct }));
+        const merged = parsed.map(r => ({ ...r, deliveryPct: deliveryRows.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? r.deliveryPct }));
         setRows(merged); localStorage.setItem(DATA_KEY, JSON.stringify(merged)); saveDailyHistory(merged);
         setMessage(merged.length + ' matched ₹5–₹30 EQ शेअर्स import झाले.');
       } else setMessage('CM Bhavcopy upload झाली. आता Security-wise Delivery file upload कर.');
@@ -249,7 +250,7 @@ export const TipsToInvestView: React.FC = () => {
       const parsed = parseDeliveryReport(await readCsv(file, 'delivery'));
       setDeliveryRows(parsed); setDeliveryFileName(file.name);
       if (bhavRows) {
-        const merged = bhavRows.map(r => ({ ...r, deliveryPct: parsed.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? parsed.get(r.symbol + '|') ?? r.deliveryPct }));
+        const merged = bhavRows.map(r => ({ ...r, deliveryPct: parsed.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? r.deliveryPct }));
         setRows(merged); localStorage.setItem(DATA_KEY, JSON.stringify(merged));
         setMessage(merged.length + ' matched ₹5–₹30 EQ शेअर्स import झाले. Delivery match नसल्यास DATA CHECK दिसेल.');
       } else setMessage('Security-wise Delivery file upload झाली. आता CM Equity Bhavcopy upload कर.');
