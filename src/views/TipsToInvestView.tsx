@@ -8,7 +8,7 @@ type Row = { symbol: string; series: string; date: string; close: number; volume
 type TipEntry = { id: string; date: string; amount: number; note: string };
 type BuyEntry = { id: string; date: string; symbol: string; quantity: number; price: number; total: number };
 type Fundamental = { symbol: string; company: string; sector: string; period: string; revenue: number | null; operatingProfit: number | null; opm: number | null; netProfit: number | null; eps: number | null; salesGrowthYoY: number | null; profitGrowthYoY: number | null; previousPeriod: string | null };
-const fundamentalsBySymbol = new Map<string, Fundamental>((fundamentalsData as Fundamental[]).map(item => [item.symbol.toUpperCase(), item]));
+const fundamentalsBySymbol = new Map<string, Fundamental>(((fundamentalsData as { companies: Fundamental[] }).companies || []).map(item => [item.symbol.toUpperCase(), item]));
 const qualityFor = (symbol: string) => {
   const f = fundamentalsBySymbol.get(symbol.toUpperCase());
   if (!f) return { label: 'NO FUNDAMENTAL DATA', score: null as number | null, detail: 'या symbol साठी consolidated financial data उपलब्ध नाही.' };
