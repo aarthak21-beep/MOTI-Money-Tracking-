@@ -203,18 +203,41 @@ export const TipsToInvestView: React.FC = () => {
   }).filter(r => !query || r.symbol.includes(query.toUpperCase())).sort((a,b) => b.score-a.score), [rows, query]);
   useEffect(() => {
     let active = true;
-    try { localStorage.removeItem('moti_penny_bhavcopy_v1'); localStorage.removeItem('moti_penny_bhavcopy_history_v1'); } catch { /* storage may be unavailable */ }
-    loadPennyStockHistory<Row>().then(saved => {
-      if (!active) return;
-      setHistory(saved);
-      const latestDate = saved.reduce((latest, row) => {
-        const date = normalizeDateKey(row.date);
-        return date > latest ? date : latest;
-      }, '');
-      if (latestDate) setRows(saved.filter(row => normalizeDateKey(row.date) === latestDate));
-    }).catch(error => {
-      if (active) setMessage('D1 history load failed: ' + (error instanceof Error ? error.message : 'Cloud storage error'));
-    });
+    const loadHistory = async () => {
+      try {
+        const saved = await loadPennyStockHistory<Row>();
+        let legacy: Row[] = [];
+        try {
+          const oldLatest = JSON.parse(localStorage.getItem('moti_penny_bhavcopy_v1') || '[]');
+          const oldHistory = JSON.parse(localStorage.getItem('moti_penny_bhavcopy_history_v1') || '[]');
+          legacy = [...(Array.isArray(oldHistory) ? oldHistory : []), ...(Array.isArray(oldLatest) ? oldLatest : [])];
+        } catch { /* Ignore malformed browser cache; D1 remains authoritative. */ }
+        const merged = new Map<string, Row>();
+        [...saved, ...legacy].forEach(row => {
+          const normalized = { ...row, date: normalizeDateKey(row.date) };
+          if (normalized.date && normalized.symbol) merged.set(normalized.symbol + '|' + normalized.date, normalized);
+        });
+        const allRows = Array.from(merged.values());
+        const legacyRows = allRows.filter(row => !saved.some(item =>
+          item.symbol === row.symbol && normalizeDateKey(item.date) === normalizeDateKey(row.date)
+        ));
+        if (legacyRows.length) await savePennyStockHistory(legacyRows);
+        if (!active) return;
+        setHistory(allRows);
+        const latestDate = allRows.reduce((latest, row) => {
+          const date = normalizeDateKey(row.date);
+          return date > latest ? date : latest;
+        }, '');
+        if (latestDate) setRows(allRows.filter(row => normalizeDateKey(row.date) === latestDate));
+        if (legacyRows.length) {
+          localStorage.removeItem('moti_penny_bhavcopy_v1');
+          localStorage.removeItem('moti_penny_bhavcopy_history_v1');
+        }
+      } catch (error) {
+        if (active) setMessage('D1 history load failed: ' + (error instanceof Error ? error.message : 'Cloud storage error'));
+      }
+    };
+    void loadHistory();
     return () => { active = false; };
   }, []);
 
