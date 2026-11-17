@@ -325,9 +325,10 @@ export const TipsToInvestView: React.FC = () => {
       if (!parsed.length) throw new Error('CM Bhavcopy मध्ये ₹5–₹30 मधील EQ शेअर्स आढळले नाहीत.');
       setBhavRows(parsed); setBhavFileName(file.name);
       if (deliveryRows) {
+        const matchedCount = parsed.filter(r => deliveryRows.has(r.symbol + '|' + normalizeDateKey(r.date))).length;
         const merged = parsed.map(r => ({ ...r, deliveryPct: deliveryRows.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? r.deliveryPct }));
         setRows(merged); await saveDailyHistory(merged);
-        setMessage(merged.length + ' matched ₹5–₹30 EQ शेअर्स import झाले.');
+        setMessage('Import: ' + merged.length + ' EQ शेअर्स · Delivery matched ' + matchedCount + ' · unmatched ' + (merged.length - matchedCount) + '.');
       } else setMessage('CM Bhavcopy upload झाली. आता Security-wise Delivery file upload कर.');
     } catch (e) { setMessage(e instanceof Error ? e.message : 'CM Bhavcopy वाचता आली नाही.'); }
   };
@@ -337,9 +338,10 @@ export const TipsToInvestView: React.FC = () => {
       const parsed = parseDeliveryReport(await readCsv(file, 'delivery'));
       setDeliveryRows(parsed); setDeliveryFileName(file.name);
       if (bhavRows) {
+        const matchedCount = bhavRows.filter(r => parsed.has(r.symbol + '|' + normalizeDateKey(r.date))).length;
         const merged = bhavRows.map(r => ({ ...r, deliveryPct: parsed.get(r.symbol + '|' + normalizeDateKey(r.date)) ?? r.deliveryPct }));
         setRows(merged); await saveDailyHistory(merged);
-        setMessage(merged.length + ' matched ₹5–₹30 EQ शेअर्स import झाले. Delivery match नसल्यास DATA CHECK दिसेल.');
+        setMessage('Import: ' + merged.length + ' EQ शेअर्स · Delivery matched ' + matchedCount + ' · unmatched ' + (merged.length - matchedCount) + '.');
       } else setMessage('Security-wise Delivery file upload झाली. आता CM Equity Bhavcopy upload कर.');
     } catch (e) { setMessage(e instanceof Error ? e.message : 'Delivery file वाचता आली नाही.'); }
   };
