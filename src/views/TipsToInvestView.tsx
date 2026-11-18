@@ -71,38 +71,51 @@ const csvLine = (line: string, delimiter = ',') => {
   out.push(cell.trim()); return out;
 };
 const parseCompanyMetrics = (raw: string): Map<string, MetricOverride> => {
-  const lines = raw.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(line => line.trim());
-  const delimiters = [',', ';', '\\t', '|'];
-  const normalize = (v: string) => v.replace(/^\\uFEFF/, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  const symbolNames = ['symbol', 'ticker', 'tickersymbol', 'nsecode', 'securityid'];
-  const promoterNames = ['promoterholding', 'promoterholdingpct', 'promoterholdingpercent', 'promoterholdingpercentage', 'promotershareholding', 'promoterandpromotergroup', 'promoterandpromotergroupholding', 'promoterpercentage', 'promotershareholdingpercentage'];
-  const roceNames = ['roce', 'returnoncapitalemployed', 'returnoncapitalemployedpercent', 'returnoncapitalemployedpercentage'];
+  const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
+  const delimiters = [',', ';', '\t', '|'];
+  const normalize = (v: string) => v.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const symbolNames = ['symbol', 'nsesymbol', 'ticker', 'tickersymbol', 'nsecode', 'securityid', 'securitycode'];
+  const promoterNames = [
+    'promoterholding', 'promoterholdingpct', 'promoterholdingpercent', 'promoterholdingpercentage',
+    'promhold', 'promholdpct', 'promotershareholding', 'promotershareholdingpct',
+    'promotershareholdingpercentage', 'promoterandpromotergroup', 'promoterandpromotergroupholding',
+    'promoterpercentage', 'promoterholdingpromoterandpromotergroup'
+  ];
+  const roceNames = ['roce', 'rocepct', 'rocepercent', 'returnoncapitalemployed', 'returnoncapitalemployedpercent', 'returnoncapitalemployedpercentage'];
   let header: { index: number; delimiter: string; headers: string[] } | undefined;
-  for (let index = 0; index < Math.min(20, lines.length); index++) {
+  for (let index = 0; index < Math.min(30, lines.length); index++) {
     for (const delimiter of delimiters) {
       const headers = csvLine(lines[index], delimiter).map(normalize);
       if (headers.some(h => symbolNames.includes(h)) && headers.some(h => promoterNames.includes(h) || roceNames.includes(h))) {
-        header = { index, delimiter, headers }; break;
+        header = { index, delimiter, headers };
+        break;
       }
     }
     if (header) break;
   }
-  if (!header) throw new Error('Metrics CSV मध्ये SYMBOL आणि Promoter Holding किंवा ROCE column सापडला नाही.');
+  if (!header) {
+    const sample = lines.slice(0, 5).map(line => line.slice(0, 180)).join(' | ');
+    throw new Error('CSV header ओळखता आला नाही. NSE Code / SYMBOL आणि Prom. Hold. % / ROCE % असलेली CSV निवड. सुरुवातीचा data: ' + sample);
+  }
   const symbolIx = header.headers.findIndex(h => symbolNames.includes(h));
   const promoterIx = header.headers.findIndex(h => promoterNames.includes(h));
   const roceIx = header.headers.findIndex(h => roceNames.includes(h));
-  if (promoterIx < 0 && roceIx < 0) throw new Error('CSV मध्ये Promoter Holding किंवा ROCE पैकी किमान एक column आवश्यक आहे.');
+  if (promoterIx < 0 && roceIx < 0) throw new Error('CSV मध्ये Prom. Hold. % किंवा ROCE % column आवश्यक आहे.');
   const result = new Map<string, MetricOverride>();
   for (const line of lines.slice(header.index + 1)) {
     const cells = csvLine(line, header.delimiter);
-    const symbol = (cells[symbolIx] || '').trim().toUpperCase();
+    const symbol = (cells[symbolIx] || '').trim().toUpperCase().replace(/^NSE:/, '');
     if (!symbol || isEtfSymbol(symbol)) continue;
     const promoter = promoterIx >= 0 ? num(cells[promoterIx]) : undefined;
     const roce = roceIx >= 0 ? num(cells[roceIx]) : undefined;
     if (promoter == null && roce == null) continue;
-    result.set(symbol, { promoterHolding: promoter ?? null, roce: roce ?? null });
+    const previous = result.get(symbol);
+    result.set(symbol, {
+      promoterHolding: promoter ?? previous?.promoterHolding ?? null,
+      roce: roce ?? previous?.roce ?? null
+    });
   }
-  if (!result.size) throw new Error('CSV मध्ये valid Symbol सोबत Promoter Holding / ROCE values सापडल्या नाहीत.');
+  if (!result.size) throw new Error('CSV मध्ये ओळखता येणारे NSE symbols आणि Promoter Holding / ROCE values सापडल्या नाहीत.');
   return result;
 };
 const extractCsvFromZip = async (file: File, kind: 'bhavcopy' | 'delivery' = 'bhavcopy'): Promise<string> => {
