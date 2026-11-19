@@ -44,6 +44,13 @@ const parseDateValue = (value: string): string | undefined => {
     const date = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
     if (date.getUTCFullYear() === Number(y) && date.getUTCMonth() === Number(mo) - 1 && date.getUTCDate() === Number(d)) return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
+  m = v.match(/^(\d{1,2})[-/. ]([A-Za-z]{3,})[-/. ](\d{4})$/);
+  if (m) {
+    const [, d, monthName, y] = m;
+    const month = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(monthName.slice(0, 3).toLowerCase()) + 1;
+    const date = new Date(Date.UTC(Number(y), month - 1, Number(d)));
+    if (month && date.getUTCFullYear() === Number(y) && date.getUTCMonth() === month - 1 && date.getUTCDate() === Number(d)) return `${y}-${String(month).padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
   return undefined;
 };
 const reportDateFromUpload = (name: string, text: string): string | undefined => {
@@ -190,12 +197,18 @@ const parseBhavcopy = (text: string, date: string): DailyRow[] => {
 
 const mergeRows = (oldRows: DailyRow[], newRows: DailyRow[]) => {
   const map = new Map<string, DailyRow>();
-  [...oldRows, ...newRows].forEach(row => {
+  [...oldRows, ...newRows].forEach(rawRow => {
+    // Older browser/cloud snapshots may contain display-form dates such as 19-Nov-2026.
+    // Normalize them before sending rows to the Worker, which accepts ISO dates only.
+    const date = parseDateValue(String(rawRow?.date || ''));
+    const symbol = String(rawRow?.symbol || '').trim().toUpperCase();
+    if (!date || !/^[A-Z0-9&.-]{1,30}$/.test(symbol)) return;
+    const row: DailyRow = { ...rawRow, date, symbol };
     const key = row.date + '|' + row.symbol;
     const old = map.get(key);
     map.set(key, old ? {
       ...old, ...Object.fromEntries(Object.entries(row).filter(([k, v]) => v !== undefined && k !== 'sources')),
-      sources: Array.from(new Set([...old.sources, ...row.sources]))
+      sources: Array.from(new Set([...(old.sources || []), ...(row.sources || [])]))
     } as DailyRow : row);
   });
   return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date) || a.symbol.localeCompare(b.symbol)).slice(-30000);
