@@ -348,7 +348,7 @@ export default {
         )
       `).run();
       if (scanner === 'swing') {
-        await env.MOTI_DB.prepare(`
+        if (scanner === 'swing') await env.MOTI_DB.prepare(`
           CREATE TABLE IF NOT EXISTS moti_scanner_data_state (
             scanner TEXT PRIMARY KEY,
             legacy_migration_blocked INTEGER NOT NULL DEFAULT 0,
@@ -368,11 +368,11 @@ export default {
           const parsed = JSON.parse(item.data_json);
           return Array.isArray(parsed) ? parsed : [];
         });
-        if (scanner === 'swing') {
+        if (scanner === 'swing' || scanner === 'smart-money') {
           const merged = new Map();
           for (const item of [...(Array.isArray(legacy) ? legacy : []), ...chunkRows]) {
-            const key = String(item?.date || '') + '|' + String(item?.symbol || '');
-            if (item?.date && item?.symbol) merged.set(key, { ...merged.get(key), ...item });
+            const key = String(item?.date || (scanner === 'smart-money' ? 'undated' : '')) + '|' + String(item?.symbol || '');
+            if ((item?.date || scanner === 'smart-money') && item?.symbol) merged.set(key, { ...merged.get(key), ...item });
           }
           const data = Array.from(merged.values()).sort((a, b) =>
             String(a.date || '').localeCompare(String(b.date || '')) ||
@@ -412,7 +412,7 @@ export default {
       }
       const updatedAt = new Date().toISOString();
 
-      if (scanner === 'swing' && (payload.mode === 'replace' || payload.mode === 'merge')) {
+      if ((scanner === 'swing' || scanner === 'smart-money') && (payload.mode === 'replace' || payload.mode === 'merge')) {
         await env.MOTI_DB.prepare(`
           CREATE TABLE IF NOT EXISTS moti_scanner_data_chunks (
             scanner TEXT NOT NULL,
@@ -427,7 +427,7 @@ export default {
       // An empty Swing replace is the explicit Clear History action.
       // Clear only Swing rows from both storage layers so GET cannot resurrect
       // the legacy snapshot after the date chunks have been removed.
-      if (scanner === 'swing' && payload.mode === 'replace' && Array.isArray(payload.data) && payload.data.length === 0) {
+      if ((scanner === 'swing' || scanner === 'smart-money') && payload.mode === 'replace' && Array.isArray(payload.data) && payload.data.length === 0) {
         await env.MOTI_DB.prepare(
           'DELETE FROM moti_scanner_data_chunks WHERE scanner = ?1'
         ).bind('swing').run();
@@ -441,19 +441,19 @@ export default {
             updated_at TEXT NOT NULL
           )
         `).run();
-        await env.MOTI_DB.prepare(
+        if (scanner === 'swing') await env.MOTI_DB.prepare(
           'INSERT INTO moti_scanner_data_state (scanner, legacy_migration_blocked, updated_at) VALUES (?1, 1, ?2) ON CONFLICT(scanner) DO UPDATE SET legacy_migration_blocked = 1, updated_at = excluded.updated_at'
         ).bind('swing', updatedAt).run();
         return response({ ok: true, scanner, cleared: true, updatedAt }, 200, origin);
       }
 
-      if (scanner === 'swing' && payload.mode === 'replace') {
+      if ((scanner === 'swing' || scanner === 'smart-money') && payload.mode === 'replace') {
         await env.MOTI_DB.prepare(
           'DELETE FROM moti_scanner_data_chunks WHERE scanner = ?1'
         ).bind(scanner).run();
       }
 
-      if (scanner === 'swing' && payload.mode === 'merge') {
+      if ((scanner === 'swing' || scanner === 'smart-money') && payload.mode === 'merge') {
         if (!Array.isArray(payload.data) || payload.data.length === 0) {
           return response({
             error: 'No Swing rows supplied for D1 merge.'
@@ -478,9 +478,10 @@ export default {
             }, 400, origin);
           }
 
-          const rows = byDate.get(date) || [];
+          const chunkKey = date || 'undated';
+          const rows = byDate.get(chunkKey) || [];
           rows.push({ ...item, symbol });
-          byDate.set(date, rows);
+          byDate.set(chunkKey, rows);
         }
 
         await env.MOTI_DB.prepare(`
