@@ -6,6 +6,7 @@ import { QuickAddModal } from './components/QuickAddModal';
 
 import { DashboardView } from './views/DashboardView';
 import { StockTradingView } from './views/StockTradingView';
+import { NiftyOptionsScannerView } from './views/NiftyOptionsScannerView';
 import { WeeklyIncomeView } from './views/WeeklyIncomeView';
 import { DailyEarningsView } from './views/DailyEarningsView';
 import { BusinessInvoicesView } from './views/BusinessInvoicesView';
@@ -395,6 +396,7 @@ function AuthenticatedApp() {
           )}
 
           {currentTab === 'swingScanner' && <SwingScannerView />}
+          {currentTab === 'niftyOptions' && <NiftyOptionsScannerView />}
           {currentTab === 'motiTradex' && <MotiTradexView />}
           {currentTab === 'smartMoney' && <SmartMoneyScreenerView />
           {currentTab === 'tipsInvest' && <TipsToInvestView />}
