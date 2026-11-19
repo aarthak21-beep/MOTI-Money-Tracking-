@@ -50,7 +50,7 @@ const splitScannerData = (data: unknown): unknown[] => {
 };
 
 const saveScannerDataInternal = async <T,>(scanner: string, data: T, mergeChunks = true): Promise<void> => {
-  const shouldMerge = scanner === 'swing' && mergeChunks && !(Array.isArray(data) && data.length === 0);
+  const shouldMerge = (scanner === 'swing' || scanner === 'smart-money') && mergeChunks && !(Array.isArray(data) && data.length === 0);
   const batches = shouldMerge ? splitScannerData(data) : [data];
   for (let index = 0; index < batches.length; index++) {
     await request('/api/data', {
