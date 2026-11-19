@@ -72,13 +72,13 @@ const parseNseOptionChain = (text: string, filename: string, fallbackSpot = 0): 
   // Resolve the CE-side first occurrence and PE-side last occurrence instead of hard-coded positions.
   const indexes = (key: string) => headers.map((h, i) => h === key ? i : -1).filter(i => i >= 0);
   const oiIndexes = indexes('oi');
-  const changeOiIndexes = indexes('chginoi');
+  const changeOiIndexes = headers.map((h, i) => ['chnginoi', 'changeinoi', 'chginoi'].includes(h) ? i : -1).filter(i => i >= 0);
   const volumeIndexes = indexes('volume');
   const ivIndexes = indexes('iv');
   const ltpIndexes = indexes('ltp');
   const ceLtpIndex = ltpIndexes[0] ?? -1;
   const peLtpIndex = ltpIndexes[ltpIndexes.length - 1] ?? -1;
-  if (fullChain && (ceLtpIndex < 0 || peLtpIndex < 0 || oiIndexes.length < 2)) {
+  if (fullChain && (ceLtpIndex < 0 || peLtpIndex < 0 || oiIndexes.length < 2 || changeOiIndexes.length < 2 || volumeIndexes.length < 2 || ivIndexes.length < 2)) {
     throw new Error('NSE CSV मध्ये CE/PE LTP किंवा OI columns सापडले नाहीत. मूळ NSE Option Chain CSV पुन्हा डाउनलोड करा.');
   }
   const defaultExpiry = expiryFromFilename(filename);
