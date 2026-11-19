@@ -2,20 +2,20 @@ const SCANNERS = new Set(['swing', 'nifty-options', 'smart-money']);
 
 function normalizeSwingDate(value) {
   const raw = String(value ?? '').trim();
-  let m = raw.match(/^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})$/);
+  let m = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
   if (m) {
     const [, y, mo, d] = m;
     const date = new Date(Date.UTC(+y, +mo - 1, +d));
     if (date.getUTCFullYear() === +y && date.getUTCMonth() === +mo - 1 && date.getUTCDate() === +d) return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
-  m = raw.match(/^(\\d{1,2})[-/. ]([A-Za-z]{3,})[-/. ](\\d{4})$/);
+  m = raw.match(/^(\d{1,2})[-/. ]([A-Za-z]{3,})[-/. ](\d{4})$/);
   if (m) {
     const [, d, monthName, y] = m;
     const mo = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(monthName.slice(0, 3).toLowerCase()) + 1;
     const date = new Date(Date.UTC(+y, mo - 1, +d));
     if (mo && date.getUTCFullYear() === +y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === +d) return `${y}-${String(mo).padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
-  m = raw.match(/^(\\d{1,2})[-/.](\\d{1,2})[-/.](\\d{4})$/);
+  m = raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
   if (m) {
     const [, d, mo, y] = m;
     const date = new Date(Date.UTC(+y, +mo - 1, +d));
