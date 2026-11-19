@@ -74,8 +74,7 @@ const parseCompanyMetrics = (raw: string): Map<string, MetricOverride> => {
   const lines = raw.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(line => line.trim());
   const delimiters = [',', ';', '\\t', '|'];
   const normalize = (v: string) => v.replace(/^\\uFEFF/, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  const normalizeCompany = (v: string) => normalize(v)
-    .replace(/(limited|ltd|incorporated|inc|corporation|corp|company|co)$/, '');
+  const normalizeCompany = (v: string) => normalize(v).replace(/(privatelimited|publiclimited|limited|ltd|incorporated|inc|corporation|corp|company|co)$/, '');
   const symbolNames = ['symbol', 'nsesymbol', 'ticker', 'tickersymbol', 'nsecode', 'securityid', 'securitycode'];
   const companyNames = ['company', 'companyname', 'nameofcompany', 'issuername'];
   const promoterNames = [
@@ -90,43 +89,52 @@ const parseCompanyMetrics = (raw: string): Map<string, MetricOverride> => {
   for (let index = 0; index < Math.min(30, lines.length); index++) {
     for (const delimiter of delimiters) {
       const headers = csvLine(lines[index], delimiter).map(normalize);
-      if ((headers.some(h => symbolNames.includes(h)) || headers.some(h => companyNames.includes(h))) &&
-          headers.some(h => promoterNames.includes(h) || roceNames.includes(h))) {
-        header = { index, delimiter, headers };
-        break;
-      }
+      const hasCompany = headers.some(h => symbolNames.includes(h) || companyNames.includes(h));
+      const hasMetric = headers.some(h => promoterNames.includes(h) || roceNames.includes(h) ||
+        (h.includes('promoter') && (h.includes('group') || h.includes('holding') || h.includes('shareholding'))));
+      if (hasCompany && hasMetric) { header = { index, delimiter, headers }; break; }
     }
     if (header) break;
   }
   if (!header) {
     const sample = lines.slice(0, 5).map(line => line.slice(0, 180)).join(' | ');
-    throw new Error('CSV header ओळखता आला नाही. SYMBOL किंवा COMPANY आणि Promoter Holding / ROCE column असलेली CSV निवड. सुरुवातीचा data: ' + sample);
+    throw new Error('CSV header ओळखता आला नाही. COMPANY आणि PROMOTER & PROMOTER GROUP (A) किंवा SYMBOL + ROCE असलेली CSV निवड. सुरुवातीचा data: ' + sample);
   }
   const symbolIx = header.headers.findIndex(h => symbolNames.includes(h));
   const companyIx = header.headers.findIndex(h => companyNames.includes(h));
-  const promoterIx = header.headers.findIndex(h => promoterNames.includes(h));
+  let promoterIx = header.headers.findIndex(h => promoterNames.includes(h));
+  if (promoterIx < 0) promoterIx = header.headers.findIndex(h => h.includes('promoter') && (h.includes('group') || h.includes('holding') || h.includes('shareholding')));
   const roceIx = header.headers.findIndex(h => roceNames.includes(h));
   const companyToSymbol = new Map<string, string>();
+  const companyKeys: { key: string; symbol: string }[] = [];
   (fundamentalsData as { companies: Fundamental[] }).companies.forEach(item => {
     const key = normalizeCompany(item.company);
-    if (key && !companyToSymbol.has(key)) companyToSymbol.set(key, item.symbol.toUpperCase());
+    if (key) { if (!companyToSymbol.has(key)) companyToSymbol.set(key, item.symbol.toUpperCase()); companyKeys.push({ key, symbol: item.symbol.toUpperCase() }); }
   });
   const result = new Map<string, MetricOverride>();
+  let rowsWithCompany = 0, rowsWithMetric = 0;
   for (const line of lines.slice(header.index + 1)) {
     const cells = csvLine(line, header.delimiter);
     let symbol = symbolIx >= 0 ? (cells[symbolIx] || '').trim().toUpperCase().replace(/^NSE:/, '') : '';
-    if (!symbol && companyIx >= 0) symbol = companyToSymbol.get(normalizeCompany(cells[companyIx] || '')) || '';
+    const companyName = companyIx >= 0 ? (cells[companyIx] || '').replace(/^\\|\\s*/, '').trim() : '';
+    if (!symbol && companyName) {
+      rowsWithCompany++;
+      const key = normalizeCompany(companyName);
+      symbol = companyToSymbol.get(key) || '';
+      if (!symbol && key.length >= 6) {
+        const matches = companyKeys.filter(item => item.key.startsWith(key) || key.startsWith(item.key));
+        if (matches.length === 1) symbol = matches[0].symbol;
+      }
+    }
     if (!symbol || isEtfSymbol(symbol)) continue;
     const promoter = promoterIx >= 0 ? num(cells[promoterIx]) : undefined;
     const roce = roceIx >= 0 ? num(cells[roceIx]) : undefined;
     if (promoter == null && roce == null) continue;
+    rowsWithMetric++;
     const previous = result.get(symbol);
-    result.set(symbol, {
-      promoterHolding: promoter ?? previous?.promoterHolding ?? null,
-      roce: roce ?? previous?.roce ?? null
-    });
+    result.set(symbol, { promoterHolding: promoter ?? previous?.promoterHolding ?? null, roce: roce ?? previous?.roce ?? null });
   }
-  if (!result.size) throw new Error('CSV मधील COMPANY नावे fundamentals यादीशी match झाली नाहीत किंवा valid metrics नाहीत.');
+  if (!result.size) throw new Error('NSE CSV वाचली, पण '+rowsWithCompany+' कंपनी नावे तपासली आणि '+rowsWithMetric+' valid metric rows मिळाल्या. COMPANY names fundamentals यादीत नसतील तर त्या कंपन्यांचे NSE SYMBOL असलेली CSV लागेल.');
   return result;
 };
 const extractCsvFromZip = async (file: File, kind: 'bhavcopy' | 'delivery' = 'bhavcopy'): Promise<string> => {
