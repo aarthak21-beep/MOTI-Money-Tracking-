@@ -166,16 +166,17 @@ const parseBhavcopy = (text: string, date: string): DailyRow[] => {
   const headers = splitCsvLine(lines[0]);
   const h = headers.map(norm);
   const idx = (...names: string[]) => h.findIndex(x => names.includes(x));
+  // Support both NSE CM UDiFF bhavcopy and the classic sec_bhavdata_full CSV.
+  // Classic headers include leading spaces (e.g. " SERIES", " CLOSE_PRICE").
   const symbolCol = idx('tckrsymb', 'symbol');
   const seriesCol = idx('sctysrs', 'series');
-  const openCol = idx('opnpric', 'open');
-  const highCol = idx('hghpric', 'high');
-  const lowCol = idx('lwpric', 'low');
-  const closeCol = idx('clspric', 'close');
+  const highCol = idx('hghpric', 'highprice', 'high');
+  const lowCol = idx('lwpric', 'lowprice', 'low');
+  const closeCol = idx('clspric', 'closeprice', 'close');
   const prevCol = idx('prvsclsgpric', 'prevclose');
-  const volumeCol = idx('ttltradgvol', 'tottrdqty', 'volume');
+  const volumeCol = idx('ttltradgvol', 'ttltrdqty', 'tottrdqty', 'ttltrdqty', 'volume');
   if ([symbolCol, seriesCol, highCol, lowCol, closeCol, prevCol, volumeCol].some(x => x < 0))
-    throw new Error('हा NSE CM UDiFF Bhavcopy format नाही. आवश्यक Symbol/Series/OHLC/Prev Close/Volume कॉलम सापडले नाहीत.');
+    throw new Error('NSE Bhavcopy मध्ये Symbol/Series/High/Low/Close/Prev Close/Volume कॉलम सापडले नाहीत.');
   return lines.slice(1).flatMap(line => {
     const c = splitCsvLine(line);
     const symbol = (c[symbolCol] || '').trim().toUpperCase();
