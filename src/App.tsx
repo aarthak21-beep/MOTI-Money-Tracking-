@@ -17,8 +17,8 @@ import { AnalyticsReportsView } from './views/AnalyticsReportsView';
 import { AiAssistantView } from './views/AiAssistantView';
 import { SettingsView } from './views/SettingsView';
 import { SwingScannerView } from './views/SwingScannerView';
-import { NiftyOptionsScannerView } from './views/NiftyOptionsScannerView';
 import { SmartMoneyScreenerView } from './views/SmartMoneyScreenerView';
+import { MotiTradexView } from './views/MotiTradexView';
 import { TipsToInvestView } from './views/TipsToInvestView';
 
 
@@ -395,8 +395,8 @@ function AuthenticatedApp() {
           )}
 
           {currentTab === 'swingScanner' && <SwingScannerView />}
-          {currentTab === 'niftyOptions' && <NiftyOptionsScannerView />}
-          {currentTab === 'smartMoney' && <SmartMoneyScreenerView />}
+          {currentTab === 'motiTradex' && <MotiTradexView />}
+          {currentTab === 'smartMoney' && <SmartMoneyScreenerView />
           {currentTab === 'tipsInvest' && <TipsToInvestView />}
 
 
