@@ -557,10 +557,25 @@ export const SwingScannerView: React.FC = () => {
           const csvText = await file.text();
           const detectedDate = reportDateFromUpload(file.name, csvText);
           const effectiveDate = detectedDate || reportDate;
-          const parsed = parseReport(csvText, effectiveDate);
-          incoming.push(...parsed.rows);
-          if (detectedDate) setReportDate(detectedDate);
-          foundTypes.push((parsed.type === 'top20' ? 'Top 20' : parsed.type === 'volume' ? 'Volume Gainers' : 'Advances') + ' (' + effectiveDate + (detectedDate ? ', auto date' : ', selected date') + ')');
+          const firstLine = csvText.replace(/^\\uFEFF/, '').split(/\\r?\\n/).find(line => line.trim()) || '';
+          const csvHeaders = splitCsvLine(firstLine).map(norm);
+          const isClassicBhavcopy = csvHeaders.includes('symbol') &&
+            csvHeaders.includes('series') &&
+            csvHeaders.includes('date1') &&
+            csvHeaders.includes('highprice') &&
+            csvHeaders.includes('lowprice') &&
+            csvHeaders.includes('closeprice');
+          if (isClassicBhavcopy) {
+            const rows = parseBhavcopy(csvText, effectiveDate);
+            incoming.push(...rows);
+            if (detectedDate) setReportDate(detectedDate);
+            foundTypes.push('NSE sec_bhavdata_full Bhavcopy (' + effectiveDate + (detectedDate ? ', auto date' : ', selected date') + ')');
+          } else {
+            const parsed = parseReport(csvText, effectiveDate);
+            incoming.push(...parsed.rows);
+            if (detectedDate) setReportDate(detectedDate);
+            foundTypes.push((parsed.type === 'top20' ? 'Top 20' : parsed.type === 'volume' ? 'Volume Gainers' : 'Advances') + ' (' + effectiveDate + (detectedDate ? ', auto date' : ', selected date') + ')');
+          }
         }
       } catch (e) { issues.push(file.name + ': ' + (e instanceof Error ? e.message : 'CSV वाचता आला नाही')); }
     }
