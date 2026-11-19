@@ -56,41 +56,63 @@ const estimateSpot = (samples: Array<{ strike: number; ce: number; pe: number }>
   if (!values.length) return 0;
   return values[Math.floor(values.length / 2)];
 };
-const parseNseOptionChain = (text: string, filename: string): OptionRow[] => {
+const parseNseOptionChain = (text: string, filename: string, fallbackSpot = 0): OptionRow[] => {
   const lines = csvLines(text);
   if (lines.length < 3) throw new Error('NSE Option Chain CSV मध्ये पुरेशा rows नाहीत.');
   const headers = splitCsvLine(lines[1]).map(normalize);
   const strikeIndex = headers.indexOf('strike');
   const expiryIndex = headers.findIndex(h => h === 'expirydate' || h === 'expiry');
   const selectedStrike = strikeFromFilename(filename);
-  const fullChain = strikeIndex >= 0 && headers.length >= 22;
-  const selectedStrikeFile = strikeIndex < 0 && expiryIndex >= 0 && headers.length >= 22 && selectedStrike > 0;
+  const fullChain = strikeIndex >= 0 && headers.length >= 18;
+  const selectedStrikeFile = strikeIndex < 0 && expiryIndex >= 0 && headers.length >= 18 && selectedStrike > 0;
   if (!fullChain && !selectedStrikeFile) {
-    throw new Error('NSE CSV format ओळखता आला नाही. Full Option Chain CSV upload करा; किंवा एका Strike चा CSV असल्यास फाइलचे नाव NIFTY-Strike-26000.csv अशा प्रकारे ठेवा.');
+    throw new Error('NSE CSV format ओळखता आला नाही. NSE मधील पूर्ण Option Chain CSV वापरा किंवा CSV Template मधील columns वापरा.');
+  }
+  // NSE exports contain duplicate OI / Change in OI / Volume / IV / LTP headers.
+  // Resolve the CE-side first occurrence and PE-side last occurrence instead of hard-coded positions.
+  const indexes = (key: string) => headers.map((h, i) => h === key ? i : -1).filter(i => i >= 0);
+  const oiIndexes = indexes('oi');
+  const changeOiIndexes = indexes('chginoi');
+  const volumeIndexes = indexes('volume');
+  const ivIndexes = indexes('iv');
+  const ltpIndexes = indexes('ltp');
+  const ceLtpIndex = ltpIndexes[0] ?? -1;
+  const peLtpIndex = ltpIndexes[ltpIndexes.length - 1] ?? -1;
+  if (fullChain && (ceLtpIndex < 0 || peLtpIndex < 0 || oiIndexes.length < 2)) {
+    throw new Error('NSE CSV मध्ये CE/PE LTP किंवा OI columns सापडले नाहीत. मूळ NSE Option Chain CSV पुन्हा डाउनलोड करा.');
   }
   const defaultExpiry = expiryFromFilename(filename);
   const raw: Array<{ strike: number; expiry: string; ce: number; pe: number; rows: OptionRow[] }> = [];
   for (const line of lines.slice(2)) {
     const c = splitCsvLine(line);
     const strike = fullChain ? number(c[strikeIndex]) : selectedStrike;
-    // Prefer the expiry column when the NSE export includes it; otherwise use the expiry encoded in the filename.
     const expiry = fullChain
       ? (expiryIndex >= 0 ? (parseDate(c[expiryIndex] || '') || defaultExpiry) : defaultExpiry)
-      : parseDate(c[expiryIndex] || '');
+      : parseDate(c[expiryIndex] || '') || defaultExpiry;
     if (!(strike > 0) || !expiry) continue;
-    const ceLtp = number(c[5]);
-    const peLtp = number(c[17]);
+    const ceLtp = number(c[ceLtpIndex]);
+    const peLtp = number(c[peLtpIndex]);
     const rows: OptionRow[] = [];
-    if (ceLtp > 0) rows.push({ expiry, strike, type: 'CE', ltp: ceLtp, oi: number(c[1]), changeOi: number(c[2]), volume: number(c[3]), iv: number(c[4]) || undefined, spot: 0 });
-    if (peLtp > 0) rows.push({ expiry, strike, type: 'PE', ltp: peLtp, oi: number(c[21]), changeOi: number(c[20]), volume: number(c[19]), iv: number(c[18]) || undefined, spot: 0 });
+    if (ceLtp > 0) rows.push({
+      expiry, strike, type: 'CE', ltp: ceLtp,
+      oi: number(c[oiIndexes[0]]), changeOi: number(c[changeOiIndexes[0]]),
+      volume: number(c[volumeIndexes[0]]), iv: number(c[ivIndexes[0]]) || undefined, spot: 0
+    });
+    if (peLtp > 0) rows.push({
+      expiry, strike, type: 'PE', ltp: peLtp,
+      oi: number(c[oiIndexes[oiIndexes.length - 1]]),
+      changeOi: number(c[changeOiIndexes[changeOiIndexes.length - 1]]),
+      volume: number(c[volumeIndexes[volumeIndexes.length - 1]]),
+      iv: number(c[ivIndexes[ivIndexes.length - 1]]) || undefined, spot: 0
+    });
     if (rows.length) raw.push({ strike, expiry, ce: ceLtp, pe: peLtp, rows });
   }
-  if (!raw.length) throw new Error('या NSE CSV मध्ये वाचता येणारे CE/PE rows सापडले नाहीत.');
-  const spot = estimateSpot(raw);
-  if (!spot) throw new Error('CE आणि PE दोन्ही LTP वरून spot अंदाज काढता आला नाही.');
+  if (!raw.length) throw new Error('या NSE CSV मध्ये वाचता येणारे CE/PE rows सापडले नाहीत. Expiry filename मध्ये DD-MMM-YYYY स्वरूपात द्या किंवा CSV मध्ये Expiry column ठेवा.');
+  const spot = fallbackSpot > 0 ? fallbackSpot : estimateSpot(raw);
+  if (!(spot > 0)) throw new Error('NIFTY Spot काढता आला नाही. वर Manual NIFTY Spot भरा आणि CSV पुन्हा upload करा.');
   return raw.flatMap(x => x.rows.map(r => ({ ...r, spot })));
 };
-const parseCsv = (text: string, filename = ''): OptionRow[] => {
+const parseCsv = (text: string, filename = '', fallbackSpot = 0): OptionRow[] => {
   const lines = csvLines(text);
   if (lines.length < 2) throw new Error('CSV मध्ये option rows नाहीत.');
   const headers = splitCsvLine(lines[0]).map(normalize);
@@ -104,8 +126,8 @@ const parseCsv = (text: string, filename = ''): OptionRow[] => {
   const volume = find('volume', 'totaltradedvolume', 'tradedvolume', 'vol');
   const iv = find('iv', 'impliedvolatility');
   const spot = find('underlyingvalue', 'underlying', 'spot', 'underlyingprice', 'indexvalue');
-  if ([expiry, strike, type, ltp, oi, coi, volume, spot].some(i => i < 0)) return parseNseOptionChain(text, filename);
-  return lines.slice(1).flatMap(line => {
+  if ([expiry, strike, type, ltp, oi, coi, volume, spot].some(i => i < 0)) return parseNseOptionChain(text, filename, fallbackSpot);
+  const parsed = lines.slice(1).flatMap(line => {
     const c = splitCsvLine(line);
     const exp = parseDate(c[expiry] || '');
     const rawType = (c[type] || '').trim().toUpperCase();
@@ -113,10 +135,13 @@ const parseCsv = (text: string, filename = ''): OptionRow[] => {
     const row: OptionRow = {
       expiry: exp, strike: number(c[strike]), type: optType as 'CE' | 'PE',
       ltp: number(c[ltp]), oi: number(c[oi]), changeOi: number(c[coi]),
-      volume: number(c[volume]), iv: iv >= 0 ? number(c[iv]) : undefined, spot: number(c[spot])
+      volume: number(c[volume]), iv: iv >= 0 ? number(c[iv]) : undefined,
+      spot: number(c[spot]) || fallbackSpot
     };
-    return exp && optType && row.strike > 0 && row.ltp >= 0 && row.spot > 0 ? [row] : [];
+    return exp && optType && row.strike > 0 && row.ltp > 0 && row.spot > 0 ? [row] : [];
   });
+  if (!parsed.length) throw new Error('CSV मधून वैध CE/PE rows मिळाले नाहीत. Expiry, Strike, OptionType, LTP, OI, ChangeOI, Volume आणि Spot तपासा.');
+  return parsed;
 };
 const csvTemplate = 'Expiry,Strike,OptionType,LTP,OI,ChangeOI,Volume,IV,UnderlyingValue\n2026-12-03,26000,CE,150,120000,15000,45000,14.2,25950\n2026-12-03,26000,PE,175,145000,22000,51000,14.8,25950';
 const fmt = (v: number) => v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -465,10 +490,10 @@ export const NiftyOptionsScannerView: React.FC = () => {
     if (!file) return;
     setLoading(true); setError(''); setMessage('');
     try {
-      const parsedRows = parseCsv(await file.text(), file.name);
-      if (!parsedRows.length) throw new Error('वाचता येणाऱ्या NIFTY option rows सापडल्या नाहीत.');
       const suppliedSpot = Number(manualSpot.replace(/[,₹\s]/g, ''));
       if (manualSpot.trim() && (!Number.isFinite(suppliedSpot) || suppliedSpot <= 0)) throw new Error('NIFTY Spot योग्य आकड्यात भरा.');
+      const parsedRows = parseCsv(await file.text(), file.name, suppliedSpot);
+      if (!parsedRows.length) throw new Error('वाचता येणाऱ्या NIFTY option rows सापडल्या नाहीत.');
       const parsed = suppliedSpot > 0 ? parsedRows.map(r => ({ ...r, spot: suppliedSpot })) : parsedRows;
 
       // Keep other expiries already uploaded today; replace only expiries present in this CSV.
