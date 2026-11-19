@@ -4,6 +4,7 @@ import {
   Lock,
   Plus,
   TrendingUp,
+  CandlestickChart,
   Activity,
   Download,
   CheckCircle,
@@ -238,8 +239,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="mx-auto flex max-w-[1600px] items-center gap-1 overflow-x-auto px-5 py-2 [scrollbar-width:none]">
           {[
             { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
-            { id: 'stockTrading', label: 'Stocks', icon: TrendingUp },
             { id: 'swingScanner', label: 'Swing Scanner', icon: Activity },
+            { id: 'niftyOptions', label: 'NIFTY Options', icon: CandlestickChart },
             { id: 'motiTradex', label: 'MOTI TRADEX', icon: TrendingUp },
             { id: 'smartMoney', label: 'Smart Money', icon: Activity },
             { id: 'tipsInvest', label: 'Tips Invest', icon: Wallet },
