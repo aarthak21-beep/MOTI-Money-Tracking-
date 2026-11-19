@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, TrendingUp, CalendarDays, Activity, CandlestickChart, Search, ShieldCheck, Wallet } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, CalendarDays, Activity, Search, ShieldCheck, Wallet } from 'lucide-react';
 
 interface MobileBottomNavProps {
   currentTab: string;
@@ -11,7 +11,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ currentTab, on
     { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
     { id: 'stockTrading', label: 'Equity', icon: TrendingUp },
     { id: 'swingScanner', label: 'Scanner', icon: Activity },
-    { id: 'niftyOptions', label: 'NIFTY', icon: CandlestickChart },
+    { id: 'motiTradex', label: 'MOTI TRADEX', icon: TrendingUp },
     { id: 'smartMoney', label: 'Smart Money', icon: Search },
     { id: 'tipsInvest', label: 'Tips Invest', icon: Wallet },
     { id: 'weeklyIncome', label: 'Weekly', icon: CalendarDays },
