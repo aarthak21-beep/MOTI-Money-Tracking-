@@ -398,7 +398,7 @@ function AuthenticatedApp() {
           {currentTab === 'swingScanner' && <SwingScannerView />}
           {currentTab === 'niftyOptions' && <NiftyOptionsScannerView />}
           {currentTab === 'motiTradex' && <MotiTradexView />}
-          {currentTab === 'smartMoney' && <SmartMoneyScreenerView />
+          {currentTab === 'smartMoney' && <SmartMoneyScreenerView />}
           {currentTab === 'tipsInvest' && <TipsToInvestView />}
 
 
