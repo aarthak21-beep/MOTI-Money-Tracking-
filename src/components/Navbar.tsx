@@ -241,6 +241,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
             { id: 'swingScanner', label: 'Swing Scanner', icon: Activity },
             { id: 'niftyOptions', label: 'NIFTY Options', icon: CandlestickChart },
+            { id: 'bankNiftyOptions', label: 'BANKNIFTY Options', icon: CandlestickChart },
             { id: 'motiTradex', label: 'MOTI TRADEX', icon: TrendingUp },
             { id: 'smartMoney', label: 'Smart Money', icon: Activity },
             { id: 'tipsInvest', label: 'Tips Invest', icon: Wallet },
