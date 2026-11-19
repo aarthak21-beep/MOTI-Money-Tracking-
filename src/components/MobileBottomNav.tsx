@@ -11,6 +11,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ currentTab, on
     { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
     { id: 'swingScanner', label: 'Scanner', icon: Activity },
     { id: 'niftyOptions', label: 'NIFTY', icon: CandlestickChart },
+    { id: 'bankNiftyOptions', label: 'BANKNIFTY', icon: CandlestickChart },
     { id: 'motiTradex', label: 'MOTI TRADEX', icon: TrendingUp },
     { id: 'smartMoney', label: 'Smart Money', icon: Search },
     { id: 'tipsInvest', label: 'Tips Invest', icon: Wallet },
