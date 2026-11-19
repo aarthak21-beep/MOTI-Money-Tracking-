@@ -71,9 +71,9 @@ const csvLine = (line: string, delimiter = ',') => {
   out.push(cell.trim()); return out;
 };
 const parseCompanyMetrics = (raw: string): Map<string, MetricOverride> => {
-  const lines = raw.replace(/^\\uFEFF/, '').split(/\\r?\\n/).filter(line => line.trim());
-  const delimiters = [',', ';', '\\t', '|'];
-  const normalize = (v: string) => v.replace(/^\\uFEFF/, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
+  const delimiters = [',', ';', '\t', '|'];
+  const normalize = (v: string) => v.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalizeCompany = (v: string) => normalize(v).replace(/(privatelimited|publiclimited|limited|ltd|incorporated|inc|corporation|corp|company|co)$/, '');
   const symbolNames = ['symbol', 'nsesymbol', 'ticker', 'tickersymbol', 'nsecode', 'securityid', 'securitycode'];
   const companyNames = ['company', 'companyname', 'nameofcompany', 'issuername'];
@@ -116,7 +116,7 @@ const parseCompanyMetrics = (raw: string): Map<string, MetricOverride> => {
   for (const line of lines.slice(header.index + 1)) {
     const cells = csvLine(line, header.delimiter);
     let symbol = symbolIx >= 0 ? (cells[symbolIx] || '').trim().toUpperCase().replace(/^NSE:/, '') : '';
-    const companyName = companyIx >= 0 ? (cells[companyIx] || '').replace(/^\\|\\s*/, '').trim() : '';
+    const companyName = companyIx >= 0 ? (cells[companyIx] || '').replace(/^\|\s*/, '').trim() : '';
     if (!symbol && companyName) {
       rowsWithCompany++;
       const key = normalizeCompany(companyName);
