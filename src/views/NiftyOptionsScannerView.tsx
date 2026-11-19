@@ -257,6 +257,11 @@ export const NiftyOptionsScannerView: React.FC = () => {
   const [tradeContractKey, setTradeContractKey] = useState('');
   const [expiryGroup, setExpiryGroup] = useState<'next' | 'two-weeks' | 'three-weeks' | 'four-weeks' | 'five-plus'>('next');
   const [loading, setLoading] = useState(false);
+  const [strategyType, setStrategyType] = useState<'BULL_CALL_SPREAD' | 'BEAR_PUT_SPREAD' | 'IRON_CONDOR'>('BULL_CALL_SPREAD');
+  const [strategyWidth, setStrategyWidth] = useState(100);
+  const [paperTrades, setPaperTrades] = useState<Array<{id:string;date:string;expiry:string;strike:number;type:'CE'|'PE';entry:number;qty:number;status:'OPEN'|'CLOSED';exit?:number;closedAt?:string}>>(() => { try { return JSON.parse(localStorage.getItem('moti_nifty_paper_trades_v1') || '[]'); } catch { return []; } });
+  const [paperExit, setPaperExit] = useState<Record<string,string>>({});
+
 
   const expiries = useMemo(() => Array.from(new Set(rows.map(r => r.expiry))).sort(), [rows]);
   const groupExpiries = useMemo(() => {
@@ -531,6 +536,91 @@ export const NiftyOptionsScannerView: React.FC = () => {
     const url = URL.createObjectURL(new Blob([csvTemplate], { type: 'text/csv;charset=utf-8' }));
     const a = document.createElement('a'); a.href = url; a.download = 'moti-nifty-option-chain-template.csv'; a.click(); URL.revokeObjectURL(url);
   };
+
+  const savePaperTrade = (contract: OptionRow) => {
+    const trade = { id: `${Date.now()}-${contract.strike}-${contract.type}`, date: localDateKey(), expiry: contract.expiry, strike: contract.strike, type: contract.type, entry: contract.ltp, qty: lotSize, status: 'OPEN' as const };
+    const next = [trade, ...paperTrades].slice(0, 200);
+    setPaperTrades(next); localStorage.setItem('moti_nifty_paper_trades_v1', JSON.stringify(next));
+    setMessage(`Paper trade saved: ${contract.strike} ${contract.type} @ ₹${fmt(contract.ltp)}`);
+  };
+  const closePaperTrade = (id: string) => {
+    const exit = Number((paperExit[id] || '').replace(/[,₹\\s]/g, ''));
+    if (!(exit > 0)) { setError('Paper trade बंद करण्यासाठी वैध exit premium भरा.'); return; }
+    const next = paperTrades.map(t => t.id === id ? { ...t, status: 'CLOSED' as const, exit, closedAt: localDateKey() } : t);
+    setPaperTrades(next); localStorage.setItem('moti_nifty_paper_trades_v1', JSON.stringify(next));
+    setPaperExit(old => ({ ...old, [id]: '' })); setMessage('Paper trade closed आणि journal save झाला.');
+  };
+  const downloadCsv = (filename: string, content: string) => {
+    const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+  };
+  const exportPaperJournal = () => {
+    const header = 'Date,Expiry,Strike,Type,Entry,Exit,Quantity,Status,PnL\\n';
+    const body = paperTrades.map(t => [t.date,t.expiry,t.strike,t.type,t.entry,t.exit ?? '',t.qty,t.status,t.exit !== undefined ? ((t.exit-t.entry)*t.qty).toFixed(2) : ''].join(',')).join('\\n');
+    downloadCsv('moti-nifty-paper-trade-journal.csv', header + body);
+  };
+  const exportDailyReport = () => {
+    const lines = [
+      'Metric,Value',
+      `Snapshot Date,${localDateKey()}`,
+      `Selected Expiry,${selectedExpiry}`,
+      `NIFTY Spot,${summary.spot}`,
+      `PCR,${summary.pcr.toFixed(3)}`,
+      `Bias,${summary.bias}`,
+      `Highest CE OI Resistance,${maxCe?.strike ?? ''}`,
+      `Highest PE OI Support,${maxPe?.strike ?? ''}`,
+      `Historical Signal Accuracy,${dailyAccuracy.accuracy.toFixed(2)}%`,
+      `Backtest Samples,${dailyAccuracy.total}`,
+      '',
+      'Strike,CE OI,CE Change OI,CE Volume,PE OI,PE Change OI,PE Volume'
+    ];
+    strikeStats.forEach(x => lines.push([x.strike,x.ceOi,x.ceChange,x.ceVol,x.peOi,x.peChange,x.peVol].join(',')));
+    downloadCsv('moti-nifty-eod-report.csv', lines.join('\\n'));
+  };
+  const strategyLegs = useMemo(() => {
+    const sorted = [...new Set(rangeRows.map(r => r.strike))].sort((a,b)=>a-b);
+    if (!sorted.length) return [];
+    const atm = sorted.reduce((best,x)=>Math.abs(x-summary.spot)<Math.abs(best-summary.spot)?x:best,sorted[0]);
+    const upper = sorted.find(x=>x>=atm+strategyWidth) ?? sorted[sorted.length-1];
+    const lower = [...sorted].reverse().find(x=>x<=atm-strategyWidth) ?? sorted[0];
+    const premium = (strike:number,type:'CE'|'PE') => rangeRows.find(r=>r.strike===strike&&r.type===type)?.ltp || 0;
+    if (strategyType==='BULL_CALL_SPREAD') return [{strike:atm,type:'CE' as const,side:1,premium:premium(atm,'CE')},{strike:upper,type:'CE' as const,side:-1,premium:premium(upper,'CE')}];
+    if (strategyType==='BEAR_PUT_SPREAD') return [{strike:atm,type:'PE' as const,side:1,premium:premium(atm,'PE')},{strike:lower,type:'PE' as const,side:-1,premium:premium(lower,'PE')}];
+    return [{strike:upper,type:'CE' as const,side:-1,premium:premium(upper,'CE')},{strike:upper+strategyWidth,type:'CE' as const,side:1,premium:premium(upper+strategyWidth,'CE')},{strike:lower,type:'PE' as const,side:-1,premium:premium(lower,'PE')},{strike:Math.max(1,lower-strategyWidth),type:'PE' as const,side:1,premium:premium(Math.max(1,lower-strategyWidth),'PE')}];
+  },[rangeRows,summary.spot,strategyType,strategyWidth]);
+  const strategyMetrics = useMemo(() => {
+    if (!strategyLegs.length || strategyLegs.some(x=>x.premium<=0)) return null;
+    const netDebit = strategyLegs.reduce((v,x)=>v+x.side*x.premium,0);
+    const points = Array.from({length:21},(_,i)=>summary.spot*(0.9+i*0.01));
+    const payoff = (spot:number) => strategyLegs.reduce((v,x)=>v+x.side*((x.type==='CE'?Math.max(0,spot-x.strike):Math.max(0,x.strike-spot))-x.premium)*lotSize,0);
+    const outcomes = points.map(spot=>({spot,pnl:payoff(spot)}));
+    return { netDebit, maxProfit:Math.max(...outcomes.map(x=>x.pnl)), maxLoss:Math.min(...outcomes.map(x=>x.pnl)), breakevens:outcomes.filter((x,i)=>i>0&&Math.sign(x.pnl)!==Math.sign(outcomes[i-1].pnl)).map(x=>x.spot), outcomes };
+  },[strategyLegs,summary.spot,lotSize]);
+  const greeksRows = useMemo(() => rangeRows.map(r => {
+    const days=expiryDaysAway(r.expiry), sigma=(Number(r.iv)||0)/100, t=days/365;
+    if (!(sigma>0&&t>0&&r.spot>0&&r.strike>0)) return {...r,delta:null as number|null,gamma:null,vega:null};
+    const d1=(Math.log(r.spot/r.strike)+(0.065+sigma*sigma/2)*t)/(sigma*Math.sqrt(t));
+    const pdf=Math.exp(-d1*d1/2)/Math.sqrt(2*Math.PI);
+    const delta=r.type==='CE'?normalCdf(d1):normalCdf(d1)-1;
+    const gamma=pdf/(r.spot*sigma*Math.sqrt(t));
+    const vega=r.spot*pdf*Math.sqrt(t)/100;
+    return {...r,delta,gamma,vega};
+  }).filter(r=>r.delta!==null).sort((a,b)=>b.volume-a.volume).slice(0,30),[rangeRows]);
+  const scannerAlerts = useMemo(() => {
+    const alerts:string[]=[];
+    if(summary.pcr>=1.2) alerts.push('PCR 1.20 पेक्षा जास्त: PE OI positioning मजबूत; bullish confirmation स्वतंत्रपणे तपासा.');
+    if(summary.pcr>0&&summary.pcr<=0.8) alerts.push('PCR 0.80 किंवा कमी: CE OI positioning मजबूत; bearish confirmation स्वतंत्रपणे तपासा.');
+    if(maxCe&&Math.abs(maxCe.strike-summary.spot)<=100) alerts.push(`Potential resistance जवळ: ${fmt(maxCe.strike)}`);
+    if(maxPe&&Math.abs(maxPe.strike-summary.spot)<=100) alerts.push(`Potential support जवळ: ${fmt(maxPe.strike)}`);
+    if(momentumAlerts.length) alerts.push(`${momentumAlerts.length} contracts मध्ये मागील snapshot पासून Price + OI momentum बदल दिसतो.`);
+    return alerts;
+  },[summary.pcr,summary.spot,maxCe,maxPe,momentumAlerts]);
+  const paperStats = useMemo(() => {
+    const closed=paperTrades.filter(t=>t.status==='CLOSED'&&t.exit!==undefined);
+    const pnl=closed.reduce((v,t)=>v+((t.exit||0)-t.entry)*t.qty,0);
+    return {open:paperTrades.filter(t=>t.status==='OPEN').length,closed:closed.length,pnl,wins:closed.filter(t=>((t.exit||0)-t.entry)>0).length};
+  },[paperTrades]);
+
   const clearData = () => {
     if (window.confirm('Saved NIFTY option-chain data delete करायचा?')) {
       void (async () => { try { await deleteScannerData('nifty-options'); setRows([]); localStorage.removeItem(STORAGE_KEY); setMessage('Option-chain data clear केला.'); } catch (e) { setError(e instanceof Error ? e.message : 'Cloud delete failed.'); } })();
@@ -651,6 +741,31 @@ export const NiftyOptionsScannerView: React.FC = () => {
       </div>})}</div>}
       <p className="mt-3 text-[10px] text-amber-200/80">हे OI concentration view आहे; जास्त CE/PE OI म्हणजे guaranteed resistance/support नाही. Heatmap फक्त spot ±600 मधील उपलब्ध strikes वापरतो.</p>
     </section>
+
+
+    <div className="rounded-2xl border border-amber-300/20 bg-[#0d1527] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-white">CSV Smart Alerts · EOD</h2><p className="mt-1 text-[11px] text-slate-400">Uploaded chain आणि saved snapshots मधून तयार झालेले alerts; live notifications नाहीत.</p></div><button onClick={exportDailyReport} disabled={!chain.length} className="rounded-lg bg-cyan-300 px-3 py-2 text-[11px] font-bold text-slate-950 disabled:opacity-40">Download EOD Report CSV</button></div>
+      {scannerAlerts.length ? <ul className="mt-3 space-y-2">{scannerAlerts.map((a,i)=><li key={i} className="rounded-lg bg-[#080f1b] p-3 text-xs text-amber-100">• {a}</li>)}</ul> : <p className="mt-3 text-xs text-slate-400">सध्या configured thresholds नुसार alert नाही.</p>}
+      <p className="mt-3 text-[10px] text-slate-500">Backtest (saved daily snapshots): {dailyAccuracy.total} samples · {dailyAccuracy.accuracy.toFixed(1)}% directional accuracy. हा ऐतिहासिक अभ्यास आहे; भविष्यातील accuracy ची हमी नाही.</p>
+    </div>
+
+    <div className="rounded-2xl border border-violet-300/20 bg-[#0d1527] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-white">Options Strategy Builder · Expiry Payoff</h2><p className="mt-1 text-[11px] text-slate-400">Premiums uploaded CSV मधून; expiry payoff मध्ये charges, slippage आणि early exercise समाविष्ट नाहीत.</p></div><select value={strategyType} onChange={e=>setStrategyType(e.target.value as typeof strategyType)} className="rounded-lg border border-slate-600 bg-[#080f1b] px-3 py-2 text-xs text-white"><option value="BULL_CALL_SPREAD">Bull Call Spread</option><option value="BEAR_PUT_SPREAD">Bear Put Spread</option><option value="IRON_CONDOR">Iron Condor</option></select></div>
+      <label className="mt-3 inline-flex items-center gap-2 text-xs text-slate-300">Wing width <input type="number" min="50" step="50" value={strategyWidth} onChange={e=>setStrategyWidth(Math.max(50,Number(e.target.value)||50))} className="w-24 rounded border border-slate-600 bg-[#080f1b] px-2 py-1.5 text-white"/> points</label>
+      {strategyMetrics ? <><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{[['Net debit / credit',`₹${fmt(strategyMetrics.netDebit*lotSize)}`],['Max profit in shown range',`₹${fmt(strategyMetrics.maxProfit)}`],['Max loss in shown range',`₹${fmt(strategyMetrics.maxLoss)}`],['Lot size',String(lotSize)]].map(([k,v])=><div key={k} className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">{k}</p><p className="mt-1 text-sm font-bold text-white">{v}</p></div>)}</div><div className="mt-3 overflow-x-auto"><table className="w-full min-w-[500px] text-left text-xs"><thead className="text-slate-400"><tr><th className="p-2">Leg</th><th className="p-2">Strike</th><th className="p-2">Side</th><th className="p-2">CSV premium</th></tr></thead><tbody>{strategyLegs.map((x,i)=><tr key={i} className="border-t border-slate-700"><td className="p-2">{x.type}</td><td className="p-2">{fmt(x.strike)}</td><td className="p-2">{x.side>0?'BUY':'SELL'}</td><td className="p-2">₹{fmt(x.premium)}</td></tr>)}</tbody></table></div><p className="mt-2 text-[10px] text-slate-500">Payoff range: NIFTY Spot ±10% (21 scenarios). Max profit/loss हे फक्त या displayed range मधील आहेत; बाहेरील theoretical payoff वेगळा असू शकतो.</p></> : <p className="mt-3 text-xs text-amber-200">Strategy payoff साठी निवडलेल्या expiry मध्ये सर्व आवश्यक CE/PE strikes चे LTP CSV मध्ये असणे आवश्यक आहे.</p>}
+    </div>
+
+    <div className="rounded-2xl border border-sky-300/20 bg-[#0d1527] p-4 sm:p-5">
+      <h2 className="text-sm font-bold text-white">Greeks Dashboard · Delta / Gamma / Vega</h2><p className="mt-1 text-[11px] text-slate-400">Black–Scholes estimates using uploaded IV, Spot, Strike, expiry and assumed 6.5% rate. IV नसल्यास Greeks दाखवले जात नाहीत.</p>
+      {greeksRows.length ? <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[700px] text-left text-xs"><thead className="text-slate-400"><tr>{['Strike','Type','IV','Delta','Gamma','Vega / 1 IV pt','Volume'].map(x=><th key={x} className="p-2">{x}</th>)}</tr></thead><tbody>{greeksRows.map(r=><tr key={r.strike+'-'+r.type} className="border-t border-slate-700"><td className="p-2 font-bold text-white">{fmt(r.strike)}</td><td className="p-2">{r.type}</td><td className="p-2">{fmt(r.iv||0)}%</td><td className="p-2">{r.delta!.toFixed(3)}</td><td className="p-2">{r.gamma!.toFixed(5)}</td><td className="p-2">{r.vega!.toFixed(3)}</td><td className="p-2">{fmt(r.volume)}</td></tr>)}</tbody></table></div> : <p className="mt-3 text-xs text-amber-200">वैध IV असलेले contracts उपलब्ध नाहीत.</p>}
+    </div>
+
+    <div className="rounded-2xl border border-emerald-300/20 bg-[#0d1527] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-white">Paper Trade Journal</h2><p className="mt-1 text-[11px] text-slate-400">CSV EOD premium वापरून paper trades track करा. हा local browser journal आहे; cloud sync नाही.</p></div><button onClick={exportPaperJournal} disabled={!paperTrades.length} className="rounded-lg border border-slate-600 px-3 py-2 text-[11px] text-white disabled:opacity-40">Export Journal CSV</button></div>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{[['Open trades',String(paperStats.open)],['Closed trades',String(paperStats.closed)],['Realised paper P&L',`₹${fmt(paperStats.pnl)}`],['Win rate',paperStats.closed?`${(paperStats.wins/paperStats.closed*100).toFixed(1)}%`:'—']].map(([k,v])=><div key={k} className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">{k}</p><p className="mt-1 text-sm font-bold text-white">{v}</p></div>)}</div>
+      {selectedTradeContract && <button onClick={()=>savePaperTrade(selectedTradeContract)} className="mt-3 rounded-lg bg-emerald-300 px-3 py-2 text-xs font-bold text-slate-950">Add selected {selectedTradeContract.strike} {selectedTradeContract.type} to Paper Journal</button>}
+      {paperTrades.length ? <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[700px] text-left text-xs"><thead className="text-slate-400"><tr>{['Date','Contract','Entry','Qty','Status / P&L','Action'].map(x=><th key={x} className="p-2">{x}</th>)}</tr></thead><tbody>{paperTrades.slice(0,30).map(t=><tr key={t.id} className="border-t border-slate-700"><td className="p-2">{t.date}</td><td className="p-2">{t.expiry} · {fmt(t.strike)} {t.type}</td><td className="p-2">₹{fmt(t.entry)}</td><td className="p-2">{t.qty}</td><td className="p-2">{t.status==='CLOSED'?<span className={(t.exit||0)>=t.entry?'text-emerald-300':'text-rose-300'}>₹{fmt(((t.exit||0)-t.entry)*t.qty)}</span>:'OPEN'}</td><td className="p-2">{t.status==='OPEN'?<span className="inline-flex gap-1"><input aria-label="Exit premium" value={paperExit[t.id]||''} onChange={e=>setPaperExit(old=>({...old,[t.id]:e.target.value}))} placeholder="Exit LTP" className="w-20 rounded bg-[#080f1b] px-2 py-1 text-white"/><button onClick={()=>closePaperTrade(t.id)} className="rounded bg-emerald-300 px-2 py-1 font-bold text-slate-950">Close</button></span>:'Closed'}</td></tr>)}</tbody></table></div> : <p className="mt-3 text-xs text-slate-400">Selected trade contract निवडून paper journal मध्ये add करा.</p>}
+    </div>
 
     <section className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-white">All Expiry Market Analysis</h2><p className="mt-1 text-[11px] text-slate-400">प्रत्येक eligible expiry चे Support / Resistance, Price + OI buildup आणि PCR trend. OI Contracts आणि Lots दोन्हीमध्ये.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-[10px] text-cyan-200">Lot size: {lotSize}</span></div>
