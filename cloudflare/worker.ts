@@ -1,4 +1,28 @@
 const SCANNERS = new Set(['swing', 'nifty-options', 'smart-money']);
+
+function normalizeSwingDate(value) {
+  const raw = String(value ?? '').trim();
+  let m = raw.match(/^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})$/);
+  if (m) {
+    const [, y, mo, d] = m;
+    const date = new Date(Date.UTC(+y, +mo - 1, +d));
+    if (date.getUTCFullYear() === +y && date.getUTCMonth() === +mo - 1 && date.getUTCDate() === +d) return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  m = raw.match(/^(\\d{1,2})[-/. ]([A-Za-z]{3,})[-/. ](\\d{4})$/);
+  if (m) {
+    const [, d, monthName, y] = m;
+    const mo = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(monthName.slice(0, 3).toLowerCase()) + 1;
+    const date = new Date(Date.UTC(+y, mo - 1, +d));
+    if (mo && date.getUTCFullYear() === +y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === +d) return `${y}-${String(mo).padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  m = raw.match(/^(\\d{1,2})[-/.](\\d{1,2})[-/.](\\d{4})$/);
+  if (m) {
+    const [, d, mo, y] = m;
+    const date = new Date(Date.UTC(+y, +mo - 1, +d));
+    if (date.getUTCFullYear() === +y && date.getUTCMonth() === +mo - 1 && date.getUTCDate() === +d) return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  return '';
+}
 const ALLOWED_ORIGINS = new Set(['https://moti-money-tracking.pages.dev', 'https://finova.themotigroup.co.in', 'https://aarthak21-beep.github.io']);
 
 function response(body, status, origin) {
@@ -469,18 +493,18 @@ export default {
           }
 
           const item = rawItem;
-          const date = String(item.date || '');
-          const symbol = String(item.symbol || '').trim();
+          const date = normalizeSwingDate(item.date);
+          const symbol = String(item.symbol ?? '').trim().toUpperCase();
 
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !symbol) {
+          if (!date || !/^[A-Z0-9&.-]{1,30}$/.test(symbol)) {
             return response({
-              error: 'Invalid Swing row: valid date and symbol are required. No rows were saved.'
+              error: `Invalid Swing row: valid date and NSE symbol are required. Received date="${String(item.date ?? '').slice(0, 40)}", symbol="${String(item.symbol ?? '').slice(0, 40)}". No rows were saved.`
             }, 400, origin);
           }
 
-          const chunkKey = date || 'undated';
+          const chunkKey = date;
           const rows = byDate.get(chunkKey) || [];
-          rows.push({ ...item, symbol });
+          rows.push({ ...item, date, symbol });
           byDate.set(chunkKey, rows);
         }
 
