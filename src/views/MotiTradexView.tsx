@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2, Wallet, TrendingUp, BriefcaseBusiness, IndianRupee } from 'lucide-react';
 
 type Holding = { id: string; symbol: string; buyPrice: number; quantity: number; currentPrice: number };
+type OptionTrade = { id: string; index: 'NIFTY' | 'BANKNIFTY' | 'SENSEX'; side: 'CE' | 'PE'; strike: number; expiry: string; premium: number; currentPremium: number; lots: number; lotSize: number };
+const OPTIONS_KEY = 'moti_tradex_options_v1';
 const STORAGE_KEY = 'moti_tradex_holdings_v1';
 const STARTING_CAPITAL = 100000;
 const money = (n: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n);
@@ -10,18 +12,31 @@ export const MotiTradexView: React.FC = () => {
   const [holdings, setHoldings] = useState<Holding[]>(() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as Holding[]; } catch { return []; }
   });
+  const [options, setOptions] = useState<OptionTrade[]>(() => { try { return JSON.parse(localStorage.getItem(OPTIONS_KEY) || '[]') as OptionTrade[]; } catch { return []; } });
+  const [index, setIndex] = useState<OptionTrade['index']>('NIFTY');
+  const [side, setSide] = useState<OptionTrade['side']>('CE');
+  const [strike, setStrike] = useState('');
+  const [expiry, setExpiry] = useState('');
+  const [premium, setPremium] = useState('');
+  const [currentPremium, setCurrentPremium] = useState('');
+  const [lots, setLots] = useState('1');
+  const [lotSize, setLotSize] = useState('');
   const [symbol, setSymbol] = useState('');
   const [buyPrice, setBuyPrice] = useState('');
   const [quantity, setQuantity] = useState('');
   const [currentPrice, setCurrentPrice] = useState('');
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(holdings)); }, [holdings]);
+  useEffect(() => { localStorage.setItem(OPTIONS_KEY, JSON.stringify(options)); }, [options]);
 
   const totals = useMemo(() => {
     const investment = holdings.reduce((sum, h) => sum + h.buyPrice * h.quantity, 0);
     const marketValue = holdings.reduce((sum, h) => sum + h.currentPrice * h.quantity, 0);
-    return { investment, marketValue, available: STARTING_CAPITAL - investment, pnl: marketValue - investment, portfolio: STARTING_CAPITAL - investment + marketValue };
-  }, [holdings]);
+    const optionInvestment = options.reduce((sum, o) => sum + o.premium * o.lots * o.lotSize, 0);
+    const optionValue = options.reduce((sum, o) => sum + o.currentPremium * o.lots * o.lotSize, 0);
+    const available = STARTING_CAPITAL - investment - optionInvestment;
+    return { investment: investment + optionInvestment, marketValue: marketValue + optionValue, available, pnl: marketValue - investment + optionValue - optionInvestment, portfolio: available + marketValue + optionValue };
+  }, [holdings, options]);
 
   const addHolding = (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,6 +53,14 @@ export const MotiTradexView: React.FC = () => {
     setHoldings(old => old.map(h => h.id === id ? { ...h, currentPrice: price } : h));
   };
 
+  const addOption = (e: React.FormEvent) => {
+    e.preventDefault();
+    const s = Number(strike), p = Number(premium), cp = Number(currentPremium), l = Number(lots), ls = Number(lotSize);
+    if (!expiry || !Number.isFinite(s) || !Number.isFinite(p) || !Number.isFinite(cp) || !Number.isFinite(l) || !Number.isFinite(ls) || s <= 0 || p <= 0 || cp < 0 || l <= 0 || ls <= 0) return;
+    if (p * l * ls > totals.available) { alert('Available balance पुरेसा नाही.'); return; }
+    setOptions(old => [...old, { id: crypto.randomUUID(), index, side, strike: s, expiry, premium: p, currentPremium: cp, lots: l, lotSize: ls }]);
+    setStrike(''); setExpiry(''); setPremium(''); setCurrentPremium(''); setLots('1'); setLotSize('');
+  };
   const cards = [
     { label: 'Portfolio Value', value: totals.portfolio, icon: BriefcaseBusiness, color: 'text-cyan-300' },
     { label: 'Available Balance', value: totals.available, icon: Wallet, color: 'text-emerald-300' },
@@ -66,7 +89,23 @@ export const MotiTradexView: React.FC = () => {
         <input type="number" min="0" step="0.01" value={currentPrice} onChange={e=>setCurrentPrice(e.target.value)} placeholder="Current Price ₹" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
         <button type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-300 px-4 py-3 text-sm font-bold text-slate-950"><Plus className="h-4 w-4"/>Add Holding</button>
       </form>
-      <p className="mt-2 text-[11px] text-slate-500">Total P&L = (Current Price − Buy Price) × Quantity. हे manual portfolio tracker आहे; broker शी जोडलेले नाही.</p>
+      <p className="mt-2 text-[11px] text-slate-500">हे manual portfolio tracker आहे; broker शी जोडलेले नाही.</p>
+    </section>
+    <section className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
+      <h2 className="text-sm font-bold text-white">Buy Index Options</h2>
+      <form onSubmit={addOption} className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <select value={index} onChange={e=>setIndex(e.target.value as OptionTrade['index'])} className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white"><option>NIFTY</option><option>BANKNIFTY</option><option>SENSEX</option></select>
+        <select value={side} onChange={e=>setSide(e.target.value as OptionTrade['side'])} className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white"><option value="CE">CE</option><option value="PE">PE</option></select>
+        <input type="number" min="1" step="0.05" value={strike} onChange={e=>setStrike(e.target.value)} placeholder="Strike Price" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
+        <input type="date" value={expiry} onChange={e=>setExpiry(e.target.value)} required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
+        <input type="number" min="0.01" step="0.05" value={premium} onChange={e=>setPremium(e.target.value)} placeholder="Buy Premium ₹" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
+        <input type="number" min="0" step="0.05" value={currentPremium} onChange={e=>setCurrentPremium(e.target.value)} placeholder="Current Premium ₹" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
+        <input type="number" min="1" step="1" value={lots} onChange={e=>setLots(e.target.value)} placeholder="Lots" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
+        <input type="number" min="1" step="1" value={lotSize} onChange={e=>setLotSize(e.target.value)} placeholder="Lot Size" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
+        <button type="submit" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 sm:col-span-4"><Plus className="h-4 w-4"/>Buy Option</button>
+      </form>
+      <p className="mt-2 text-[11px] text-slate-500">NIFTY, BANKNIFTY आणि SENSEX CE/PE. Lot size exchange प्रमाणे स्वतः भरा; premium amount available balance मधून मोजला जातो.</p>
+      {options.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[850px] text-left text-xs"><thead className="text-slate-400"><tr>{['Contract','Strike','Expiry','Buy Premium','Current Premium','Lots × Lot Size','Investment','P&L',''].map(x=><th key={x} className="p-2">{x}</th>)}</tr></thead><tbody>{options.map(o=>{const qty=o.lots*o.lotSize;const pnl=(o.currentPremium-o.premium)*qty;return <tr key={o.id} className="border-t border-slate-700 text-slate-200"><td className="p-2 font-bold text-white">{o.index} {o.side}</td><td className="p-2">{money(o.strike)}</td><td className="p-2">{o.expiry}</td><td className="p-2">₹{money(o.premium)}</td><td className="p-2"><input aria-label="Current option premium" type="number" min="0" step="0.05" value={o.currentPremium} onChange={e=>{const v=Number(e.target.value);if(Number.isFinite(v)&&v>=0)setOptions(old=>old.map(x=>x.id===o.id?{...x,currentPremium:v}:x));}} className="w-24 rounded bg-[#080f1b] px-2 py-1 text-white" /></td><td className="p-2">{o.lots} × {o.lotSize}</td><td className="p-2">₹{money(o.premium*qty)}</td><td className={`p-2 font-bold ${pnl>=0?'text-emerald-300':'text-rose-300'}`}>{pnl<0?'-':''}₹{money(Math.abs(pnl))}</td><td className="p-2"><button type="button" onClick={()=>setOptions(old=>old.filter(x=>x.id!==o.id))} aria-label="Remove option" className="rounded p-1 text-rose-300"><Trash2 className="h-4 w-4"/></button></td></tr>;})}</tbody></table></div>}
     </section>
     <section className="rounded-2xl border border-white/10 bg-[#0d1527] p-4 sm:p-5">
       <h2 className="text-sm font-bold text-white">My Portfolio</h2>
