@@ -348,7 +348,7 @@ export default {
         )
       `).run();
       if (scanner === 'swing') {
-        if (scanner === 'swing') await env.MOTI_DB.prepare(`
+        await env.MOTI_DB.prepare(`
           CREATE TABLE IF NOT EXISTS moti_scanner_data_state (
             scanner TEXT PRIMARY KEY,
             legacy_migration_blocked INTEGER NOT NULL DEFAULT 0,
@@ -378,9 +378,9 @@ export default {
             String(a.date || '').localeCompare(String(b.date || '')) ||
             String(a.symbol || '').localeCompare(String(b.symbol || ''))
           );
-          const state = await env.MOTI_DB.prepare(
+          const state = scanner === 'swing' ? await env.MOTI_DB.prepare(
             'SELECT legacy_migration_blocked FROM moti_scanner_data_state WHERE scanner = ?1'
-          ).bind('swing').first();
+          ).bind('swing').first() : null;
           return response({
             scanner,
             data: data.length ? data : null,
@@ -430,10 +430,10 @@ export default {
       if ((scanner === 'swing' || scanner === 'smart-money') && payload.mode === 'replace' && Array.isArray(payload.data) && payload.data.length === 0) {
         await env.MOTI_DB.prepare(
           'DELETE FROM moti_scanner_data_chunks WHERE scanner = ?1'
-        ).bind('swing').run();
+        ).bind(scanner).run();
         await env.MOTI_DB.prepare(
           'DELETE FROM moti_scanner_data WHERE scanner = ?1'
-        ).bind('swing').run();
+        ).bind(scanner).run();
         await env.MOTI_DB.prepare(`
           CREATE TABLE IF NOT EXISTS moti_scanner_data_state (
             scanner TEXT PRIMARY KEY,
