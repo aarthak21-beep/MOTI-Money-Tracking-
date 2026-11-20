@@ -52,6 +52,8 @@ export const MotiTradexView: React.FC = () => {
   const [dailyLossLimit, setDailyLossLimit] = useState(() => localStorage.getItem('moti_tradex_daily_loss_limit') || '5000');
   const [maxOpenTrades, setMaxOpenTrades] = useState(() => localStorage.getItem('moti_tradex_max_open_trades') || '5');
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const [portfolioCloudReady, setPortfolioCloudReady] = useState(false);
+  const [portfolioCloudStatus, setPortfolioCloudStatus] = useState('Cloud backup तपासत आहे…');
 
 
   const refreshFyersStatus = async () => {
@@ -164,6 +166,51 @@ export const MotiTradexView: React.FC = () => {
   useEffect(() => { localStorage.setItem(OPTIONS_KEY, JSON.stringify(options)); }, [options]);
   useEffect(() => { localStorage.setItem('moti_tradex_daily_loss_limit', dailyLossLimit); }, [dailyLossLimit]);
   useEffect(() => { localStorage.setItem('moti_tradex_max_open_trades', maxOpenTrades); }, [maxOpenTrades]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const jwt = await getAppwriteJwt();
+        const res = await fetch(`${CLOUD_WORKER_URL}/api/tradex/portfolio`, { headers: { authorization: `Bearer ${jwt}` }, cache: 'no-store' });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Cloud backup load failed.');
+        if (body.portfolio && Array.isArray(body.portfolio.holdings) && Array.isArray(body.portfolio.options)) {
+          if (active) {
+            setHoldings(body.portfolio.holdings);
+            setOptions(body.portfolio.options);
+            if (body.portfolio.settings?.dailyLossLimit != null) setDailyLossLimit(String(body.portfolio.settings.dailyLossLimit));
+            if (body.portfolio.settings?.maxOpenTrades != null) setMaxOpenTrades(String(body.portfolio.settings.maxOpenTrades));
+          }
+        }
+        if (active) setPortfolioCloudStatus(body.updatedAt ? `Cloud backup synced · ${new Date(body.updatedAt).toLocaleString('en-IN')}` : 'Cloud backup तयार आहे · पहिला sync बाकी');
+      } catch (error) {
+        if (active) setPortfolioCloudStatus(`Cloud sync उपलब्ध नाही · Local backup वापरात (${error instanceof Error ? error.message : 'connection error'})`);
+      } finally { if (active) setPortfolioCloudReady(true); }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!portfolioCloudReady) return;
+    const timer = window.setTimeout(() => {
+      (async () => {
+        try {
+          const jwt = await getAppwriteJwt();
+          const res = await fetch(`${CLOUD_WORKER_URL}/api/tradex/portfolio`, {
+            method: 'PUT', headers: { authorization: `Bearer ${jwt}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ portfolio: { holdings, options, settings: { dailyLossLimit, maxOpenTrades } } })
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || 'Cloud sync failed.');
+          setPortfolioCloudStatus(`Cloud backup synced · ${new Date(body.updatedAt).toLocaleString('en-IN')}`);
+        } catch (error) {
+          setPortfolioCloudStatus(`Cloud sync अयशस्वी · Local backup सुरक्षित (${error instanceof Error ? error.message : 'connection error'})`);
+        }
+      })();
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [portfolioCloudReady, holdings, options, dailyLossLimit, maxOpenTrades]);
 
   const filteredOptions = options.filter(o => (tradeFilter === 'ALL' || (tradeFilter === 'CLOSED' ? o.status === 'CLOSED' : o.status !== 'CLOSED')) && (tradeIndexFilter === 'ALL' || o.index === tradeIndexFilter) && (!tradeSearch.trim() || `${o.index} ${o.side} ${o.strike} ${o.expiry}`.toLowerCase().includes(tradeSearch.trim().toLowerCase())));
   const closedPaperTrades = options.filter(o => o.status === 'CLOSED');
@@ -296,6 +343,7 @@ export const MotiTradexView: React.FC = () => {
       <h1 className="mt-2 text-2xl font-black text-white sm:text-3xl">MOTI TRADEX Portfolio</h1>
       <p className="mt-2 text-sm text-slate-300">Starting capital ₹1,00,000 · तुमचे holdings आणि P&L इथे track करा. Prices manually update करा.</p>
     </section>
+    <section className="rounded-xl border border-emerald-300/20 bg-emerald-300/5 px-4 py-3"><p className="text-xs text-emerald-200">{portfolioCloudStatus}</p></section>
     <section className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h2 className="text-sm font-bold text-white">FYERS Market Data Connection</h2>
