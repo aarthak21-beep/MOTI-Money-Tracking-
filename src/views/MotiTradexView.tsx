@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, Wallet, TrendingUp, BriefcaseBusiness, IndianRupee } from 'lucide-react';
+import { Plus, Trash2, Wallet, TrendingUp, BriefcaseBusiness, IndianRupee, Link2, RefreshCw } from 'lucide-react';
+import { CLOUD_WORKER_URL, getAppwriteJwt } from '../services/appwriteAuth';
 
 type Holding = { id: string; symbol: string; buyPrice: number; quantity: number; currentPrice: number };
 type OptionTrade = { id: string; index: 'NIFTY' | 'BANKNIFTY' | 'SENSEX'; side: 'CE' | 'PE'; strike: number; expiry: string; premium: number; currentPremium: number; lots: number; lotSize: number };
@@ -25,6 +26,35 @@ export const MotiTradexView: React.FC = () => {
   const [buyPrice, setBuyPrice] = useState('');
   const [quantity, setQuantity] = useState('');
   const [currentPrice, setCurrentPrice] = useState('');
+  const [fyersConnected, setFyersConnected] = useState<boolean | null>(null);
+  const [fyersConnectedAt, setFyersConnectedAt] = useState<string | null>(null);
+  const [fyersBusy, setFyersBusy] = useState(false);
+  const [fyersError, setFyersError] = useState('');
+
+  const refreshFyersStatus = async () => {
+    setFyersBusy(true); setFyersError('');
+    try {
+      const jwt = await getAppwriteJwt();
+      const res = await fetch(`${CLOUD_WORKER_URL}/api/fyers/status`, { headers: { authorization: `Bearer ${jwt}` }, cache: 'no-store' });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'FYERS status check failed.');
+      setFyersConnected(Boolean(body.connected)); setFyersConnectedAt(body.connectedAt || null);
+    } catch (error) { setFyersError(error instanceof Error ? error.message : 'FYERS status check failed.'); }
+    finally { setFyersBusy(false); }
+  };
+
+  const connectFyers = async () => {
+    setFyersBusy(true); setFyersError('');
+    try {
+      const jwt = await getAppwriteJwt();
+      const res = await fetch(`${CLOUD_WORKER_URL}/api/fyers/login`, { headers: { authorization: `Bearer ${jwt}` }, cache: 'no-store' });
+      const body = await res.json();
+      if (!res.ok || !body.loginUrl) throw new Error(body.error || 'Could not start FYERS login.');
+      window.location.assign(body.loginUrl);
+    } catch (error) { setFyersError(error instanceof Error ? error.message : 'Could not start FYERS login.'); setFyersBusy(false); }
+  };
+
+  useEffect(() => { void refreshFyersStatus(); }, []);
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(holdings)); }, [holdings]);
   useEffect(() => { localStorage.setItem(OPTIONS_KEY, JSON.stringify(options)); }, [options]);
@@ -73,6 +103,21 @@ export const MotiTradexView: React.FC = () => {
       <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">MOTI · TRADEX</div>
       <h1 className="mt-2 text-2xl font-black text-white sm:text-3xl">MOTI TRADEX Portfolio</h1>
       <p className="mt-2 text-sm text-slate-300">Starting capital ₹1,00,000 · तुमचे holdings आणि P&L इथे track करा. Prices manually update करा.</p>
+    </section>
+    <section className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h2 className="text-sm font-bold text-white">FYERS Market Data Connection</h2>
+          <p className="mt-1 text-xs text-slate-400">फक्त market data access. MOTI मधून कोणतेही broker orders place केले जाणार नाहीत.</p>
+          <p className={`mt-2 text-xs ${fyersConnected ? "text-emerald-300" : "text-amber-300"}`}>{fyersConnected === null ? "Status तपासत आहे…" : fyersConnected ? "FYERS connected" : "FYERS not connected"}</p>
+          {fyersConnectedAt && <p className="mt-1 text-[11px] text-slate-500">Connected: {new Date(fyersConnectedAt).toLocaleString("en-IN")}</p>}
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => void refreshFyersStatus()} disabled={fyersBusy} className="inline-flex items-center gap-2 rounded-xl border border-slate-600 px-3 py-2 text-xs font-semibold text-slate-200 disabled:opacity-50"><RefreshCw className="h-4 w-4"/>Refresh</button>
+          <button type="button" onClick={() => void connectFyers()} disabled={fyersBusy} className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-50"><Link2 className="h-4 w-4"/>Connect FYERS</button>
+        </div>
+      </div>
+      {fyersError && <p role="alert" className="mt-3 text-xs text-rose-300">{fyersError}</p>}
+      <p className="mt-3 text-[11px] text-slate-500">FYERS login पूर्ण झाल्यावर MOTI मध्ये परत येऊन Refresh दाबा. Daily token expiry मुळे पुन्हा login लागू शकतो.</p>
     </section>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map(card => { const Icon = card.icon; return <div key={card.label} className="rounded-2xl border border-white/10 bg-[#0d1527] p-4">
