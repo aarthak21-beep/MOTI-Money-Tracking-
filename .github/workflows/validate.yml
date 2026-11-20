@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [fix/zerodha-equity-journal-sync]
+    branches: [main, fix/zerodha-equity-journal-sync]
 
 permissions:
   contents: read
