@@ -213,7 +213,7 @@ export const MotiTradexView: React.FC = () => {
       return [o.index, o.side, o.strike, o.expiry, o.premium, o.currentPremium, exit, o.lots, o.lotSize, o.premium * qty, pnl, o.status === 'CLOSED' ? 'CLOSED' : 'OPEN', o.closedAt ? new Date(o.closedAt).toLocaleString('en-IN') : ''];
     });
     const csvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
-    const csv = '\\uFEFF' + [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\\r\\n');
+    const csv = '\uFEFF' + [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
