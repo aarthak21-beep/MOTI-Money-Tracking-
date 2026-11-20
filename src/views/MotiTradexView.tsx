@@ -3,7 +3,7 @@ import { Plus, Trash2, Wallet, TrendingUp, BriefcaseBusiness, IndianRupee, Link2
 import { CLOUD_WORKER_URL, getAppwriteJwt } from '../services/appwriteAuth';
 
 type Holding = { id: string; symbol: string; buyPrice: number; quantity: number; currentPrice: number };
-type OptionTrade = { id: string; index: 'NIFTY' | 'BANKNIFTY' | 'SENSEX'; side: 'CE' | 'PE'; strike: number; expiry: string; premium: number; currentPremium: number; lots: number; lotSize: number };
+type OptionTrade = { id: string; index: 'NIFTY' | 'BANKNIFTY' | 'SENSEX'; side: 'CE' | 'PE'; strike: number; expiry: string; premium: number; currentPremium: number; lots: number; lotSize: number; status?: 'OPEN' | 'CLOSED'; exitPremium?: number; closedAt?: string };
 const OPTIONS_KEY = 'moti_tradex_options_v1';
 const STORAGE_KEY = 'moti_tradex_holdings_v1';
 const STARTING_CAPITAL = 100000;
