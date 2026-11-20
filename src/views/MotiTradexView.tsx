@@ -42,6 +42,8 @@ export const MotiTradexView: React.FC = () => {
   const [optionIndex, setOptionIndex] = useState<'NIFTY' | 'BANKNIFTY'>('NIFTY');
   const [optionExpiry, setOptionExpiry] = useState('');
   const [optionChain, setOptionChain] = useState<OptionChainData | null>(null);
+  // FYERS index option-chain OI/volume values are quantity units; show NSE-style contracts.
+  const optionChainLotSize = optionIndex === 'NIFTY' ? 65 : 30;
   const [optionChainUpdatedAt, setOptionChainUpdatedAt] = useState<string | null>(null);
   const [optionChainBusy, setOptionChainBusy] = useState(false);
   const [optionChainError, setOptionChainError] = useState('');
@@ -407,8 +409,8 @@ export const MotiTradexView: React.FC = () => {
         </div>
       </div>
       {optionChain && <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-300">
-        <span>Call OI: <b className="text-emerald-300">{money(optionChain.callOi || 0)}</b></span>
-        <span>Put OI: <b className="text-rose-300">{money(optionChain.putOi || 0)}</b></span>
+        <span>Call OI: <b className="text-emerald-300">{money(Math.round((optionChain.callOi || 0) / optionChainLotSize))}</b></span>
+        <span>Put OI: <b className="text-rose-300">{money(Math.round((optionChain.putOi || 0) / optionChainLotSize))}</b></span>
         {optionChain.indiavixData?.ltp != null && <span>India VIX: <b className="text-white">{money(optionChain.indiavixData.ltp)}</b></span>}
       </div>}
       {optionChainError && <p role="alert" className="mt-3 text-xs text-rose-300">{optionChainError}</p>}
@@ -425,13 +427,14 @@ export const MotiTradexView: React.FC = () => {
             const ce = optionChain.optionsChain?.find(x => x.strike_price === price && x.option_type === 'CE');
             const pe = optionChain.optionsChain?.find(x => x.strike_price === price && x.option_type === 'PE');
             return <tr key={price} className="border-t border-slate-700/70 text-slate-200">
-              <td className="p-2 text-left">{ce?.ltp == null ? '—' : <button type="button" title="Paper trade this CE" onClick={() => prefillPaperTrade('CE', price, ce.ltp!)} className="rounded-lg px-2 py-1 font-bold text-emerald-300 hover:bg-emerald-300/10 hover:underline">{money(ce.ltp)}</button>}</td><td className="p-2">{ce?.ltpchp == null ? '—' : ce.ltpchp.toFixed(2)+'%'}</td><td className="p-2">{ce?.oi == null ? '—' : money(ce.oi)}</td><td className="p-2">{ce?.oich == null ? '—' : money(ce.oich)}</td><td className="p-2">{ce?.volume == null ? '—' : money(ce.volume)}</td><td className="p-2">{ce?.greeks?.iv == null ? '—' : ce.greeks.iv.toFixed(2)}</td>
+              <td className="p-2 text-left">{ce?.ltp == null ? '—' : <button type="button" title="Paper trade this CE" onClick={() => prefillPaperTrade('CE', price, ce.ltp!)} className="rounded-lg px-2 py-1 font-bold text-emerald-300 hover:bg-emerald-300/10 hover:underline">{money(ce.ltp)}</button>}</td><td className="p-2">{ce?.ltpchp == null ? '—' : ce.ltpchp.toFixed(2)+'%'}</td><td className="p-2">{ce?.oi == null ? '—' : money(Math.round(ce.oi / optionChainLotSize))}</td><td className="p-2">{ce?.oich == null ? '—' : money(Math.round(ce.oich / optionChainLotSize))}</td><td className="p-2">{ce?.volume == null ? '—' : money(Math.round(ce.volume / optionChainLotSize))}</td><td className="p-2">{ce?.greeks?.iv == null ? '—' : ce.greeks.iv.toFixed(2)}</td>
               <td className="bg-slate-800/70 p-2 text-center font-black text-white">{money(price)}</td>
-              <td className="p-2">{pe?.greeks?.iv == null ? '—' : pe.greeks.iv.toFixed(2)}</td><td className="p-2">{pe?.volume == null ? '—' : money(pe.volume)}</td><td className="p-2">{pe?.oich == null ? '—' : money(pe.oich)}</td><td className="p-2">{pe?.oi == null ? '—' : money(pe.oi)}</td><td className="p-2">{pe?.ltpchp == null ? '—' : pe.ltpchp.toFixed(2)+'%'}</td><td className="p-2 text-right">{pe?.ltp == null ? '—' : <button type="button" title="Paper trade this PE" onClick={() => prefillPaperTrade('PE', price, pe.ltp!)} className="rounded-lg px-2 py-1 font-bold text-rose-300 hover:bg-rose-300/10 hover:underline">{money(pe.ltp)}</button>}</td>
+              <td className="p-2">{pe?.greeks?.iv == null ? '—' : pe.greeks.iv.toFixed(2)}</td><td className="p-2">{pe?.volume == null ? '—' : money(Math.round(pe.volume / optionChainLotSize))}</td><td className="p-2">{pe?.oich == null ? '—' : money(Math.round(pe.oich / optionChainLotSize))}</td><td className="p-2">{pe?.oi == null ? '—' : money(Math.round(pe.oi / optionChainLotSize))}</td><td className="p-2">{pe?.ltpchp == null ? '—' : pe.ltpchp.toFixed(2)+'%'}</td><td className="p-2 text-right">{pe?.ltp == null ? '—' : <button type="button" title="Paper trade this PE" onClick={() => prefillPaperTrade('PE', price, pe.ltp!)} className="rounded-lg px-2 py-1 font-bold text-rose-300 hover:bg-rose-300/10 hover:underline">{money(pe.ltp)}</button>}</td>
             </tr>;
           })}</tbody>
         </table>
       </div>}
+      {optionChain && <p className="mt-2 text-[10px] text-slate-500">OI आणि Volume Contracts मध्ये दाखवले आहेत (FYERS quantity ÷ {optionChainLotSize} lot size). LTP, Change% आणि IV मध्ये conversion नाही.</p>}
       {optionChainUpdatedAt && <p className="mt-3 text-[11px] text-slate-500">Last updated: {new Date(optionChainUpdatedAt).toLocaleString('en-IN')} · Auto refresh: 60 sec</p>}
     </section>
 
