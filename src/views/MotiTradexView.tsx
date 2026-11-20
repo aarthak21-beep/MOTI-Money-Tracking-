@@ -36,6 +36,13 @@ export const MotiTradexView: React.FC = () => {
   const [quoteUpdatedAt, setQuoteUpdatedAt] = useState<string | null>(null);
   const [quoteBusy, setQuoteBusy] = useState(false);
   const [quoteError, setQuoteError] = useState('');
+  type OptionChainData = { callOi?: number; putOi?: number; expiryData?: Array<{ date: string; expiry: string }>; indiavixData?: { ltp?: number; ltpchp?: number }; optionsChain?: Array<{ strike_price: number; option_type: string; ltp?: number; ltpch?: number; ltpchp?: number; oi?: number; oich?: number; oichp?: number; volume?: number; bid?: number; ask?: number; greeks?: { iv?: number; delta?: number; gamma?: number; theta?: number; vega?: number } }> };
+  const [optionIndex, setOptionIndex] = useState<'NIFTY' | 'BANKNIFTY'>('NIFTY');
+  const [optionExpiry, setOptionExpiry] = useState('');
+  const [optionChain, setOptionChain] = useState<OptionChainData | null>(null);
+  const [optionChainUpdatedAt, setOptionChainUpdatedAt] = useState<string | null>(null);
+  const [optionChainBusy, setOptionChainBusy] = useState(false);
+  const [optionChainError, setOptionChainError] = useState('');
 
 
   const refreshFyersStatus = async () => {
@@ -68,6 +75,27 @@ export const MotiTradexView: React.FC = () => {
     } finally { setQuoteBusy(false); }
   };
 
+  const fetchOptionChain = async () => {
+    if (!fyersConnected) return;
+    setOptionChainBusy(true); setOptionChainError('');
+    try {
+      const jwt = await getAppwriteJwt();
+      const params = new URLSearchParams({ index: optionIndex, strikecount: '10' });
+      if (optionExpiry) params.set('timestamp', optionExpiry);
+      const res = await fetch(`${CLOUD_WORKER_URL}/api/fyers/option-chain?${params.toString()}`, {
+        headers: { authorization: `Bearer ${jwt}` }, cache: 'no-store'
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Option chain fetch failed.');
+      setOptionChain(body.data || null);
+      setOptionChainUpdatedAt(body.updatedAt || new Date().toISOString());
+      const expiries = body.data?.expiryData || [];
+      if (!optionExpiry && expiries.length) setOptionExpiry(String(expiries[0].expiry));
+    } catch (error) {
+      setOptionChainError(error instanceof Error ? error.message : 'Option chain fetch failed.');
+    } finally { setOptionChainBusy(false); }
+  };
+
   const connectFyers = async () => {
     setFyersBusy(true); setFyersError('');
     try {
@@ -87,6 +115,13 @@ export const MotiTradexView: React.FC = () => {
     const timer = window.setInterval(() => { void fetchIndexQuotes(); }, 60000);
     return () => window.clearInterval(timer);
   }, [fyersConnected]);
+
+  useEffect(() => {
+    if (!fyersConnected) return;
+    void fetchOptionChain();
+    const timer = window.setInterval(() => { void fetchOptionChain(); }, 60000);
+    return () => window.clearInterval(timer);
+  }, [fyersConnected, optionIndex, optionExpiry]);
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(holdings)); }, [holdings]);
   useEffect(() => { localStorage.setItem(OPTIONS_KEY, JSON.stringify(options)); }, [options]);
@@ -174,6 +209,50 @@ export const MotiTradexView: React.FC = () => {
       </div>
       {quoteError && <p role="alert" className="mt-3 text-xs text-rose-300">{quoteError}</p>}
       {quoteUpdatedAt && <p className="mt-3 text-[11px] text-slate-500">Last checked: {new Date(quoteUpdatedAt).toLocaleString('en-IN')} · Auto refresh: 60 sec</p>}
+    </section>
+
+    <section className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-white">Live Option Chain · FYERS</h2>
+          <p className="mt-1 text-xs text-slate-400">NIFTY / BANKNIFTY · ATM च्या दोन्ही बाजूला 10 strikes · दर 60 सेकंदांनी auto-refresh.</p>
+        </div>
+        <button type="button" onClick={() => void fetchOptionChain()} disabled={optionChainBusy || !fyersConnected} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-50">{optionChainBusy ? 'Fetching…' : 'Refresh Chain'}</button>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <select aria-label="Option chain index" value={optionIndex} onChange={e => { setOptionExpiry(''); setOptionIndex(e.target.value as 'NIFTY' | 'BANKNIFTY'); }} className="rounded-lg border border-slate-700 bg-[#080f1b] px-3 py-2 text-xs text-white">
+          <option value="NIFTY">NIFTY</option><option value="BANKNIFTY">BANKNIFTY</option>
+        </select>
+        <select aria-label="Option expiry" value={optionExpiry} onChange={e => setOptionExpiry(e.target.value)} className="rounded-lg border border-slate-700 bg-[#080f1b] px-3 py-2 text-xs text-white">
+          {(optionChain?.expiryData || []).map(item => <option key={item.expiry} value={item.expiry}>{item.date}</option>)}
+        </select>
+      </div>
+      {optionChain && <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-300">
+        <span>Call OI: <b className="text-emerald-300">{money(optionChain.callOi || 0)}</b></span>
+        <span>Put OI: <b className="text-rose-300">{money(optionChain.putOi || 0)}</b></span>
+        {optionChain.indiavixData?.ltp != null && <span>India VIX: <b className="text-white">{money(optionChain.indiavixData.ltp)}</b></span>}
+      </div>}
+      {optionChainError && <p role="alert" className="mt-3 text-xs text-rose-300">{optionChainError}</p>}
+      {!fyersConnected ? <p className="mt-4 text-xs text-slate-500">Option chain पाहण्यासाठी FYERS connect करा.</p> : !optionChain && !optionChainError ? <p className="mt-4 text-xs text-slate-500">Option chain मिळवत आहे…</p> : null}
+      {optionChain?.optionsChain && <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[1050px] text-right text-[11px]">
+          <thead className="text-slate-400"><tr>
+            <th className="p-2 text-left">CE LTP</th><th className="p-2">CE Chg%</th><th className="p-2">CE OI</th><th className="p-2">CE OI Chg</th><th className="p-2">CE Vol</th><th className="p-2">CE IV</th>
+            <th className="bg-slate-800 p-2 text-center text-white">STRIKE</th>
+            <th className="p-2">PE IV</th><th className="p-2">PE Vol</th><th className="p-2">PE OI Chg</th><th className="p-2">PE OI</th><th className="p-2">PE Chg%</th><th className="p-2 text-right">PE LTP</th>
+          </tr></thead>
+          <tbody>{Array.from(new Set(optionChain.optionsChain.filter(x => x.strike_price >= 0).map(x => x.strike_price))).sort((a,b) => a-b).map(price => {
+            const ce = optionChain.optionsChain?.find(x => x.strike_price === price && x.option_type === 'CE');
+            const pe = optionChain.optionsChain?.find(x => x.strike_price === price && x.option_type === 'PE');
+            return <tr key={price} className="border-t border-slate-700/70 text-slate-200">
+              <td className="p-2 text-left font-semibold text-emerald-300">{ce?.ltp == null ? '—' : money(ce.ltp)}</td><td className="p-2">{ce?.ltpchp == null ? '—' : ce.ltpchp.toFixed(2)+'%'}</td><td className="p-2">{ce?.oi == null ? '—' : money(ce.oi)}</td><td className="p-2">{ce?.oich == null ? '—' : money(ce.oich)}</td><td className="p-2">{ce?.volume == null ? '—' : money(ce.volume)}</td><td className="p-2">{ce?.greeks?.iv == null ? '—' : ce.greeks.iv.toFixed(2)}</td>
+              <td className="bg-slate-800/70 p-2 text-center font-black text-white">{money(price)}</td>
+              <td className="p-2">{pe?.greeks?.iv == null ? '—' : pe.greeks.iv.toFixed(2)}</td><td className="p-2">{pe?.volume == null ? '—' : money(pe.volume)}</td><td className="p-2">{pe?.oich == null ? '—' : money(pe.oich)}</td><td className="p-2">{pe?.oi == null ? '—' : money(pe.oi)}</td><td className="p-2">{pe?.ltpchp == null ? '—' : pe.ltpchp.toFixed(2)+'%'}</td><td className="p-2 text-right font-semibold text-rose-300">{pe?.ltp == null ? '—' : money(pe.ltp)}</td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>}
+      {optionChainUpdatedAt && <p className="mt-3 text-[11px] text-slate-500">Last updated: {new Date(optionChainUpdatedAt).toLocaleString('en-IN')} · Auto refresh: 60 sec</p>}
     </section>
 
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
