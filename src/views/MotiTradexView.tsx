@@ -255,8 +255,11 @@ export const MotiTradexView: React.FC = () => {
   }, [holdings, options]);
 
   const draftOptionCost = Number(premium) * Number(lots) * Number(lotSize);
+  const optionChainAgeMs = optionChainUpdatedAt ? Date.now() - new Date(optionChainUpdatedAt).getTime() : Number.POSITIVE_INFINITY;
+  const optionChainStale = Boolean(fyersConnected) && (!Number.isFinite(optionChainAgeMs) || optionChainAgeMs > 120000);
   const draftOptionValid = Boolean(expiry) && Number(strike) > 0 && Number(premium) > 0 && Number(currentPremium) >= 0 && Number(lots) > 0 && Number(lotSize) > 0 && [strike, premium, currentPremium, lots, lotSize].every(value => value.trim() !== '' && Number.isFinite(Number(value)));
   const draftOptionAffordable = draftOptionValid && draftOptionCost <= totals.available;
+  const paperBuyAllowed = draftOptionAffordable && !dailyLossLimitReached && !openTradeLimitReached && !optionChainStale;
 
   const addHolding = (e: React.FormEvent) => {
     e.preventDefault();
@@ -285,6 +288,7 @@ export const MotiTradexView: React.FC = () => {
     if (p * l * ls > totals.available) { alert('Available balance पुरेसा नाही.'); return; }
     if (dailyLossLimitReached) { alert('आजची Daily Loss Limit पूर्ण झाली आहे. नवीन Paper Trade घेता येणार नाही.'); return; }
     if (openTradeLimitReached) { alert('Maximum Open Trades limit पूर्ण झाली आहे. आधी एखादा trade close करा.'); return; }
+    if (optionChainStale) { alert('FYERS Option Chain डेटा 2 मिनिटांपेक्षा जुना आहे. Refresh होईपर्यंत नवीन Paper Buy बंद आहे.'); return; }
     setOptions(old => [...old, { id: crypto.randomUUID(), index, side, strike: s, expiry, premium: p, currentPremium: cp, lots: l, lotSize: ls, status: 'OPEN' }]);
     setStrike(''); setExpiry(''); setPremium(''); setCurrentPremium(''); setLots('1'); setLotSize('');
   };
@@ -485,12 +489,12 @@ export const MotiTradexView: React.FC = () => {
         <input type="number" min="0" step="0.05" value={currentPremium} onChange={e=>setCurrentPremium(e.target.value)} placeholder="Current Premium ₹" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
         <input type="number" min="1" step="1" value={lots} onChange={e=>setLots(e.target.value)} placeholder="Lots" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
         <input type="number" min="1" step="1" value={lotSize} onChange={e=>setLotSize(e.target.value)} placeholder="Lot Size" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
-        <button type="submit" disabled={!draftOptionAffordable} className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-4"><Plus className="h-4 w-4"/>Paper Buy</button>
+        <button type="submit" disabled={!paperBuyAllowed} className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-4"><Plus className="h-4 w-4"/>Paper Buy</button>
       </form>
       <div className="mt-3 rounded-xl border border-white/10 bg-[#080f1b] p-3 text-xs">
         <div className="flex flex-wrap justify-between gap-2"><span className="text-slate-400">या trade ची एकूण गुंतवणूक</span><b className="text-white">₹{money(Number.isFinite(draftOptionCost) ? draftOptionCost : 0)}</b></div>
         <div className="mt-1 flex flex-wrap justify-between gap-2"><span className="text-slate-400">Trade नंतर उपलब्ध शिल्लक (अंदाजे)</span><b className={draftOptionCost <= totals.available ? 'text-emerald-300' : 'text-rose-300'}>₹{money(totals.available - (Number.isFinite(draftOptionCost) ? draftOptionCost : 0))}</b></div>
-        {!draftOptionValid ? <p className="mt-2 text-slate-500">Paper Buy करण्यापूर्वी सर्व तपशील भरा.</p> : !draftOptionAffordable ? <p className="mt-2 text-rose-300">Available balance अपुरा आहे. Lots किंवा Lot Size कमी करा.</p> : <p className="mt-2 text-emerald-300">Balance पुरेसा आहे. हा simulated paper trade असेल.</p>}
+        {optionChainStale ? <p className="mt-2 text-amber-300">FYERS Option Chain डेटा 2 मिनिटांपेक्षा जुना आहे. नवीन डेटा येईपर्यंत Paper Buy बंद आहे.</p> : dailyLossLimitReached ? <p className="mt-2 text-rose-300">Daily Loss Limit पूर्ण झाली आहे. आज नवीन Paper Buy बंद आहे.</p> : openTradeLimitReached ? <p className="mt-2 text-rose-300">Maximum Open Trades limit पूर्ण झाली आहे.</p> : !draftOptionValid ? <p className="mt-2 text-slate-500">Paper Buy करण्यापूर्वी सर्व तपशील भरा.</p> : !draftOptionAffordable ? <p className="mt-2 text-rose-300">Available balance अपुरा आहे. Lots किंवा Lot Size कमी करा.</p> : <p className="mt-2 text-emerald-300">Balance पुरेसा आहे. हा simulated paper trade असेल.</p>}
       </div>
       <p className="mt-2 text-[11px] text-slate-500">Option Chain मधील निवडलेल्या index आणि expiry शी जुळणाऱ्या paper trades चे Current Premium chain refresh वर आपोआप update होईल. इतर expiry/index साठी price manually update करा. ही फक्त simulated paper trade आहे; कोणताही broker order जात नाही.</p>
       {options.length > 0 && <div className="mt-3 flex flex-wrap gap-2"><input value={tradeSearch} onChange={e=>setTradeSearch(e.target.value)} placeholder="Search index / CE-PE / strike / expiry" className="min-w-56 flex-1 rounded-lg border border-slate-700 bg-[#080f1b] px-3 py-2 text-xs text-white"/><select value={tradeIndexFilter} onChange={e=>setTradeIndexFilter(e.target.value as typeof tradeIndexFilter)} className="rounded-lg border border-slate-700 bg-[#080f1b] px-3 py-2 text-xs text-white"><option value="ALL">All Indices</option><option value="NIFTY">NIFTY</option><option value="BANKNIFTY">BANKNIFTY</option><option value="SENSEX">SENSEX</option></select></div>}
