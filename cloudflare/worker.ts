@@ -93,6 +93,19 @@ async function encryptFyersToken(token, keyText) {
   return { iv: bytesToBase64(iv), ciphertext: bytesToBase64(new Uint8Array(encrypted)) };
 }
 
+
+function base64ToBytes(value) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, char => char.charCodeAt(0));
+}
+
+async function decryptFyersToken(ivText, ciphertextText, keyText) {
+  if (!keyText || new TextEncoder().encode(keyText).length !== 32) throw new Error('FYERS_TOKEN_ENCRYPTION_KEY must be exactly 32 characters.');
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(keyText), 'AES-GCM', false, ['decrypt']);
+  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(ivText) }, key, base64ToBytes(ciphertextText));
+  return new TextDecoder().decode(plaintext);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -192,6 +205,49 @@ export default {
         return response({ error: 'Unable to read FYERS connection status.', details: String(error?.message || error) }, 500, origin);
       }
     }
+
+    if (url.pathname === '/api/fyers/quote' && request.method === 'GET') {
+      try {
+        if (!env.FYERS_APP_ID || !env.FYERS_TOKEN_ENCRYPTION_KEY) {
+          return response({ error: 'FYERS app or token encryption configuration is missing.' }, 503, origin);
+        }
+        const row = await env.MOTI_DB.prepare(
+          'SELECT token_iv, token_ciphertext, connected_at FROM fyers_credentials WHERE id = ?1'
+        ).bind('primary').first();
+        if (!row) return response({ error: 'FYERS is not connected. Connect FYERS first.' }, 409, origin);
+        const accessToken = await decryptFyersToken(row.token_iv, row.token_ciphertext, env.FYERS_TOKEN_ENCRYPTION_KEY);
+        const quoteUrl = new URL('https://api-t1.fyers.in/data/quotes');
+        quoteUrl.searchParams.set('symbols', 'NSE:NIFTY50-INDEX');
+        const quoteResponse = await fetch(quoteUrl, {
+          headers: { 'Authorization': env.FYERS_APP_ID + ':' + accessToken }
+        });
+        const quoteBody = await quoteResponse.json();
+        if (!quoteResponse.ok || quoteBody.s !== 'ok') {
+          const message = String(quoteBody.message || quoteBody.error || 'FYERS quote request failed.');
+          return response({ error: message, code: quoteBody.code || quoteResponse.status }, quoteResponse.status >= 400 ? 502 : 502, origin);
+        }
+        const item = (quoteBody.d || []).find(entry => entry.n === 'NSE:NIFTY50-INDEX' || entry.v?.symbol === 'NSE:NIFTY50-INDEX');
+        if (!item || item.s !== 'ok' || !item.v) {
+          return response({ error: 'FYERS returned no valid NIFTY 50 quote.' }, 502, origin);
+        }
+        const v = item.v;
+        return response({
+          symbol: 'NSE:NIFTY50-INDEX',
+          ltp: v.lp ?? null,
+          change: v.ch ?? null,
+          changePercent: v.chp ?? null,
+          open: v.open_price ?? null,
+          high: v.high_price ?? null,
+          low: v.low_price ?? null,
+          previousClose: v.prev_close_price ?? null,
+          updatedAt: new Date().toISOString(),
+          connectedAt: row.connected_at
+        }, 200, origin);
+      } catch (error) {
+        return response({ error: 'Unable to fetch FYERS NIFTY quote.', details: String(error?.message || error) }, 502, origin);
+      }
+    }
+
     if (url.pathname === '/api/fyers/login' && request.method === 'GET') {
       if (!env.FYERS_APP_ID || !env.FYERS_REDIRECT_URI) {
         return response({ error: 'FYERS_APP_ID and FYERS_REDIRECT_URI Worker secrets are required.' }, 503, origin);
