@@ -159,9 +159,6 @@ export const MotiTradexView: React.FC = () => {
   useEffect(() => { localStorage.setItem(OPTIONS_KEY, JSON.stringify(options)); }, [options]);
 
   const filteredOptions = options.filter(o => tradeFilter === 'ALL' || (tradeFilter === 'CLOSED' ? o.status === 'CLOSED' : o.status !== 'CLOSED'));
-  const draftOptionCost = Number(premium) * Number(lots) * Number(lotSize);
-  const draftOptionValid = Boolean(expiry) && Number(strike) > 0 && Number(premium) > 0 && Number(currentPremium) >= 0 && Number(lots) > 0 && Number(lotSize) > 0 && [strike, premium, currentPremium, lots, lotSize].every(value => value.trim() !== '' && Number.isFinite(Number(value)));
-  const draftOptionAffordable = draftOptionValid && draftOptionCost <= totals.available;
 
   const totals = useMemo(() => {
     const investment = holdings.reduce((sum, h) => sum + h.buyPrice * h.quantity, 0);
@@ -178,6 +175,10 @@ export const MotiTradexView: React.FC = () => {
     const portfolio = available + stockMarketValue + optionValue;
     return { investment: totalInvestment, marketValue: stockMarketValue + optionValue, available, pnl: totalPnl, portfolio };
   }, [holdings, options]);
+
+  const draftOptionCost = Number(premium) * Number(lots) * Number(lotSize);
+  const draftOptionValid = Boolean(expiry) && Number(strike) > 0 && Number(premium) > 0 && Number(currentPremium) >= 0 && Number(lots) > 0 && Number(lotSize) > 0 && [strike, premium, currentPremium, lots, lotSize].every(value => value.trim() !== '' && Number.isFinite(Number(value)));
+  const draftOptionAffordable = draftOptionValid && draftOptionCost <= totals.available;
 
   const addHolding = (e: React.FormEvent) => {
     e.preventDefault();
