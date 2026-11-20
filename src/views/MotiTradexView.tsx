@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, Wallet, TrendingUp, BriefcaseBusiness, IndianRupee, Link2, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Wallet, TrendingUp, BriefcaseBusiness, IndianRupee, Link2, RefreshCw, FileDown } from 'lucide-react';
 import { CLOUD_WORKER_URL, getAppwriteJwt } from '../services/appwriteAuth';
 
 type Holding = { id: string; symbol: string; buyPrice: number; quantity: number; currentPrice: number };
@@ -204,6 +204,27 @@ export const MotiTradexView: React.FC = () => {
     setOptions(old => [...old, { id: crypto.randomUUID(), index, side, strike: s, expiry, premium: p, currentPremium: cp, lots: l, lotSize: ls }]);
     setStrike(''); setExpiry(''); setPremium(''); setCurrentPremium(''); setLots('1'); setLotSize('');
   };
+  const exportPaperTrades = () => {
+    const headers = ['Index', 'Option Type', 'Strike', 'Expiry', 'Buy Premium', 'Current Premium', 'Exit Premium', 'Lots', 'Lot Size', 'Investment', 'P&L', 'Status', 'Closed At'];
+    const rows = options.map(o => {
+      const qty = o.lots * o.lotSize;
+      const exit = o.status === 'CLOSED' ? (o.exitPremium ?? o.currentPremium) : '';
+      const pnl = ((o.status === 'CLOSED' ? Number(exit) : o.currentPremium) - o.premium) * qty;
+      return [o.index, o.side, o.strike, o.expiry, o.premium, o.currentPremium, exit, o.lots, o.lotSize, o.premium * qty, pnl, o.status === 'CLOSED' ? 'CLOSED' : 'OPEN', o.closedAt ? new Date(o.closedAt).toLocaleString('en-IN') : ''];
+    });
+    const csvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+    const csv = '\\uFEFF' + [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\\r\\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `moti-paper-trades-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const cards = [
     { label: 'Portfolio Value', value: totals.portfolio, icon: BriefcaseBusiness, color: 'text-cyan-300' },
     { label: 'Available Balance', value: totals.available, icon: Wallet, color: 'text-emerald-300' },
@@ -325,7 +346,7 @@ export const MotiTradexView: React.FC = () => {
       <p className="mt-2 text-[11px] text-slate-500">हे manual portfolio tracker आहे; broker शी जोडलेले नाही.</p>
     </section>
     <section id="moti-paper-trade-form" className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-bold text-white">Paper Trading · Buy Index Options</h2><div className="flex gap-2" role="group" aria-label="Paper trade filter">{([{key:'ALL',label:`All (${options.length})`},{key:'OPEN',label:`Open (${options.filter(o=>o.status !== 'CLOSED').length})`},{key:'CLOSED',label:`Closed (${options.filter(o=>o.status === 'CLOSED').length})`}] as const).map(item=><button key={item.key} type="button" aria-pressed={tradeFilter===item.key} onClick={()=>setTradeFilter(item.key)} className={`rounded-lg border px-3 py-1.5 text-[11px] font-bold ${tradeFilter===item.key?'border-cyan-300 bg-cyan-300 text-slate-950':'border-slate-700 text-slate-300'}`}>{item.label}</button>)}</div></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-bold text-white">Paper Trading · Buy Index Options</h2><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={exportPaperTrades} disabled={options.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/40 px-3 py-1.5 text-[11px] font-bold text-cyan-200 disabled:opacity-40"><FileDown className="h-3.5 w-3.5"/>Export CSV</button><div className="flex gap-2" role="group" aria-label="Paper trade filter">{([{key:'ALL',label:`All (${options.length})`},{key:'OPEN',label:`Open (${options.filter(o=>o.status !== 'CLOSED').length})`},{key:'CLOSED',label:`Closed (${options.filter(o=>o.status === 'CLOSED').length})`}] as const).map(item=><button key={item.key} type="button" aria-pressed={tradeFilter===item.key} onClick={()=>setTradeFilter(item.key)} className={`rounded-lg border px-3 py-1.5 text-[11px] font-bold ${tradeFilter===item.key?'border-cyan-300 bg-cyan-300 text-slate-950':'border-slate-700 text-slate-300'}`}>{item.label}</button>)}</div></div></div>
       {paperPrefillNote && <p className="mt-2 rounded-lg border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs text-cyan-200">{paperPrefillNote}</p>}
       <form onSubmit={addOption} className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <select value={index} onChange={e=>setIndex(e.target.value as OptionTrade['index'])} className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white"><option>NIFTY</option><option>BANKNIFTY</option><option>SENSEX</option></select>
