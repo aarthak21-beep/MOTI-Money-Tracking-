@@ -252,6 +252,53 @@ export default {
       }
     }
 
+    if (url.pathname === '/api/fyers/option-chain' && request.method === 'GET') {
+      try {
+        if (!env.FYERS_APP_ID || !env.FYERS_TOKEN_ENCRYPTION_KEY) {
+          return response({ error: 'FYERS app or token encryption configuration is missing.' }, 503, origin);
+        }
+        const indexKey = (url.searchParams.get('index') || 'NIFTY').toUpperCase();
+        const symbols = { NIFTY: 'NSE:NIFTY50-INDEX', BANKNIFTY: 'NSE:NIFTYBANK-INDEX' };
+        const symbol = symbols[indexKey];
+        if (!symbol) return response({ error: 'Unsupported option-chain index.' }, 400, origin);
+        const rawCount = Number(url.searchParams.get('strikecount') || 10);
+        const strikecount = Number.isInteger(rawCount) ? Math.min(50, Math.max(1, rawCount)) : 10;
+        const timestamp = url.searchParams.get('timestamp') || '';
+        if (timestamp && !/^\\d{9,12}$/.test(timestamp)) {
+          return response({ error: 'Invalid option expiry timestamp.' }, 400, origin);
+        }
+        const row = await env.MOTI_DB.prepare(
+          'SELECT token_iv, token_ciphertext, connected_at FROM fyers_credentials WHERE id = ?1'
+        ).bind('primary').first();
+        if (!row) return response({ error: 'FYERS is not connected. Connect FYERS first.' }, 409, origin);
+        const accessToken = await decryptFyersToken(row.token_iv, row.token_ciphertext, env.FYERS_TOKEN_ENCRYPTION_KEY);
+        const chainUrl = new URL('https://api-t1.fyers.in/data/options-chain-v3');
+        chainUrl.searchParams.set('symbol', symbol);
+        chainUrl.searchParams.set('strikecount', String(strikecount));
+        chainUrl.searchParams.set('greeks', '1');
+        if (timestamp) chainUrl.searchParams.set('timestamp', timestamp);
+        const chainResponse = await fetch(chainUrl, {
+          headers: { 'Authorization': env.FYERS_APP_ID + ':' + accessToken }
+        });
+        const chainBody = await chainResponse.json();
+        if (!chainResponse.ok || chainBody.s !== 'ok' || !chainBody.data) {
+          return response({
+            error: String(chainBody.message || 'FYERS option-chain request failed.'),
+            code: chainBody.code || chainResponse.status
+          }, 502, origin);
+        }
+        return response({
+          index: indexKey,
+          symbol,
+          data: chainBody.data,
+          updatedAt: new Date().toISOString(),
+          connectedAt: row.connected_at
+        }, 200, origin);
+      } catch (error) {
+        return response({ error: 'Unable to fetch FYERS option chain.', details: String(error?.message || error) }, 502, origin);
+      }
+    }
+
     if (url.pathname === '/api/fyers/login' && request.method === 'GET') {
       if (!env.FYERS_APP_ID || !env.FYERS_REDIRECT_URI) {
         return response({ error: 'FYERS_APP_ID and FYERS_REDIRECT_URI Worker secrets are required.' }, 503, origin);
