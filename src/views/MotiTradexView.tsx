@@ -168,10 +168,11 @@ export const MotiTradexView: React.FC = () => {
     const optionInvestment = openOptions.reduce((sum, o) => sum + o.premium * o.lots * o.lotSize, 0);
     const optionValue = openOptions.reduce((sum, o) => sum + o.currentPremium * o.lots * o.lotSize, 0);
     const realizedPnl = closedOptions.reduce((sum, o) => sum + ((o.exitPremium ?? o.currentPremium) - o.premium) * o.lots * o.lotSize, 0);
-    const available = STARTING_CAPITAL - investment - optionInvestment;
+    // Closing a paper option releases its entry capital plus/minus realized P&L back to cash.
+    const available = STARTING_CAPITAL - investment - optionInvestment + realizedPnl;
     const totalInvestment = investment + optionInvestment;
     const totalPnl = stockMarketValue - investment + optionValue - optionInvestment + realizedPnl;
-    const portfolio = available + stockMarketValue + optionValue + realizedPnl;
+    const portfolio = available + stockMarketValue + optionValue;
     return { investment: totalInvestment, marketValue: stockMarketValue + optionValue, available, pnl: totalPnl, portfolio };
   }, [holdings, options]);
 
