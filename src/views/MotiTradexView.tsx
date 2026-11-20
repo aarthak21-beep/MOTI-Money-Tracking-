@@ -79,7 +79,14 @@ export const MotiTradexView: React.FC = () => {
     } catch (error) { setFyersError(error instanceof Error ? error.message : 'Could not start FYERS login.'); setFyersBusy(false); }
   };
 
-  useEffect(() => { void refreshFyersStatus(); }, []);\n\n  useEffect(() => {\n    if (!fyersConnected) return;\n    void fetchIndexQuotes();\n    const timer = window.setInterval(() => { void fetchIndexQuotes(); }, 60000);\n    return () => window.clearInterval(timer);\n  }, [fyersConnected]);
+  useEffect(() => { void refreshFyersStatus(); }, []);
+
+  useEffect(() => {
+    if (!fyersConnected) return;
+    void fetchIndexQuotes();
+    const timer = window.setInterval(() => { void fetchIndexQuotes(); }, 60000);
+    return () => window.clearInterval(timer);
+  }, [fyersConnected]);
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(holdings)); }, [holdings]);
   useEffect(() => { localStorage.setItem(OPTIONS_KEY, JSON.stringify(options)); }, [options]);
