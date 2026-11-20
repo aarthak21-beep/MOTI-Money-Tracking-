@@ -159,6 +159,12 @@ export const MotiTradexView: React.FC = () => {
   useEffect(() => { localStorage.setItem(OPTIONS_KEY, JSON.stringify(options)); }, [options]);
 
   const filteredOptions = options.filter(o => tradeFilter === 'ALL' || (tradeFilter === 'CLOSED' ? o.status === 'CLOSED' : o.status !== 'CLOSED'));
+  const closedPaperTrades = options.filter(o => o.status === 'CLOSED');
+  const closedTradePnls = closedPaperTrades.map(o => ((o.exitPremium ?? o.currentPremium) - o.premium) * o.lots * o.lotSize);
+  const winningPaperTrades = closedTradePnls.filter(pnl => pnl > 0).length;
+  const losingPaperTrades = closedTradePnls.filter(pnl => pnl < 0).length;
+  const realizedPaperPnl = closedTradePnls.reduce((sum, pnl) => sum + pnl, 0);
+  const paperWinRate = closedPaperTrades.length ? (winningPaperTrades / closedPaperTrades.length) * 100 : 0;
 
   const totals = useMemo(() => {
     const investment = holdings.reduce((sum, h) => sum + h.buyPrice * h.quantity, 0);
@@ -352,6 +358,12 @@ export const MotiTradexView: React.FC = () => {
     <section id="moti-paper-trade-form" className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-bold text-white">Paper Trading · Buy Index Options</h2><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={exportPaperTrades} disabled={options.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/40 px-3 py-1.5 text-[11px] font-bold text-cyan-200 disabled:opacity-40"><FileDown className="h-3.5 w-3.5"/>Export CSV</button><div className="flex gap-2" role="group" aria-label="Paper trade filter">{([{key:'ALL',label:`All (${options.length})`},{key:'OPEN',label:`Open (${options.filter(o=>o.status !== 'CLOSED').length})`},{key:'CLOSED',label:`Closed (${options.filter(o=>o.status === 'CLOSED').length})`}] as const).map(item=><button key={item.key} type="button" aria-pressed={tradeFilter===item.key} onClick={()=>setTradeFilter(item.key)} className={`rounded-lg border px-3 py-1.5 text-[11px] font-bold ${tradeFilter===item.key?'border-cyan-300 bg-cyan-300 text-slate-950':'border-slate-700 text-slate-300'}`}>{item.label}</button>)}</div></div></div>
       {paperPrefillNote && <p className="mt-2 rounded-lg border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs text-cyan-200">{paperPrefillNote}</p>}
+      {closedPaperTrades.length > 0 && <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Realized P&amp;L</p><p className={`mt-1 text-sm font-bold ${realizedPaperPnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{realizedPaperPnl < 0 ? '-' : ''}₹{money(Math.abs(realizedPaperPnl))}</p></div>
+        <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Win Rate</p><p className="mt-1 text-sm font-bold text-white">{paperWinRate.toFixed(1)}%</p></div>
+        <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Winning Trades</p><p className="mt-1 text-sm font-bold text-emerald-300">{winningPaperTrades}</p></div>
+        <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Losing Trades</p><p className="mt-1 text-sm font-bold text-rose-300">{losingPaperTrades}</p></div>
+      </div>}
       <form onSubmit={addOption} className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <select value={index} onChange={e=>setIndex(e.target.value as OptionTrade['index'])} className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white"><option>NIFTY</option><option>BANKNIFTY</option><option>SENSEX</option></select>
         <select value={side} onChange={e=>setSide(e.target.value as OptionTrade['side'])} className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white"><option value="CE">CE</option><option value="PE">PE</option></select>
