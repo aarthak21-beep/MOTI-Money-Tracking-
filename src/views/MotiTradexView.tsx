@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2, Wallet, TrendingUp, BriefcaseBusiness, IndianRupee, Link2, RefreshCw, FileDown } from 'lucide-react';
 import { CLOUD_WORKER_URL, getAppwriteJwt } from '../services/appwriteAuth';
 
@@ -47,6 +47,11 @@ export const MotiTradexView: React.FC = () => {
   const [optionChainError, setOptionChainError] = useState('');
   const [paperPrefillNote, setPaperPrefillNote] = useState('');
   const [tradeFilter, setTradeFilter] = useState<'ALL' | 'OPEN' | 'CLOSED'>('ALL');
+  const [tradeSearch, setTradeSearch] = useState('');
+  const [tradeIndexFilter, setTradeIndexFilter] = useState<'ALL' | 'NIFTY' | 'BANKNIFTY' | 'SENSEX'>('ALL');
+  const [dailyLossLimit, setDailyLossLimit] = useState(() => localStorage.getItem('moti_tradex_daily_loss_limit') || '5000');
+  const [maxOpenTrades, setMaxOpenTrades] = useState(() => localStorage.getItem('moti_tradex_max_open_trades') || '5');
+  const backupInputRef = useRef<HTMLInputElement>(null);
 
 
   const refreshFyersStatus = async () => {
@@ -157,14 +162,32 @@ export const MotiTradexView: React.FC = () => {
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(holdings)); }, [holdings]);
   useEffect(() => { localStorage.setItem(OPTIONS_KEY, JSON.stringify(options)); }, [options]);
+  useEffect(() => { localStorage.setItem('moti_tradex_daily_loss_limit', dailyLossLimit); }, [dailyLossLimit]);
+  useEffect(() => { localStorage.setItem('moti_tradex_max_open_trades', maxOpenTrades); }, [maxOpenTrades]);
 
-  const filteredOptions = options.filter(o => tradeFilter === 'ALL' || (tradeFilter === 'CLOSED' ? o.status === 'CLOSED' : o.status !== 'CLOSED'));
+  const filteredOptions = options.filter(o => (tradeFilter === 'ALL' || (tradeFilter === 'CLOSED' ? o.status === 'CLOSED' : o.status !== 'CLOSED')) && (tradeIndexFilter === 'ALL' || o.index === tradeIndexFilter) && (!tradeSearch.trim() || `${o.index} ${o.side} ${o.strike} ${o.expiry}`.toLowerCase().includes(tradeSearch.trim().toLowerCase())));
   const closedPaperTrades = options.filter(o => o.status === 'CLOSED');
   const closedTradePnls = closedPaperTrades.map(o => ((o.exitPremium ?? o.currentPremium) - o.premium) * o.lots * o.lotSize);
   const winningPaperTrades = closedTradePnls.filter(pnl => pnl > 0).length;
   const losingPaperTrades = closedTradePnls.filter(pnl => pnl < 0).length;
   const realizedPaperPnl = closedTradePnls.reduce((sum, pnl) => sum + pnl, 0);
   const paperWinRate = closedPaperTrades.length ? (winningPaperTrades / closedPaperTrades.length) * 100 : 0;
+  const breakevenPaperTrades = closedTradePnls.filter(pnl => pnl === 0).length;
+  const averageWin = winningPaperTrades ? closedTradePnls.filter(pnl => pnl > 0).reduce((sum, pnl) => sum + pnl, 0) / winningPaperTrades : 0;
+  const averageLoss = losingPaperTrades ? closedTradePnls.filter(pnl => pnl < 0).reduce((sum, pnl) => sum + pnl, 0) / losingPaperTrades : 0;
+  const grossProfit = closedTradePnls.filter(pnl => pnl > 0).reduce((sum, pnl) => sum + pnl, 0);
+  const grossLoss = Math.abs(closedTradePnls.filter(pnl => pnl < 0).reduce((sum, pnl) => sum + pnl, 0));
+  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 0;
+  const equityCurve = [...closedPaperTrades].sort((a,b) => String(a.closedAt || '').localeCompare(String(b.closedAt || ''))).map(o => ((o.exitPremium ?? o.currentPremium) - o.premium) * o.lots * o.lotSize);
+  let runningEquity = 0, equityPeak = 0, maxDrawdown = 0;
+  equityCurve.forEach(pnl => { runningEquity += pnl; equityPeak = Math.max(equityPeak, runningEquity); maxDrawdown = Math.max(maxDrawdown, equityPeak - runningEquity); });
+  const todayKey = new Date().toLocaleDateString('en-CA');
+  const todayRealizedPnl = closedPaperTrades.filter(o => o.closedAt && new Date(o.closedAt).toLocaleDateString('en-CA') === todayKey).reduce((sum,o) => sum + ((o.exitPremium ?? o.currentPremium) - o.premium) * o.lots * o.lotSize, 0);
+  const dailyLimit = Number(dailyLossLimit);
+  const dailyLossLimitReached = Number.isFinite(dailyLimit) && dailyLimit > 0 && todayRealizedPnl <= -dailyLimit;
+  const openTradeCount = options.filter(o => o.status !== 'CLOSED').length;
+  const openTradeLimit = Number(maxOpenTrades);
+  const openTradeLimitReached = Number.isFinite(openTradeLimit) && openTradeLimit > 0 && openTradeCount >= openTradeLimit;
 
   const totals = useMemo(() => {
     const investment = holdings.reduce((sum, h) => sum + h.buyPrice * h.quantity, 0);
@@ -211,9 +234,34 @@ export const MotiTradexView: React.FC = () => {
     const s = Number(strike), p = Number(premium), cp = Number(currentPremium), l = Number(lots), ls = Number(lotSize);
     if (!expiry || !Number.isFinite(s) || !Number.isFinite(p) || !Number.isFinite(cp) || !Number.isFinite(l) || !Number.isFinite(ls) || s <= 0 || p <= 0 || cp < 0 || l <= 0 || ls <= 0) return;
     if (p * l * ls > totals.available) { alert('Available balance पुरेसा नाही.'); return; }
+    if (dailyLossLimitReached) { alert('आजची Daily Loss Limit पूर्ण झाली आहे. नवीन Paper Trade घेता येणार नाही.'); return; }
+    if (openTradeLimitReached) { alert('Maximum Open Trades limit पूर्ण झाली आहे. आधी एखादा trade close करा.'); return; }
     setOptions(old => [...old, { id: crypto.randomUUID(), index, side, strike: s, expiry, premium: p, currentPremium: cp, lots: l, lotSize: ls, status: 'OPEN' }]);
     setStrike(''); setExpiry(''); setPremium(''); setCurrentPremium(''); setLots('1'); setLotSize('');
   };
+  const exportBackup = () => {
+    const payload = { version: 1, exportedAt: new Date().toISOString(), holdings, options, settings: { dailyLossLimit, maxOpenTrades } };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a'); link.href = url; link.download = `moti-tradex-backup-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  };
+  const importBackup = async (file: File) => {
+    try {
+      const payload = JSON.parse(await file.text());
+      if (payload?.version !== 1 || !Array.isArray(payload.holdings) || !Array.isArray(payload.options)) throw new Error('Backup file format योग्य नाही.');
+      const validHoldings = payload.holdings.every((h: any) => h && typeof h.id === 'string' && typeof h.symbol === 'string' && [h.buyPrice,h.quantity,h.currentPrice].every((v: any) => Number.isFinite(Number(v))));
+      const validOptions = payload.options.every((o: any) => o && typeof o.id === 'string' && ['NIFTY','BANKNIFTY','SENSEX'].includes(o.index) && ['CE','PE'].includes(o.side) && [o.strike,o.premium,o.currentPremium,o.lots,o.lotSize].every((v: any) => Number.isFinite(Number(v))) && (o.status == null || ['OPEN','CLOSED'].includes(o.status)));
+      if (!validHoldings || !validOptions) throw new Error('Backup मधील काही नोंदी वैध नाहीत.');
+      if (!window.confirm(`${payload.holdings.length} holdings आणि ${payload.options.length} trades सध्याच्या डेटाच्या जागी restore करायचे?`)) return;
+      setHoldings(payload.holdings); setOptions(payload.options);
+      if (payload.settings?.dailyLossLimit != null) setDailyLossLimit(String(payload.settings.dailyLossLimit));
+      if (payload.settings?.maxOpenTrades != null) setMaxOpenTrades(String(payload.settings.maxOpenTrades));
+      alert('Backup restore झाले.');
+    } catch (error) { alert(error instanceof Error ? error.message : 'Backup restore करता आले नाही.'); }
+    finally { if (backupInputRef.current) backupInputRef.current.value = ''; }
+  };
+
   const exportPaperTrades = () => {
     const headers = ['Index', 'Option Type', 'Strike', 'Expiry', 'Buy Premium', 'Current Premium', 'Exit Premium', 'Lots', 'Lot Size', 'Investment', 'P&L', 'P&L %', 'Status', 'Closed At'];
     const rows = options.map(o => {
@@ -316,6 +364,7 @@ export const MotiTradexView: React.FC = () => {
         {optionChain.indiavixData?.ltp != null && <span>India VIX: <b className="text-white">{money(optionChain.indiavixData.ltp)}</b></span>}
       </div>}
       {optionChainError && <p role="alert" className="mt-3 text-xs text-rose-300">{optionChainError}</p>}
+      {optionChainUpdatedAt && Date.now() - new Date(optionChainUpdatedAt).getTime() > 120000 && <p role="status" className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">Option Chain डेटा 2 मिनिटांपेक्षा जुना आहे. Refresh करा; जुना premium पाहून trade घेऊ नका.</p>}
       {!fyersConnected ? <p className="mt-4 text-xs text-slate-500">Option chain पाहण्यासाठी FYERS connect करा.</p> : !optionChain && !optionChainError ? <p className="mt-4 text-xs text-slate-500">Option chain मिळवत आहे…</p> : null}
       {optionChain?.optionsChain && <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[1050px] text-right text-[11px]">
@@ -358,11 +407,23 @@ export const MotiTradexView: React.FC = () => {
     <section id="moti-paper-trade-form" className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-bold text-white">Paper Trading · Buy Index Options</h2><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={exportPaperTrades} disabled={options.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/40 px-3 py-1.5 text-[11px] font-bold text-cyan-200 disabled:opacity-40"><FileDown className="h-3.5 w-3.5"/>Export CSV</button><div className="flex gap-2" role="group" aria-label="Paper trade filter">{([{key:'ALL',label:`All (${options.length})`},{key:'OPEN',label:`Open (${options.filter(o=>o.status !== 'CLOSED').length})`},{key:'CLOSED',label:`Closed (${options.filter(o=>o.status === 'CLOSED').length})`}] as const).map(item=><button key={item.key} type="button" aria-pressed={tradeFilter===item.key} onClick={()=>setTradeFilter(item.key)} className={`rounded-lg border px-3 py-1.5 text-[11px] font-bold ${tradeFilter===item.key?'border-cyan-300 bg-cyan-300 text-slate-950':'border-slate-700 text-slate-300'}`}>{item.label}</button>)}</div></div></div>
       {paperPrefillNote && <p className="mt-2 rounded-lg border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs text-cyan-200">{paperPrefillNote}</p>}
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <label className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><span className="block text-[10px] text-slate-400">Daily Loss Limit (₹)</span><input type="number" min="1" value={dailyLossLimit} onChange={e=>setDailyLossLimit(e.target.value)} className="mt-1 w-full bg-transparent text-sm font-bold text-white outline-none" /></label>
+        <label className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><span className="block text-[10px] text-slate-400">Maximum Open Trades</span><input type="number" min="1" step="1" value={maxOpenTrades} onChange={e=>setMaxOpenTrades(e.target.value)} className="mt-1 w-full bg-transparent text-sm font-bold text-white outline-none" /></label>
+        <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">आजचा Realized P&amp;L</p><p className={`mt-1 text-sm font-bold ${todayRealizedPnl>=0?'text-emerald-300':'text-rose-300'}`}>₹{money(todayRealizedPnl)}</p></div>
+        <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Risk Status</p><p className={`mt-1 text-sm font-bold ${dailyLossLimitReached||openTradeLimitReached?'text-rose-300':'text-emerald-300'}`}>{dailyLossLimitReached?'Daily limit reached':openTradeLimitReached?'Open trade limit reached':'Within limits'}</p></div>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={exportBackup} className="rounded-lg border border-emerald-300/40 px-3 py-1.5 text-[11px] font-bold text-emerald-200">Backup JSON</button><button type="button" onClick={()=>backupInputRef.current?.click()} className="rounded-lg border border-slate-600 px-3 py-1.5 text-[11px] font-bold text-slate-200">Restore Backup</button><input ref={backupInputRef} type="file" accept="application/json,.json" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)void importBackup(file);}} /></div>
       {closedPaperTrades.length > 0 && <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Realized P&amp;L</p><p className={`mt-1 text-sm font-bold ${realizedPaperPnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{realizedPaperPnl < 0 ? '-' : ''}₹{money(Math.abs(realizedPaperPnl))}</p></div>
         <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Win Rate</p><p className="mt-1 text-sm font-bold text-white">{paperWinRate.toFixed(1)}%</p></div>
         <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Winning Trades</p><p className="mt-1 text-sm font-bold text-emerald-300">{winningPaperTrades}</p></div>
         <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Losing Trades</p><p className="mt-1 text-sm font-bold text-rose-300">{losingPaperTrades}</p></div>
+        <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Breakeven Trades</p><p className="mt-1 text-sm font-bold text-white">{breakevenPaperTrades}</p></div>
+        <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Average Win</p><p className="mt-1 text-sm font-bold text-emerald-300">₹{money(averageWin)}</p></div>
+        <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Average Loss</p><p className="mt-1 text-sm font-bold text-rose-300">₹{money(Math.abs(averageLoss))}</p></div>
+        <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Profit Factor</p><p className="mt-1 text-sm font-bold text-white">{Number.isFinite(profitFactor) ? profitFactor.toFixed(2) : '∞'}</p></div>
+        <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Max Drawdown</p><p className="mt-1 text-sm font-bold text-rose-300">₹{money(maxDrawdown)}</p></div>
       </div>}
       <form onSubmit={addOption} className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <select value={index} onChange={e=>setIndex(e.target.value as OptionTrade['index'])} className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white"><option>NIFTY</option><option>BANKNIFTY</option><option>SENSEX</option></select>
@@ -381,6 +442,7 @@ export const MotiTradexView: React.FC = () => {
         {!draftOptionValid ? <p className="mt-2 text-slate-500">Paper Buy करण्यापूर्वी सर्व तपशील भरा.</p> : !draftOptionAffordable ? <p className="mt-2 text-rose-300">Available balance अपुरा आहे. Lots किंवा Lot Size कमी करा.</p> : <p className="mt-2 text-emerald-300">Balance पुरेसा आहे. हा simulated paper trade असेल.</p>}
       </div>
       <p className="mt-2 text-[11px] text-slate-500">Option Chain मधील निवडलेल्या index आणि expiry शी जुळणाऱ्या paper trades चे Current Premium chain refresh वर आपोआप update होईल. इतर expiry/index साठी price manually update करा. ही फक्त simulated paper trade आहे; कोणताही broker order जात नाही.</p>
+      {options.length > 0 && <div className="mt-3 flex flex-wrap gap-2"><input value={tradeSearch} onChange={e=>setTradeSearch(e.target.value)} placeholder="Search index / CE-PE / strike / expiry" className="min-w-56 flex-1 rounded-lg border border-slate-700 bg-[#080f1b] px-3 py-2 text-xs text-white"/><select value={tradeIndexFilter} onChange={e=>setTradeIndexFilter(e.target.value as typeof tradeIndexFilter)} className="rounded-lg border border-slate-700 bg-[#080f1b] px-3 py-2 text-xs text-white"><option value="ALL">All Indices</option><option value="NIFTY">NIFTY</option><option value="BANKNIFTY">BANKNIFTY</option><option value="SENSEX">SENSEX</option></select></div>}
       {options.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[980px] text-left text-xs"><thead className="text-slate-400"><tr>{['Contract','Strike','Expiry','Buy Premium','Current Premium','Exit Premium','Lots × Lot Size','Investment','P&L','P&L %','Status','Closed At',''].map(x=><th key={x} className="p-2">{x}</th>)}</tr></thead><tbody>{filteredOptions.map(o=>{const qty=o.lots*o.lotSize;const pnl=((o.status === 'CLOSED' ? (o.exitPremium ?? o.currentPremium) : o.currentPremium)-o.premium)*qty;return <tr key={o.id} className="border-t border-slate-700 text-slate-200"><td className="p-2 font-bold text-white">{o.index} {o.side}</td><td className="p-2">{money(o.strike)}</td><td className="p-2">{o.expiry}</td><td className="p-2">₹{money(o.premium)}</td><td className="p-2"><input aria-label="Current option premium" type="number" min="0" step="0.05" value={o.currentPremium} disabled={o.status === 'CLOSED'} onChange={e=>{const v=Number(e.target.value);if(Number.isFinite(v)&&v>=0)setOptions(old=>old.map(x=>x.id===o.id?{...x,currentPremium:v}:x));}} className="w-24 rounded bg-[#080f1b] px-2 py-1 text-white disabled:opacity-60" /></td><td className="p-2">{o.status === 'CLOSED' ? `₹${money(o.exitPremium ?? o.currentPremium)}` : '—'}</td><td className="p-2">{o.lots} × {o.lotSize}</td><td className="p-2">₹{money(o.premium*qty)}</td><td className={`p-2 font-bold ${pnl>=0?'text-emerald-300':'text-rose-300'}`}>{pnl<0?'-':''}₹{money(Math.abs(pnl))}</td><td className={`p-2 font-semibold ${pnl>=0?'text-emerald-300':'text-rose-300'}`}>{((pnl/(o.premium*qty))*100).toFixed(2)}%</td><td className="p-2"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${o.status === 'CLOSED' ? 'bg-slate-700 text-slate-300' : 'bg-emerald-300/10 text-emerald-300'}`}>{o.status === 'CLOSED' ? 'CLOSED' : 'OPEN'}</span></td><td className="p-2 whitespace-nowrap">{o.closedAt ? new Date(o.closedAt).toLocaleString('en-IN') : '—'}</td><td className="p-2"><div className="flex items-center gap-2">{o.status !== 'CLOSED' && <button type="button" onClick={()=>{if(window.confirm('या trade ला current premium वर close करायचे?'))closeOption(o.id);}} className="rounded px-2 py-1 text-amber-200 hover:bg-amber-300/10">Close</button>}<button type="button" onClick={()=>{if(window.confirm('हा trade history मधून कायमचा काढायचा?'))setOptions(old=>old.filter(x=>x.id!==o.id));}} aria-label="Remove option" className="rounded p-1 text-rose-300"><Trash2 className="h-4 w-4"/></button></div></td></tr>;})}</tbody></table>{filteredOptions.length === 0 && <p className="py-5 text-center text-xs text-slate-400">या filter मध्ये कोणतेही trades नाहीत.</p>}</div>}
     </section>
     <section className="rounded-2xl border border-white/10 bg-[#0d1527] p-4 sm:p-5">
