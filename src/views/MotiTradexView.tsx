@@ -31,7 +31,9 @@ export const MotiTradexView: React.FC = () => {
   const [fyersBusy, setFyersBusy] = useState(false);
   const [fyersError, setFyersError] = useState('');
 
-  const [niftyQuote, setNiftyQuote] = useState<{ symbol: string; ltp: number | null; change: number | null; changePercent: number | null; open: number | null; high: number | null; low: number | null; previousClose: number | null; updatedAt: string } | null>(null);
+  type IndexQuote = { symbol: string; ltp: number | null; change: number | null; changePercent: number | null; open: number | null; high: number | null; low: number | null; previousClose: number | null; error?: string };
+  const [indexQuotes, setIndexQuotes] = useState<Record<string, IndexQuote>>({});
+  const [quoteUpdatedAt, setQuoteUpdatedAt] = useState<string | null>(null);
   const [quoteBusy, setQuoteBusy] = useState(false);
   const [quoteError, setQuoteError] = useState('');
 
@@ -49,16 +51,20 @@ export const MotiTradexView: React.FC = () => {
   };
 
 
-  const fetchNiftyQuote = async () => {
+  const fetchIndexQuotes = async () => {
+    if (quoteBusy || !fyersConnected) return;
     setQuoteBusy(true); setQuoteError('');
     try {
       const jwt = await getAppwriteJwt();
       const res = await fetch(`${CLOUD_WORKER_URL}/api/fyers/quote`, { headers: { authorization: `Bearer ${jwt}` }, cache: 'no-store' });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error || 'NIFTY quote fetch failed.');
-      setNiftyQuote(body);
+      if (!res.ok) throw new Error(body.error || 'Index quotes fetch failed.');
+      setIndexQuotes(body.quotes || {});
+      setQuoteUpdatedAt(body.updatedAt || new Date().toISOString());
+      const failed = Object.values(body.quotes || {}).filter((q: any) => q.error);
+      if (failed.length) setQuoteError(failed.map((q: any) => q.error).join(' '));
     } catch (error) {
-      setQuoteError(error instanceof Error ? error.message : 'NIFTY quote fetch failed.');
+      setQuoteError(error instanceof Error ? error.message : 'Index quotes fetch failed.');
     } finally { setQuoteBusy(false); }
   };
 
@@ -73,7 +79,7 @@ export const MotiTradexView: React.FC = () => {
     } catch (error) { setFyersError(error instanceof Error ? error.message : 'Could not start FYERS login.'); setFyersBusy(false); }
   };
 
-  useEffect(() => { void refreshFyersStatus(); }, []);
+  useEffect(() => { void refreshFyersStatus(); }, []);\n\n  useEffect(() => {\n    if (!fyersConnected) return;\n    void fetchIndexQuotes();\n    const timer = window.setInterval(() => { void fetchIndexQuotes(); }, 60000);\n    return () => window.clearInterval(timer);\n  }, [fyersConnected]);
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(holdings)); }, [holdings]);
   useEffect(() => { localStorage.setItem(OPTIONS_KEY, JSON.stringify(options)); }, [options]);
@@ -141,19 +147,26 @@ export const MotiTradexView: React.FC = () => {
 
     <section className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h2 className="text-sm font-bold text-white">NIFTY 50 · FYERS Quote</h2>
-          <p className="mt-1 text-xs text-slate-400">FYERS कडून थेट quote snapshot. हा market-data check आहे; order placement नाही.</p>
+        <div><h2 className="text-sm font-bold text-white">NIFTY 50 + BANKNIFTY · FYERS Quotes</h2>
+          <p className="mt-1 text-xs text-slate-400">दोन्ही index चे market-data quote snapshots. दर 60 सेकंदांनी automatic refresh; order placement नाही.</p>
         </div>
-        <button type="button" onClick={() => void fetchNiftyQuote()} disabled={quoteBusy || !fyersConnected} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-50">{quoteBusy ? 'Fetching…' : 'NIFTY Quote तपासा'}</button>
+        <button type="button" onClick={() => void fetchIndexQuotes()} disabled={quoteBusy || !fyersConnected} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-50">{quoteBusy ? 'Fetching…' : 'Refresh Quotes'}</button>
       </div>
-      {niftyQuote && <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div><p className="text-[11px] text-slate-400">LTP</p><p className="mt-1 text-xl font-black text-white">{niftyQuote.ltp == null ? '—' : money(niftyQuote.ltp)}</p></div>
-        <div><p className="text-[11px] text-slate-400">Change</p><p className={`mt-1 text-sm font-bold ${(niftyQuote.change ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{niftyQuote.change == null ? '—' : `${niftyQuote.change} (${niftyQuote.changePercent ?? 0}%)`}</p></div>
-        <div><p className="text-[11px] text-slate-400">Day High / Low</p><p className="mt-1 text-sm font-semibold text-slate-200">{niftyQuote.high == null ? '—' : money(niftyQuote.high)} / {niftyQuote.low == null ? '—' : money(niftyQuote.low)}</p></div>
-        <div><p className="text-[11px] text-slate-400">Previous Close</p><p className="mt-1 text-sm font-semibold text-slate-200">{niftyQuote.previousClose == null ? '—' : money(niftyQuote.previousClose)}</p></div>
-      </div>}
+      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        {([{ key: 'NSE:NIFTY50-INDEX', label: 'NIFTY 50' }, { key: 'NSE:NIFTYBANK-INDEX', label: 'BANKNIFTY' }] as const).map(item => {
+          const q = indexQuotes[item.key];
+          return <div key={item.key} className="rounded-xl border border-white/10 bg-[#080f1b] p-3">
+            <p className="text-xs font-bold text-cyan-300">{item.label}</p>
+            {q ? <>
+              <p className="mt-2 text-2xl font-black text-white">{q.ltp == null ? '—' : money(q.ltp)}</p>
+              <p className={`mt-1 text-xs font-bold ${(q.change ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{q.error || (q.change == null ? '—' : `${q.change} (${q.changePercent ?? 0}%)`)}</p>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><p className="text-slate-500">Day High / Low</p><p className="mt-1 text-slate-200">{q.high == null ? '—' : money(q.high)} / {q.low == null ? '—' : money(q.low)}</p></div><div><p className="text-slate-500">Previous Close</p><p className="mt-1 text-slate-200">{q.previousClose == null ? '—' : money(q.previousClose)}</p></div></div>
+            </> : <p className="mt-3 text-xs text-slate-500">{fyersConnected ? 'Quote मिळवत आहे…' : 'FYERS connect करा.'}</p>}
+          </div>;
+        })}
+      </div>
       {quoteError && <p role="alert" className="mt-3 text-xs text-rose-300">{quoteError}</p>}
-      {niftyQuote && <p className="mt-3 text-[11px] text-slate-500">Quote checked: {new Date(niftyQuote.updatedAt).toLocaleString('en-IN')}</p>}
+      {quoteUpdatedAt && <p className="mt-3 text-[11px] text-slate-500">Last checked: {new Date(quoteUpdatedAt).toLocaleString('en-IN')} · Auto refresh: 60 sec</p>}
     </section>
 
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
