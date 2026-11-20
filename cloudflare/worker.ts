@@ -72,7 +72,7 @@ async function authorizeFinovaUser(request, env) {
     });
     if (!rowsResponse.ok) return false;
     const result = await rowsResponse.json();
-    return (result.rows || []).some(row => row.user_id === account.$id && row.is_active === true);
+    return (result.rows || []).some(row => row.user_id === account.$id && row.is_active === true) ? account.$id : false;
   } catch {
     return false;
   }
@@ -191,10 +191,42 @@ export default {
       }
     }
 
-    if (!(await authorizeFinovaUser(request, env))) {
+    const authorizedUserId = await authorizeFinovaUser(request, env);
+    if (!authorizedUserId) {
       return response({ error: 'Sign in with an approved MOTI Finova account to continue.' }, 401, origin);
     }
 
+    if (url.pathname === '/api/tradex/portfolio') {
+      try {
+        await env.MOTI_DB.prepare(`CREATE TABLE IF NOT EXISTS moti_tradex_portfolios (user_id TEXT PRIMARY KEY, portfolio_json TEXT NOT NULL, updated_at TEXT NOT NULL)`).run();
+        if (request.method === 'GET') {
+          const row = await env.MOTI_DB.prepare('SELECT portfolio_json, updated_at FROM moti_tradex_portfolios WHERE user_id = ?1').bind(authorizedUserId).first();
+          if (!row) return response({ portfolio: null, updatedAt: null }, 200, origin);
+          let portfolio;
+          try { portfolio = JSON.parse(row.portfolio_json); } catch { return response({ error: 'Saved Tradex portfolio is invalid JSON.' }, 500, origin); }
+          return response({ portfolio, updatedAt: row.updated_at }, 200, origin);
+        }
+        if (request.method === 'PUT') {
+          const contentLength = Number(request.headers.get('content-length') || 0);
+          if (contentLength > 2 * 1024 * 1024) return response({ error: 'Tradex portfolio exceeds 2 MB.' }, 413, origin);
+          let payload;
+          try { payload = await request.json(); } catch { return response({ error: 'Invalid JSON body.' }, 400, origin); }
+          const portfolio = payload?.portfolio;
+          if (!portfolio || !Array.isArray(portfolio.holdings) || !Array.isArray(portfolio.options) || !portfolio.settings || typeof portfolio.settings !== 'object') {
+            return response({ error: 'Portfolio must include holdings, options and settings arrays/objects.' }, 400, origin);
+          }
+          if (portfolio.holdings.length > 5000 || portfolio.options.length > 5000) return response({ error: 'Portfolio contains too many records.' }, 413, origin);
+          const json = JSON.stringify(portfolio);
+          if (new TextEncoder().encode(json).byteLength > 2 * 1024 * 1024) return response({ error: 'Tradex portfolio exceeds 2 MB.' }, 413, origin);
+          const updatedAt = new Date().toISOString();
+          await env.MOTI_DB.prepare('INSERT INTO moti_tradex_portfolios (user_id, portfolio_json, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(user_id) DO UPDATE SET portfolio_json = excluded.portfolio_json, updated_at = excluded.updated_at').bind(authorizedUserId, json, updatedAt).run();
+          return response({ ok: true, updatedAt }, 200, origin);
+        }
+        return response({ error: 'Method not allowed' }, 405, origin);
+      } catch (error) {
+        return response({ error: 'Unable to sync Tradex portfolio.', details: String(error?.message || error) }, 500, origin);
+      }
+    }
 
     if (url.pathname === '/api/fyers/status' && request.method === 'GET') {
       try {
