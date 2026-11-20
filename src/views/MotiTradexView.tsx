@@ -219,13 +219,19 @@ export const MotiTradexView: React.FC = () => {
         </div>
         <button type="button" onClick={() => void fetchOptionChain()} disabled={optionChainBusy || !fyersConnected} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-50">{optionChainBusy ? 'Fetching…' : 'Refresh Chain'}</button>
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <select aria-label="Option chain index" value={optionIndex} onChange={e => { setOptionExpiry(''); setOptionIndex(e.target.value as 'NIFTY' | 'BANKNIFTY'); }} className="rounded-lg border border-slate-700 bg-[#080f1b] px-3 py-2 text-xs text-white">
-          <option value="NIFTY">NIFTY</option><option value="BANKNIFTY">BANKNIFTY</option>
-        </select>
-        <select aria-label="Option expiry" value={optionExpiry} onChange={e => setOptionExpiry(e.target.value)} className="rounded-lg border border-slate-700 bg-[#080f1b] px-3 py-2 text-xs text-white">
-          {(optionChain?.expiryData || []).map(item => <option key={item.expiry} value={item.expiry}>{item.date}</option>)}
-        </select>
+      <div className="mt-4 flex flex-wrap items-end gap-4">
+        <div>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Index निवडा</p>
+          <div className="flex gap-2" role="group" aria-label="Option chain index">
+            {(['NIFTY', 'BANKNIFTY'] as const).map(item => <button key={item} type="button" aria-pressed={optionIndex === item} onClick={() => { if (optionIndex !== item) { setOptionChain(null); setOptionExpiry(''); setOptionIndex(item); } }} className={`rounded-xl border px-4 py-2 text-xs font-bold transition ${optionIndex === item ? 'border-cyan-300 bg-cyan-300 text-slate-950' : 'border-slate-700 bg-[#080f1b] text-slate-300 hover:border-cyan-300/60'}`}>{item}</button>)}
+          </div>
+        </div>
+        <div>
+          <label htmlFor="moti-option-expiry" className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Expiry Date</label>
+          <select id="moti-option-expiry" aria-label="Option expiry" value={optionExpiry} onChange={e => setOptionExpiry(e.target.value)} disabled={!optionChain?.expiryData?.length} className="min-w-44 rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-2.5 text-xs text-white disabled:opacity-50">
+            {(optionChain?.expiryData || []).map(item => <option key={item.expiry} value={item.expiry}>{item.date}</option>)}
+          </select>
+        </div>
       </div>
       {optionChain && <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-300">
         <span>Call OI: <b className="text-emerald-300">{money(optionChain.callOi || 0)}</b></span>
