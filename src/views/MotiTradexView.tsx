@@ -31,6 +31,11 @@ export const MotiTradexView: React.FC = () => {
   const [fyersBusy, setFyersBusy] = useState(false);
   const [fyersError, setFyersError] = useState('');
 
+  const [niftyQuote, setNiftyQuote] = useState<{ symbol: string; ltp: number | null; change: number | null; changePercent: number | null; open: number | null; high: number | null; low: number | null; previousClose: number | null; updatedAt: string } | null>(null);
+  const [quoteBusy, setQuoteBusy] = useState(false);
+  const [quoteError, setQuoteError] = useState('');
+
+
   const refreshFyersStatus = async () => {
     setFyersBusy(true); setFyersError('');
     try {
@@ -41,6 +46,20 @@ export const MotiTradexView: React.FC = () => {
       setFyersConnected(Boolean(body.connected)); setFyersConnectedAt(body.connectedAt || null);
     } catch (error) { setFyersError(error instanceof Error ? error.message : 'FYERS status check failed.'); }
     finally { setFyersBusy(false); }
+  };
+
+
+  const fetchNiftyQuote = async () => {
+    setQuoteBusy(true); setQuoteError('');
+    try {
+      const jwt = await getAppwriteJwt();
+      const res = await fetch(`${CLOUD_WORKER_URL}/api/fyers/quote`, { headers: { authorization: `Bearer ${jwt}` }, cache: 'no-store' });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'NIFTY quote fetch failed.');
+      setNiftyQuote(body);
+    } catch (error) {
+      setQuoteError(error instanceof Error ? error.message : 'NIFTY quote fetch failed.');
+    } finally { setQuoteBusy(false); }
   };
 
   const connectFyers = async () => {
@@ -119,6 +138,24 @@ export const MotiTradexView: React.FC = () => {
       {fyersError && <p role="alert" className="mt-3 text-xs text-rose-300">{fyersError}</p>}
       <p className="mt-3 text-[11px] text-slate-500">FYERS login पूर्ण झाल्यावर MOTI मध्ये परत येऊन Refresh दाबा. Daily token expiry मुळे पुन्हा login लागू शकतो.</p>
     </section>
+
+    <section className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h2 className="text-sm font-bold text-white">NIFTY 50 · FYERS Quote</h2>
+          <p className="mt-1 text-xs text-slate-400">FYERS कडून थेट quote snapshot. हा market-data check आहे; order placement नाही.</p>
+        </div>
+        <button type="button" onClick={() => void fetchNiftyQuote()} disabled={quoteBusy || !fyersConnected} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-50">{quoteBusy ? 'Fetching…' : 'NIFTY Quote तपासा'}</button>
+      </div>
+      {niftyQuote && <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div><p className="text-[11px] text-slate-400">LTP</p><p className="mt-1 text-xl font-black text-white">{niftyQuote.ltp == null ? '—' : money(niftyQuote.ltp)}</p></div>
+        <div><p className="text-[11px] text-slate-400">Change</p><p className={`mt-1 text-sm font-bold ${(niftyQuote.change ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{niftyQuote.change == null ? '—' : `${niftyQuote.change} (${niftyQuote.changePercent ?? 0}%)`}</p></div>
+        <div><p className="text-[11px] text-slate-400">Day High / Low</p><p className="mt-1 text-sm font-semibold text-slate-200">{niftyQuote.high == null ? '—' : money(niftyQuote.high)} / {niftyQuote.low == null ? '—' : money(niftyQuote.low)}</p></div>
+        <div><p className="text-[11px] text-slate-400">Previous Close</p><p className="mt-1 text-sm font-semibold text-slate-200">{niftyQuote.previousClose == null ? '—' : money(niftyQuote.previousClose)}</p></div>
+      </div>}
+      {quoteError && <p role="alert" className="mt-3 text-xs text-rose-300">{quoteError}</p>}
+      {niftyQuote && <p className="mt-3 text-[11px] text-slate-500">Quote checked: {new Date(niftyQuote.updatedAt).toLocaleString('en-IN')}</p>}
+    </section>
+
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map(card => { const Icon = card.icon; return <div key={card.label} className="rounded-2xl border border-white/10 bg-[#0d1527] p-4">
         <div className="flex items-center justify-between"><p className="text-xs text-slate-400">{card.label}</p><Icon className={`h-4 w-4 ${card.color}`} /></div>
