@@ -26,6 +26,7 @@ export const MotiTradexView: React.FC = () => {
   const [lotSize, setLotSize] = useState('');
   const [strategy, setStrategy] = useState('Breakout');
   const [entryNote, setEntryNote] = useState('');
+  const [scenarioSpot, setScenarioSpot] = useState('');
   const [symbol, setSymbol] = useState('');
   const [buyPrice, setBuyPrice] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -263,6 +264,11 @@ export const MotiTradexView: React.FC = () => {
   }, [holdings, options]);
 
   const draftOptionCost = Number(premium) * Number(lots) * Number(lotSize);
+  const scenarioSpotValue = Number(scenarioSpot);
+  const scenarioInputsValid = Number.isFinite(scenarioSpotValue) && scenarioSpotValue > 0 && Number(strike) > 0 && Number(premium) > 0 && Number(lots) > 0 && Number(lotSize) > 0;
+  const scenarioIntrinsic = scenarioInputsValid ? (side === 'CE' ? Math.max(scenarioSpotValue - Number(strike), 0) : Math.max(Number(strike) - scenarioSpotValue, 0)) : 0;
+  const scenarioPnl = scenarioInputsValid ? (scenarioIntrinsic - Number(premium)) * Number(lots) * Number(lotSize) : 0;
+  const scenarioBreakeven = side === 'CE' ? Number(strike) + Number(premium) : Number(strike) - Number(premium);
   const optionChainAgeMs = optionChainUpdatedAt ? Date.now() - new Date(optionChainUpdatedAt).getTime() : Number.POSITIVE_INFINITY;
   const optionChainStale = Boolean(fyersConnected) && (!Number.isFinite(optionChainAgeMs) || optionChainAgeMs > 120000);
   const draftOptionValid = Boolean(expiry) && Number(strike) > 0 && Number(premium) > 0 && Number(currentPremium) >= 0 && Number(lots) > 0 && Number(lotSize) > 0 && [strike, premium, currentPremium, lots, lotSize].every(value => value.trim() !== '' && Number.isFinite(Number(value)));
@@ -492,6 +498,23 @@ export const MotiTradexView: React.FC = () => {
         <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Profit Factor</p><p className="mt-1 text-sm font-bold text-white">{Number.isFinite(profitFactor) ? profitFactor.toFixed(2) : '∞'}</p></div>
         <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Max Drawdown</p><p className="mt-1 text-sm font-bold text-rose-300">₹{money(maxDrawdown)}</p></div>
       </div>}
+      <section className="mt-4 rounded-2xl border border-violet-300/25 bg-gradient-to-br from-violet-300/10 to-[#0d1527] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><h3 className="text-sm font-black text-white">Expiry Payoff Simulator</h3><p className="mt-1 text-[11px] text-slate-400">Market बंद असतानाही expiry scenario तपासा · Long CE / PE</p></div>
+          <span className="rounded-full border border-violet-300/30 px-2.5 py-1 text-[10px] font-bold text-violet-200">WHAT-IF</span>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Contract</p><p className="mt-1 text-sm font-bold text-white">{index} {strike || '—'} {side}</p></div>
+          <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Entry Cost / Max Loss</p><p className="mt-1 text-sm font-bold text-rose-300">₹{money(Number.isFinite(draftOptionCost) ? draftOptionCost : 0)}</p></div>
+          <label className="col-span-2 rounded-xl border border-violet-300/30 bg-[#080f1b] p-3 sm:col-span-1"><span className="block text-[10px] text-slate-400">Expiry ला Index Level</span><input aria-label="Expiry index level scenario" type="number" min="0.05" step="0.05" value={scenarioSpot} onChange={e=>setScenarioSpot(e.target.value)} placeholder="उदा. 25300" className="mt-1 w-full bg-transparent text-sm font-bold text-white outline-none placeholder:text-slate-600" /></label>
+          <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Breakeven</p><p className="mt-1 text-sm font-bold text-white">{scenarioInputsValid ? money(scenarioBreakeven) : '—'}</p></div>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="rounded-xl border border-white/10 bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Expiry Intrinsic Value</p><p className="mt-1 text-sm font-bold text-white">{scenarioInputsValid ? '₹'+money(scenarioIntrinsic) : '—'}</p></div>
+          <div className={`rounded-xl border p-3 ${!scenarioInputsValid ? 'border-white/10 bg-[#080f1b]' : scenarioPnl >= 0 ? 'border-emerald-300/30 bg-emerald-300/5' : 'border-rose-300/30 bg-rose-300/5'}`}><p className="text-[10px] text-slate-400">Estimated Expiry P&amp;L</p><p className={`mt-1 text-lg font-black ${!scenarioInputsValid ? 'text-slate-400' : scenarioPnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{scenarioInputsValid ? (scenarioPnl < 0 ? '-' : '+')+'₹'+money(Math.abs(scenarioPnl)) : 'तपशील भरा'}</p></div>
+        </div>
+        <p className="mt-2 text-[10px] text-slate-500">हा अंदाज expiry intrinsic value वर आहे. Brokerage, STT, taxes, slippage आणि expiry पूर्वीचा time value यात धरलेला नाही. Long option मध्ये कमाल तोटा भरलेला premium असतो; हा simulator paper planning साठी आहे, market prediction नाही.</p>
+      </section>
       <form onSubmit={addOption} className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <select value={index} onChange={e=>setIndex(e.target.value as OptionTrade['index'])} className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white"><option>NIFTY</option><option>BANKNIFTY</option><option>SENSEX</option></select>
         <select value={side} onChange={e=>setSide(e.target.value as OptionTrade['side'])} className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white"><option value="CE">CE</option><option value="PE">PE</option></select>
