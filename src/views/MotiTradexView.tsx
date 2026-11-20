@@ -7,6 +7,8 @@ type OptionTrade = { id: string; index: 'NIFTY' | 'BANKNIFTY' | 'SENSEX'; side: 
 const OPTIONS_KEY = 'moti_tradex_options_v1';
 const STORAGE_KEY = 'moti_tradex_holdings_v1';
 const STARTING_CAPITAL = 100000;
+// NSE index-option market lots currently applicable (NIFTY/BANKNIFTY).
+const INDEX_LOT_SIZES: Record<'NIFTY' | 'BANKNIFTY', number> = { NIFTY: 65, BANKNIFTY: 30 };
 const money = (n: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n);
 
 export const MotiTradexView: React.FC = () => {
@@ -108,7 +110,8 @@ export const MotiTradexView: React.FC = () => {
     setPremium(String(ltp));
     setCurrentPremium(String(ltp));
     setLots('1');
-    setPaperPrefillNote(`${optionIndex} ${strikePrice} ${contractSide} निवडले. Lot size contract specification प्रमाणे भरा.`);
+    setLotSize(String(INDEX_LOT_SIZES[optionIndex]));
+    setPaperPrefillNote(`${optionIndex} ${strikePrice} ${contractSide} निवडले. Premium आणि lot size (${INDEX_LOT_SIZES[optionIndex]}) auto-fill झाले.`);
     document.getElementById('moti-paper-trade-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
@@ -308,7 +311,7 @@ export const MotiTradexView: React.FC = () => {
         <input type="number" min="1" step="1" value={lotSize} onChange={e=>setLotSize(e.target.value)} placeholder="Lot Size" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
         <button type="submit" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 sm:col-span-4"><Plus className="h-4 w-4"/>Paper Buy</button>
       </form>
-      <p className="mt-2 text-[11px] text-slate-500">Option Chain मधील हिरवा CE किंवा गुलाबी PE LTP क्लिक केल्यावर contract details auto-fill होतील. Lot size सध्या exchange contract specification प्रमाणे भरा; चुकीचा lot size टाळण्यासाठी तो अंदाजाने भरलेला नाही. ही फक्त simulated paper trade आहे; कोणताही broker order जात नाही.</p>
+      <p className="mt-2 text-[11px] text-slate-500">Option Chain मधील हिरवा CE किंवा गुलाबी PE LTP क्लिक केल्यावर contract details आणि लागू lot size auto-fill होतील. गरज असल्यास lot size edit करू शकता. ही फक्त simulated paper trade आहे; कोणताही broker order जात नाही.</p>
       {options.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[850px] text-left text-xs"><thead className="text-slate-400"><tr>{['Contract','Strike','Expiry','Buy Premium','Current Premium','Lots × Lot Size','Investment','P&L',''].map(x=><th key={x} className="p-2">{x}</th>)}</tr></thead><tbody>{options.map(o=>{const qty=o.lots*o.lotSize;const pnl=(o.currentPremium-o.premium)*qty;return <tr key={o.id} className="border-t border-slate-700 text-slate-200"><td className="p-2 font-bold text-white">{o.index} {o.side}</td><td className="p-2">{money(o.strike)}</td><td className="p-2">{o.expiry}</td><td className="p-2">₹{money(o.premium)}</td><td className="p-2"><input aria-label="Current option premium" type="number" min="0" step="0.05" value={o.currentPremium} onChange={e=>{const v=Number(e.target.value);if(Number.isFinite(v)&&v>=0)setOptions(old=>old.map(x=>x.id===o.id?{...x,currentPremium:v}:x));}} className="w-24 rounded bg-[#080f1b] px-2 py-1 text-white" /></td><td className="p-2">{o.lots} × {o.lotSize}</td><td className="p-2">₹{money(o.premium*qty)}</td><td className={`p-2 font-bold ${pnl>=0?'text-emerald-300':'text-rose-300'}`}>{pnl<0?'-':''}₹{money(Math.abs(pnl))}</td><td className="p-2"><button type="button" onClick={()=>setOptions(old=>old.filter(x=>x.id!==o.id))} aria-label="Remove option" className="rounded p-1 text-rose-300"><Trash2 className="h-4 w-4"/></button></td></tr>;})}</tbody></table></div>}
     </section>
     <section className="rounded-2xl border border-white/10 bg-[#0d1527] p-4 sm:p-5">
