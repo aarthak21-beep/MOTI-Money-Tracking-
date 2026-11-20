@@ -162,15 +162,17 @@ export const MotiTradexView: React.FC = () => {
 
   const totals = useMemo(() => {
     const investment = holdings.reduce((sum, h) => sum + h.buyPrice * h.quantity, 0);
-    const marketValue = holdings.reduce((sum, h) => sum + h.currentPrice * h.quantity, 0);
+    const stockMarketValue = holdings.reduce((sum, h) => sum + h.currentPrice * h.quantity, 0);
     const openOptions = options.filter(o => o.status !== 'CLOSED');
     const closedOptions = options.filter(o => o.status === 'CLOSED');
     const optionInvestment = openOptions.reduce((sum, o) => sum + o.premium * o.lots * o.lotSize, 0);
     const optionValue = openOptions.reduce((sum, o) => sum + o.currentPremium * o.lots * o.lotSize, 0);
     const realizedPnl = closedOptions.reduce((sum, o) => sum + ((o.exitPremium ?? o.currentPremium) - o.premium) * o.lots * o.lotSize, 0);
     const available = STARTING_CAPITAL - investment - optionInvestment;
-    const totalPnl = marketValue - investment + optionValue - optionInvestment + realizedPnl;
-    return { investment: investment + optionInvestment, marketValue: marketValue + optionValue, available, pnl: totalPnl, portfolio: available + marketValue + optionValue + realizedPnl };
+    const totalInvestment = investment + optionInvestment;
+    const totalPnl = stockMarketValue - investment + optionValue - optionInvestment + realizedPnl;
+    const portfolio = available + stockMarketValue + optionValue + realizedPnl;
+    return { investment: totalInvestment, marketValue: stockMarketValue + optionValue, available, pnl: totalPnl, portfolio };
   }, [holdings, options]);
 
   const addHolding = (e: React.FormEvent) => {
