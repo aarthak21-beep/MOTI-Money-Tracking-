@@ -160,10 +160,14 @@ export const MotiTradexView: React.FC = () => {
   const totals = useMemo(() => {
     const investment = holdings.reduce((sum, h) => sum + h.buyPrice * h.quantity, 0);
     const marketValue = holdings.reduce((sum, h) => sum + h.currentPrice * h.quantity, 0);
-    const optionInvestment = options.reduce((sum, o) => sum + o.premium * o.lots * o.lotSize, 0);
-    const optionValue = options.reduce((sum, o) => sum + o.currentPremium * o.lots * o.lotSize, 0);
+    const openOptions = options.filter(o => o.status !== 'CLOSED');
+    const closedOptions = options.filter(o => o.status === 'CLOSED');
+    const optionInvestment = openOptions.reduce((sum, o) => sum + o.premium * o.lots * o.lotSize, 0);
+    const optionValue = openOptions.reduce((sum, o) => sum + o.currentPremium * o.lots * o.lotSize, 0);
+    const realizedPnl = closedOptions.reduce((sum, o) => sum + ((o.exitPremium ?? o.currentPremium) - o.premium) * o.lots * o.lotSize, 0);
     const available = STARTING_CAPITAL - investment - optionInvestment;
-    return { investment: investment + optionInvestment, marketValue: marketValue + optionValue, available, pnl: marketValue - investment + optionValue - optionInvestment, portfolio: available + marketValue + optionValue };
+    const totalPnl = marketValue - investment + optionValue - optionInvestment + realizedPnl;
+    return { investment: investment + optionInvestment, marketValue: marketValue + optionValue, available, pnl: totalPnl, portfolio: available + marketValue + optionValue + realizedPnl };
   }, [holdings, options]);
 
   const addHolding = (e: React.FormEvent) => {
@@ -181,6 +185,11 @@ export const MotiTradexView: React.FC = () => {
     setHoldings(old => old.map(h => h.id === id ? { ...h, currentPrice: price } : h));
   };
 
+  const closeOption = (id: string) => {
+    setOptions(old => old.map(o => o.id === id && o.status !== 'CLOSED'
+      ? { ...o, status: 'CLOSED', exitPremium: o.currentPremium, closedAt: new Date().toISOString() }
+      : o));
+  };
   const addOption = (e: React.FormEvent) => {
     e.preventDefault();
     const s = Number(strike), p = Number(premium), cp = Number(currentPremium), l = Number(lots), ls = Number(lotSize);
