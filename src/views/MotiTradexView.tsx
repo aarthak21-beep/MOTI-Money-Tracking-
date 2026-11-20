@@ -43,6 +43,7 @@ export const MotiTradexView: React.FC = () => {
   const [optionChainUpdatedAt, setOptionChainUpdatedAt] = useState<string | null>(null);
   const [optionChainBusy, setOptionChainBusy] = useState(false);
   const [optionChainError, setOptionChainError] = useState('');
+  const [paperPrefillNote, setPaperPrefillNote] = useState('');
 
 
   const refreshFyersStatus = async () => {
@@ -94,6 +95,21 @@ export const MotiTradexView: React.FC = () => {
     } catch (error) {
       setOptionChainError(error instanceof Error ? error.message : 'Option chain fetch failed.');
     } finally { setOptionChainBusy(false); }
+  };
+
+  const prefillPaperTrade = (contractSide: 'CE' | 'PE', strikePrice: number, ltp: number) => {
+    const selectedExpiry = optionChain?.expiryData?.find(item => item.expiry === optionExpiry);
+    const dateParts = selectedExpiry?.date?.split('-') || [];
+    const isoExpiry = dateParts.length === 3 ? `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}` : '';
+    setIndex(optionIndex);
+    setSide(contractSide);
+    setStrike(String(strikePrice));
+    setExpiry(isoExpiry);
+    setPremium(String(ltp));
+    setCurrentPremium(String(ltp));
+    setLots('1');
+    setPaperPrefillNote(`${optionIndex} ${strikePrice} ${contractSide} निवडले. Lot size contract specification प्रमाणे भरा.`);
+    document.getElementById('moti-paper-trade-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   const connectFyers = async () => {
@@ -251,9 +267,9 @@ export const MotiTradexView: React.FC = () => {
             const ce = optionChain.optionsChain?.find(x => x.strike_price === price && x.option_type === 'CE');
             const pe = optionChain.optionsChain?.find(x => x.strike_price === price && x.option_type === 'PE');
             return <tr key={price} className="border-t border-slate-700/70 text-slate-200">
-              <td className="p-2 text-left font-semibold text-emerald-300">{ce?.ltp == null ? '—' : money(ce.ltp)}</td><td className="p-2">{ce?.ltpchp == null ? '—' : ce.ltpchp.toFixed(2)+'%'}</td><td className="p-2">{ce?.oi == null ? '—' : money(ce.oi)}</td><td className="p-2">{ce?.oich == null ? '—' : money(ce.oich)}</td><td className="p-2">{ce?.volume == null ? '—' : money(ce.volume)}</td><td className="p-2">{ce?.greeks?.iv == null ? '—' : ce.greeks.iv.toFixed(2)}</td>
+              <td className="p-2 text-left">{ce?.ltp == null ? '—' : <button type="button" title="Paper trade this CE" onClick={() => prefillPaperTrade('CE', price, ce.ltp!)} className="rounded-lg px-2 py-1 font-bold text-emerald-300 hover:bg-emerald-300/10 hover:underline">{money(ce.ltp)}</button>}</td><td className="p-2">{ce?.ltpchp == null ? '—' : ce.ltpchp.toFixed(2)+'%'}</td><td className="p-2">{ce?.oi == null ? '—' : money(ce.oi)}</td><td className="p-2">{ce?.oich == null ? '—' : money(ce.oich)}</td><td className="p-2">{ce?.volume == null ? '—' : money(ce.volume)}</td><td className="p-2">{ce?.greeks?.iv == null ? '—' : ce.greeks.iv.toFixed(2)}</td>
               <td className="bg-slate-800/70 p-2 text-center font-black text-white">{money(price)}</td>
-              <td className="p-2">{pe?.greeks?.iv == null ? '—' : pe.greeks.iv.toFixed(2)}</td><td className="p-2">{pe?.volume == null ? '—' : money(pe.volume)}</td><td className="p-2">{pe?.oich == null ? '—' : money(pe.oich)}</td><td className="p-2">{pe?.oi == null ? '—' : money(pe.oi)}</td><td className="p-2">{pe?.ltpchp == null ? '—' : pe.ltpchp.toFixed(2)+'%'}</td><td className="p-2 text-right font-semibold text-rose-300">{pe?.ltp == null ? '—' : money(pe.ltp)}</td>
+              <td className="p-2">{pe?.greeks?.iv == null ? '—' : pe.greeks.iv.toFixed(2)}</td><td className="p-2">{pe?.volume == null ? '—' : money(pe.volume)}</td><td className="p-2">{pe?.oich == null ? '—' : money(pe.oich)}</td><td className="p-2">{pe?.oi == null ? '—' : money(pe.oi)}</td><td className="p-2">{pe?.ltpchp == null ? '—' : pe.ltpchp.toFixed(2)+'%'}</td><td className="p-2 text-right">{pe?.ltp == null ? '—' : <button type="button" title="Paper trade this PE" onClick={() => prefillPaperTrade('PE', price, pe.ltp!)} className="rounded-lg px-2 py-1 font-bold text-rose-300 hover:bg-rose-300/10 hover:underline">{money(pe.ltp)}</button>}</td>
             </tr>;
           })}</tbody>
         </table>
@@ -278,8 +294,9 @@ export const MotiTradexView: React.FC = () => {
       </form>
       <p className="mt-2 text-[11px] text-slate-500">हे manual portfolio tracker आहे; broker शी जोडलेले नाही.</p>
     </section>
-    <section className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
-      <h2 className="text-sm font-bold text-white">Buy Index Options</h2>
+    <section id="moti-paper-trade-form" className="rounded-2xl border border-cyan-300/20 bg-[#0d1527] p-4 sm:p-5">
+      <h2 className="text-sm font-bold text-white">Paper Trading · Buy Index Options</h2>
+      {paperPrefillNote && <p className="mt-2 rounded-lg border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs text-cyan-200">{paperPrefillNote}</p>}
       <form onSubmit={addOption} className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <select value={index} onChange={e=>setIndex(e.target.value as OptionTrade['index'])} className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white"><option>NIFTY</option><option>BANKNIFTY</option><option>SENSEX</option></select>
         <select value={side} onChange={e=>setSide(e.target.value as OptionTrade['side'])} className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white"><option value="CE">CE</option><option value="PE">PE</option></select>
@@ -289,9 +306,9 @@ export const MotiTradexView: React.FC = () => {
         <input type="number" min="0" step="0.05" value={currentPremium} onChange={e=>setCurrentPremium(e.target.value)} placeholder="Current Premium ₹" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
         <input type="number" min="1" step="1" value={lots} onChange={e=>setLots(e.target.value)} placeholder="Lots" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
         <input type="number" min="1" step="1" value={lotSize} onChange={e=>setLotSize(e.target.value)} placeholder="Lot Size" required className="rounded-xl border border-slate-700 bg-[#080f1b] px-3 py-3 text-sm text-white" />
-        <button type="submit" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 sm:col-span-4"><Plus className="h-4 w-4"/>Buy Option</button>
+        <button type="submit" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 sm:col-span-4"><Plus className="h-4 w-4"/>Paper Buy</button>
       </form>
-      <p className="mt-2 text-[11px] text-slate-500">NIFTY, BANKNIFTY आणि SENSEX CE/PE. Lot size exchange प्रमाणे स्वतः भरा; premium amount available balance मधून मोजला जातो.</p>
+      <p className="mt-2 text-[11px] text-slate-500">Option Chain मधील हिरवा CE किंवा गुलाबी PE LTP क्लिक केल्यावर contract details auto-fill होतील. Lot size सध्या exchange contract specification प्रमाणे भरा; चुकीचा lot size टाळण्यासाठी तो अंदाजाने भरलेला नाही. ही फक्त simulated paper trade आहे; कोणताही broker order जात नाही.</p>
       {options.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[850px] text-left text-xs"><thead className="text-slate-400"><tr>{['Contract','Strike','Expiry','Buy Premium','Current Premium','Lots × Lot Size','Investment','P&L',''].map(x=><th key={x} className="p-2">{x}</th>)}</tr></thead><tbody>{options.map(o=>{const qty=o.lots*o.lotSize;const pnl=(o.currentPremium-o.premium)*qty;return <tr key={o.id} className="border-t border-slate-700 text-slate-200"><td className="p-2 font-bold text-white">{o.index} {o.side}</td><td className="p-2">{money(o.strike)}</td><td className="p-2">{o.expiry}</td><td className="p-2">₹{money(o.premium)}</td><td className="p-2"><input aria-label="Current option premium" type="number" min="0" step="0.05" value={o.currentPremium} onChange={e=>{const v=Number(e.target.value);if(Number.isFinite(v)&&v>=0)setOptions(old=>old.map(x=>x.id===o.id?{...x,currentPremium:v}:x));}} className="w-24 rounded bg-[#080f1b] px-2 py-1 text-white" /></td><td className="p-2">{o.lots} × {o.lotSize}</td><td className="p-2">₹{money(o.premium*qty)}</td><td className={`p-2 font-bold ${pnl>=0?'text-emerald-300':'text-rose-300'}`}>{pnl<0?'-':''}₹{money(Math.abs(pnl))}</td><td className="p-2"><button type="button" onClick={()=>setOptions(old=>old.filter(x=>x.id!==o.id))} aria-label="Remove option" className="rounded p-1 text-rose-300"><Trash2 className="h-4 w-4"/></button></td></tr>;})}</tbody></table></div>}
     </section>
     <section className="rounded-2xl border border-white/10 bg-[#0d1527] p-4 sm:p-5">
