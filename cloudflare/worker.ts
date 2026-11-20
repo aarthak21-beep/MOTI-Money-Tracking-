@@ -216,35 +216,39 @@ export default {
         ).bind('primary').first();
         if (!row) return response({ error: 'FYERS is not connected. Connect FYERS first.' }, 409, origin);
         const accessToken = await decryptFyersToken(row.token_iv, row.token_ciphertext, env.FYERS_TOKEN_ENCRYPTION_KEY);
+        const symbols = ['NSE:NIFTY50-INDEX', 'NSE:NIFTYBANK-INDEX'];
         const quoteUrl = new URL('https://api-t1.fyers.in/data/quotes');
-        quoteUrl.searchParams.set('symbols', 'NSE:NIFTY50-INDEX');
+        quoteUrl.searchParams.set('symbols', symbols.join(','));
         const quoteResponse = await fetch(quoteUrl, {
           headers: { 'Authorization': env.FYERS_APP_ID + ':' + accessToken }
         });
         const quoteBody = await quoteResponse.json();
         if (!quoteResponse.ok || quoteBody.s !== 'ok') {
           const message = String(quoteBody.message || quoteBody.error || 'FYERS quote request failed.');
-          return response({ error: message, code: quoteBody.code || quoteResponse.status }, quoteResponse.status >= 400 ? 502 : 502, origin);
+          return response({ error: message, code: quoteBody.code || quoteResponse.status }, 502, origin);
         }
-        const item = (quoteBody.d || []).find(entry => entry.n === 'NSE:NIFTY50-INDEX' || entry.v?.symbol === 'NSE:NIFTY50-INDEX');
-        if (!item || item.s !== 'ok' || !item.v) {
-          return response({ error: 'FYERS returned no valid NIFTY 50 quote.' }, 502, origin);
+        const quotes = {};
+        for (const symbol of symbols) {
+          const item = (quoteBody.d || []).find(entry => entry.n === symbol || entry.v?.symbol === symbol);
+          if (!item || item.s !== 'ok' || !item.v) {
+            quotes[symbol] = { error: 'FYERS returned no valid quote for ' + symbol };
+            continue;
+          }
+          const v = item.v;
+          quotes[symbol] = {
+            symbol,
+            ltp: v.lp ?? null,
+            change: v.ch ?? null,
+            changePercent: v.chp ?? null,
+            open: v.open_price ?? null,
+            high: v.high_price ?? null,
+            low: v.low_price ?? null,
+            previousClose: v.prev_close_price ?? null
+          };
         }
-        const v = item.v;
-        return response({
-          symbol: 'NSE:NIFTY50-INDEX',
-          ltp: v.lp ?? null,
-          change: v.ch ?? null,
-          changePercent: v.chp ?? null,
-          open: v.open_price ?? null,
-          high: v.high_price ?? null,
-          low: v.low_price ?? null,
-          previousClose: v.prev_close_price ?? null,
-          updatedAt: new Date().toISOString(),
-          connectedAt: row.connected_at
-        }, 200, origin);
+        return response({ quotes, updatedAt: new Date().toISOString(), connectedAt: row.connected_at }, 200, origin);
       } catch (error) {
-        return response({ error: 'Unable to fetch FYERS NIFTY quote.', details: String(error?.message || error) }, 502, origin);
+        return response({ error: 'Unable to fetch FYERS index quotes.', details: String(error?.message || error) }, 502, origin);
       }
     }
 
