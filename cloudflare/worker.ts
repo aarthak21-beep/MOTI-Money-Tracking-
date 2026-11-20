@@ -183,6 +183,15 @@ export default {
     }
 
 
+    if (url.pathname === '/api/fyers/status' && request.method === 'GET') {
+      try {
+        await env.MOTI_DB.prepare(`CREATE TABLE IF NOT EXISTS fyers_credentials (id TEXT PRIMARY KEY, token_iv TEXT NOT NULL, token_ciphertext TEXT NOT NULL, connected_at TEXT NOT NULL)`).run();
+        const row = await env.MOTI_DB.prepare('SELECT connected_at FROM fyers_credentials WHERE id = ?1').bind('primary').first();
+        return response({ connected: Boolean(row), connectedAt: row?.connected_at || null }, 200, origin);
+      } catch (error) {
+        return response({ error: 'Unable to read FYERS connection status.', details: String(error?.message || error) }, 500, origin);
+      }
+    }
     if (url.pathname === '/api/fyers/login' && request.method === 'GET') {
       if (!env.FYERS_APP_ID || !env.FYERS_REDIRECT_URI) {
         return response({ error: 'FYERS_APP_ID and FYERS_REDIRECT_URI Worker secrets are required.' }, 503, origin);
@@ -203,7 +212,7 @@ export default {
         loginUrl.searchParams.set('redirect_uri', env.FYERS_REDIRECT_URI);
         loginUrl.searchParams.set('response_type', 'code');
         loginUrl.searchParams.set('state', state);
-        return new Response(null, { status: 302, headers: { Location: loginUrl.toString(), 'Cache-Control': 'no-store' } });
+        return response({ loginUrl: loginUrl.toString() }, 200, origin);
       } catch (error) {
         return response({ error: 'Unable to start FYERS login.', details: String(error?.message || error) }, 500, origin);
       }
