@@ -264,7 +264,7 @@ export default {
         const rawCount = Number(url.searchParams.get('strikecount') || 10);
         const strikecount = Number.isInteger(rawCount) ? Math.min(50, Math.max(1, rawCount)) : 10;
         const timestamp = url.searchParams.get('timestamp') || '';
-        if (timestamp && !/^\\d{9,12}$/.test(timestamp)) {
+        if (timestamp && !/^\d{9,12}$/.test(timestamp)) {
           return response({ error: 'Invalid option expiry timestamp.' }, 400, origin);
         }
         const row = await env.MOTI_DB.prepare(
