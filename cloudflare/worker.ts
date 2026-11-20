@@ -78,6 +78,21 @@ async function authorizeFinovaUser(request, env) {
   }
 }
 
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+async function encryptFyersToken(token, keyText) {
+  if (!keyText || new TextEncoder().encode(keyText).length !== 32) throw new Error('FYERS_TOKEN_ENCRYPTION_KEY must be exactly 32 characters.');
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(keyText), 'AES-GCM', false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(token));
+  return { iv: bytesToBase64(iv), ciphertext: bytesToBase64(new Uint8Array(encrypted)) };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -107,8 +122,91 @@ export default {
       return response({ status: 'ok', service: 'MOTI Cloud Storage' }, 200, origin);
     }
 
+
+    // FYERS OAuth callback is public by design: FYERS redirects the browser here.
+    // A short-lived, single-use state value protects this route against CSRF.
+    if (url.pathname === '/api/fyers/callback' && request.method === 'GET') {
+      const authCode = url.searchParams.get('auth_code') || '';
+      const state = url.searchParams.get('state') || '';
+      if (!authCode || !state || !env.FYERS_APP_ID || !env.FYERS_APP_SECRET || !env.FYERS_TOKEN_ENCRYPTION_KEY || !env.FYERS_REDIRECT_URI) {
+        return response({ error: 'FYERS callback configuration or authorization response is incomplete.' }, 400, origin);
+      }
+      try {
+        await env.MOTI_DB.prepare(`
+          CREATE TABLE IF NOT EXISTS fyers_oauth_state (
+            state TEXT PRIMARY KEY,
+            created_at INTEGER NOT NULL
+          )
+        `).run();
+        await env.MOTI_DB.prepare(`
+          CREATE TABLE IF NOT EXISTS fyers_credentials (
+            id TEXT PRIMARY KEY,
+            token_iv TEXT NOT NULL,
+            token_ciphertext TEXT NOT NULL,
+            connected_at TEXT NOT NULL
+          )
+        `).run();
+        const stateRow = await env.MOTI_DB.prepare(
+          'SELECT state, created_at FROM fyers_oauth_state WHERE state = ?1'
+        ).bind(state).first();
+        await env.MOTI_DB.prepare('DELETE FROM fyers_oauth_state WHERE state = ?1').bind(state).run();
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        if (!stateRow || nowSeconds - Number(stateRow.created_at) > 600 || nowSeconds < Number(stateRow.created_at)) {
+          return response({ error: 'FYERS login session expired. Start Connect again from MOTI.' }, 400, origin);
+        }
+        const appIdHashBytes = await crypto.subtle.digest(
+          'SHA-256',
+          new TextEncoder().encode(env.FYERS_APP_ID + ':' + env.FYERS_APP_SECRET)
+        );
+        const appIdHash = Array.from(new Uint8Array(appIdHashBytes), b => b.toString(16).padStart(2, '0')).join('');
+        const tokenResponse = await fetch('https://api-t1.fyers.in/api/v3/validate-authcode', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ grant_type: 'authorization_code', appIdHash, code: authCode })
+        });
+        const tokenResult = await tokenResponse.json();
+        if (!tokenResponse.ok || tokenResult.s !== 'ok' || !tokenResult.access_token) {
+          return response({ error: 'FYERS authorization failed. Please retry Connect.', details: tokenResult.message || tokenResult.code || 'Token exchange failed' }, 502, origin);
+        }
+        const encrypted = await encryptFyersToken(tokenResult.access_token, env.FYERS_TOKEN_ENCRYPTION_KEY);
+        await env.MOTI_DB.prepare(
+          'INSERT INTO fyers_credentials (id, token_iv, token_ciphertext, connected_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(id) DO UPDATE SET token_iv = excluded.token_iv, token_ciphertext = excluded.token_ciphertext, connected_at = excluded.connected_at'
+        ).bind('primary', encrypted.iv, encrypted.ciphertext, new Date().toISOString()).run();
+        return response({ ok: true, message: 'FYERS connected. You can return to MOTI.' }, 200, origin);
+      } catch (error) {
+        return response({ error: 'Unable to complete FYERS connection.', details: String(error?.message || error) }, 500, origin);
+      }
+    }
+
     if (!(await authorizeFinovaUser(request, env))) {
       return response({ error: 'Sign in with an approved MOTI Finova account to continue.' }, 401, origin);
+    }
+
+
+    if (url.pathname === '/api/fyers/login' && request.method === 'GET') {
+      if (!env.FYERS_APP_ID || !env.FYERS_REDIRECT_URI) {
+        return response({ error: 'FYERS_APP_ID and FYERS_REDIRECT_URI Worker secrets are required.' }, 503, origin);
+      }
+      try {
+        await env.MOTI_DB.prepare(`
+          CREATE TABLE IF NOT EXISTS fyers_oauth_state (
+            state TEXT PRIMARY KEY,
+            created_at INTEGER NOT NULL
+          )
+        `).run();
+        const stateBytes = crypto.getRandomValues(new Uint8Array(24));
+        const state = Array.from(stateBytes, b => b.toString(16).padStart(2, '0')).join('');
+        await env.MOTI_DB.prepare('DELETE FROM fyers_oauth_state WHERE created_at < ?1').bind(Math.floor(Date.now() / 1000) - 600).run();
+        await env.MOTI_DB.prepare('INSERT INTO fyers_oauth_state (state, created_at) VALUES (?1, ?2)').bind(state, Math.floor(Date.now() / 1000)).run();
+        const loginUrl = new URL('https://api-t1.fyers.in/api/v3/generate-authcode');
+        loginUrl.searchParams.set('client_id', env.FYERS_APP_ID);
+        loginUrl.searchParams.set('redirect_uri', env.FYERS_REDIRECT_URI);
+        loginUrl.searchParams.set('response_type', 'code');
+        loginUrl.searchParams.set('state', state);
+        return new Response(null, { status: 302, headers: { Location: loginUrl.toString(), 'Cache-Control': 'no-store' } });
+      } catch (error) {
+        return response({ error: 'Unable to start FYERS login.', details: String(error?.message || error) }, 500, origin);
+      }
     }
 
     if (url.pathname === '/api/auth/check' && request.method === 'GET') {
