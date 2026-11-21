@@ -1,4 +1,4 @@
-const SCANNERS = new Set(['swing', 'nifty-options', 'smart-money']);
+const SCANNERS = new Set(['swing', 'nifty-options', 'smart-money', 'banknifty-options']);
 
 function normalizeSwingDate(value) {
   const raw = String(value ?? '').trim();
