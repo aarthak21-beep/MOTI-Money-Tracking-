@@ -8,6 +8,7 @@ import { DashboardView } from './views/DashboardView';
 import { StockTradingView } from './views/StockTradingView';
 import { NiftyOptionsScannerView } from './views/NiftyOptionsScannerView';
 import { BankNiftyOptionsScannerView } from './views/BankNiftyOptionsScannerView';
+import { BankNiftyAdvancedAnalytics } from './views/BankNiftyAdvancedAnalytics';
 import { WeeklyIncomeView } from './views/WeeklyIncomeView';
 import { DailyEarningsView } from './views/DailyEarningsView';
 import { BusinessInvoicesView } from './views/BusinessInvoicesView';
@@ -398,7 +399,7 @@ function AuthenticatedApp() {
 
           {currentTab === 'swingScanner' && <SwingScannerView />}
           {currentTab === 'niftyOptions' && <NiftyOptionsScannerView />}
-          {currentTab === 'bankNiftyOptions' && <BankNiftyOptionsScannerView />}
+          {currentTab === 'bankNiftyOptions' && <><BankNiftyOptionsScannerView /><BankNiftyAdvancedAnalytics /></>}
           {currentTab === 'motiTradex' && <MotiTradexView />}
           {currentTab === 'smartMoney' && <SmartMoneyScreenerView />}
           {currentTab === 'tipsInvest' && <TipsToInvestView />}
