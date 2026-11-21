@@ -7,8 +7,8 @@ type OptionRow = {
   expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number;
   oi: number; changeOi: number; volume: number; iv?: number; spot: number;
 };
-const STORAGE_KEY = 'moti_banknifty_options_chain_v1';
-const HISTORY_KEY = 'moti_banknifty_options_history_v1';
+const HISTORY_KEY = 'banknifty-history';
+const localIstDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 type DailySnapshot = { date: string; expiry?: string; spot: number; rows: Array<{ expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number; changeOi?: number; volume?: number; iv?: number }> };
 const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
 const number = (v?: string) => {
@@ -203,12 +203,10 @@ const estimateDailyTheta = (row: OptionRow) => {
 
 
 export const BankNiftyOptionsScannerView: React.FC = () => {
-  const [rows, setRows] = useState<OptionRow[]>(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as OptionRow[]; } catch { return []; }
-  });
+  const [rows, setRows] = useState<OptionRow[]>([]);
   const [message, setMessage] = useState('');
   const [manualSpot, setManualSpot] = useState('');
-  const [history, setHistory] = useState<DailySnapshot[]>(() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as DailySnapshot[]; } catch { return []; } });
+  const [history, setHistory] = useState<DailySnapshot[]>([]);
   const [todayKey, setTodayKey] = useState(localDateKey);
   const [liveStatus, setLiveStatus] = useState('FYERS Live तपासत आहे…');
   const [liveUpdatedAt, setLiveUpdatedAt] = useState<string | null>(null);
@@ -225,13 +223,9 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
       }
       if (active) {
         setRows(eligibleRows);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(eligibleRows));
       }
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud data load failed.'); });
-    try {
-      const localHistory = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as DailySnapshot[];
-      if (active) setHistory(localHistory);
-    } catch { if (active) setHistory([]); }
+    void loadScannerData<DailySnapshot[]>(HISTORY_KEY).then(data => { if (active) setHistory(data || []); }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud history load failed.'); });
     return () => { active = false; };
   }, []);
   useEffect(() => {
@@ -247,7 +241,6 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
         const eligibleRows = data.filter(row => isEligiblePositionalExpiry(row.expiry));
         if (eligibleRows.length !== data.length) await saveScannerData('banknifty-options', eligibleRows);
         setRows(eligibleRows);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(eligibleRows));
       }).catch(e => setError(e instanceof Error ? e.message : 'Cloud data refresh failed.'));
     }, 30_000);
     return () => window.clearInterval(interval);
@@ -325,11 +318,14 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
         catch { /* Keep the live chain usable locally even if cloud storage is unavailable. */ }
         if (!active) return;
         setRows(mergedRows);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedRows));
-        const oldHistory = (() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as DailySnapshot[]; } catch { return []; } })();
-        const nextHistory = [...oldHistory, ...snapshots].slice(-500);
-        setHistory(nextHistory);
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
+        const tradingDate = localIstDate();
+        const oldHistory = await loadScannerData<DailySnapshot[]>(HISTORY_KEY).catch(() => [] as DailySnapshot[]) || [];
+        const newDaily = snapshots.filter(snapshot => !oldHistory.some(saved => saved.expiry === snapshot.expiry && saved.date.slice(0, 10) === tradingDate));
+        if (newDaily.length) {
+          const nextHistory = [...oldHistory, ...newDaily].slice(-500);
+          await saveScannerData(HISTORY_KEY, nextHistory);
+          setHistory(nextHistory);
+        }
         setLiveUpdatedAt(new Date().toISOString());
         setLiveStatus(`FYERS Live · ${mergedRows.length} contracts · ${futureExpiries.length} expiries`);
         setLiveError('');
@@ -718,7 +714,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
 
   const clearData = () => {
     if (window.confirm('Saved BANKNIFTY option-chain data delete करायचा?')) {
-      void (async () => { try { await deleteScannerData('banknifty-options'); setRows([]); localStorage.removeItem(STORAGE_KEY); setMessage('Option-chain data clear केला.'); } catch (e) { setError(e instanceof Error ? e.message : 'Cloud delete failed.'); } })();
+      void (async () => { try { await deleteScannerData('banknifty-options'); await deleteScannerData(HISTORY_KEY); setRows([]); setHistory([]); setMessage('Cloud option-chain आणि daily history clear केला.'); } catch (e) { setError(e instanceof Error ? e.message : 'Cloud delete failed.'); } })();
     }
   };
 
