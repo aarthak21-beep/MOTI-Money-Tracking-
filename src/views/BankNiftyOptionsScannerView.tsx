@@ -227,7 +227,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
       }
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud data load failed.'); });
     void loadScannerData<DailySnapshot[]>(HISTORY_KEY).then(data => { if (active) setHistory(data || []); }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud history load failed.'); });
-    void loadScannerData<typeof paperTrades>(PAPER_TRADES_KEY).then(data => { if (active) setPaperTrades(data || []); }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud paper journal load failed.'); });
+    void loadScannerData<Array<{id:string;date:string;expiry:string;strike:number;type:'CE'|'PE';entry:number;qty:number;status:'OPEN'|'CLOSED';exit?:number;closedAt?:string}>>(PAPER_TRADES_KEY).then(data => { if (active) setPaperTrades(data || []); }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud paper journal load failed.'); });
     return () => { active = false; };
   }, []);
   useEffect(() => {
@@ -324,7 +324,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
         const oldHistory = await loadScannerData<DailySnapshot[]>(HISTORY_KEY).catch(() => [] as DailySnapshot[]) || [];
         const newDaily = snapshots.filter(snapshot => !oldHistory.some(saved => saved.expiry === snapshot.expiry && saved.date.slice(0, 10) === tradingDate));
         if (newDaily.length) {
-          const nextHistory = [...oldHistory, ...newDaily].slice(-500);
+          const nextHistory = [...oldHistory, ...newDaily].slice(-36);
           await saveScannerData(HISTORY_KEY, nextHistory);
           setHistory(nextHistory);
         }
