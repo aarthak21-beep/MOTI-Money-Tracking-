@@ -273,7 +273,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
     const spot = chain.length ? chain[0].spot : 0;
     return { ceOi, peOi, ceChg, peChg, pcr, bias, spot };
   }, [chain]);
-  const rangeRows = useMemo(() => chain.filter(r => r.strike >= summary.spot - 600 && r.strike <= summary.spot + 600), [chain, summary.spot]);
+  const rangeRows = useMemo(() => chain.filter(r => r.strike >= summary.spot - 600 && r.strike <= summary.spot + 600 && r.ltp > 0 && r.ltp <= 300), [chain, summary.spot]);
   const expirySnapshots = useMemo(() => history.filter(h => h.expiry === selectedExpiry || (!h.expiry && h.rows.some(r => r.expiry === selectedExpiry))), [history, selectedExpiry]);
   const latestSnapshot = expirySnapshots.slice().sort((a, b) => b.date.localeCompare(a.date))[0] || null;
   const previousSnapshot = latestSnapshot
@@ -282,7 +282,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
   const historyDays = useMemo(() => new Set(history.map(h => h.date)).size, [history]);
   const previousRows = useMemo(() => previousSnapshot?.rows.filter(r => r.expiry === selectedExpiry) || [], [previousSnapshot, selectedExpiry]);
   const priorByContract = useMemo(() => new Map(previousRows.map(r => [`${r.strike}-${r.type}`, r])), [previousRows]);
-  const priceOiSignals = useMemo(() => chain.map(r => {
+  const priceOiSignals = useMemo(() => rangeRows.map(r => {
     const old = priorByContract.get(`${r.strike}-${r.type}`);
     const peerVolumes = chain.filter(x => x.type === r.type && x.volume > 0).map(x => x.volume).sort((a, b) => a - b);
     const medianVolume = peerVolumes.length ? peerVolumes[Math.floor(peerVolumes.length / 2)] : 0;
@@ -303,7 +303,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
     const strength = signal === 'NO CLEAR CHANGE' ? 'NO CLEAR CHANGE' : !thresholdsMet || r.volume <= 0 ? 'WEAK' : strengthScore >= 75 && volumeConfirmed ? 'STRONG' : strengthScore >= 50 ? 'MEDIUM' : 'WEAK';
     const confidence = volumeConfirmed ? 'VOLUME CONFIRMED' : r.volume > 0 ? 'BELOW MEDIAN VOLUME' : 'NO VOLUME';
     return { ...r, signal, signalType, oldLtp: old.ltp, oldOi: old.oi, priceChangePct, oiDeltaSinceSnapshot, oiChangePct, strength, strengthScore, volumeConfirmed, medianVolume, confidence };
-  }), [chain, priorByContract]);
+  }), [rangeRows, priorByContract]);
   const pcrHistory = useMemo(() => [...history].sort((a, b) => a.date.localeCompare(b.date)).map(h => { const ce = h.rows.filter(r => r.expiry === selectedExpiry && r.type === 'CE').reduce((s, r) => s + r.oi, 0); const pe = h.rows.filter(r => r.expiry === selectedExpiry && r.type === 'PE').reduce((s, r) => s + r.oi, 0); return { date: h.date, pcr: ce ? pe / ce : 0 }; }).filter(x => x.pcr > 0).slice(-7), [history, selectedExpiry]);
   const strikeStats = useMemo(() => {
     const grouped = new Map<number, { strike: number; ceOi: number; peOi: number; ceChange: number; peChange: number; ceVol: number; peVol: number }>();
@@ -341,7 +341,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
       const peChg = peRows.reduce((sum, r) => sum + r.changeOi, 0);
       const pcr = ceOi ? peOi / ceOi : 0;
       const bias = pcr >= 1.1 && peChg > ceChg ? 'BULLISH' : pcr <= 0.9 && ceChg > peChg ? 'BEARISH' : 'WAIT';
-      const expiryRangeRows = expiryChain.filter(r => r.strike >= spot - 600 && r.strike <= spot + 600);
+      const expiryRangeRows = expiryChain.filter(r => r.strike >= spot - 600 && r.strike <= spot + 600 && r.ltp > 0 && r.ltp <= 300);
       const priorSnapshots = history.filter(h => h.expiry === expiry || (!h.expiry && h.rows.some(r => r.expiry === expiry))).sort((a, b) => b.date.localeCompare(a.date));
       const previous = priorSnapshots.find(h => h.date < localDateKey());
       const previousByContract = new Map((previous?.rows || []).filter(r => r.expiry === expiry).map(r => [`${r.strike}-${r.type}`, r]));
@@ -782,7 +782,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
       <div className="mb-4 rounded-xl border border-[#263958] bg-[#080f1b] p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-bold text-white">OI Positioning Signal</span><span className={'rounded-md px-2 py-1 text-[10px] font-black ' + (summary.bias === 'BULLISH' ? 'bg-emerald-300/15 text-emerald-200' : summary.bias === 'BEARISH' ? 'bg-rose-300/15 text-rose-200' : 'bg-amber-300/15 text-amber-200')}>{summary.bias}</span></div><p className="mt-2 text-[11px] leading-5 text-slate-300">{summary.bias === 'BULLISH' ? 'PCR 1.10 किंवा अधिक आणि PE OI Change हा CE पेक्षा जास्त: bullish positioning चा संकेत. CE खरेदीचा आदेश नाही.' : summary.bias === 'BEARISH' ? 'PCR 0.90 किंवा कमी आणि CE OI Change हा PE पेक्षा जास्त: bearish positioning चा संकेत. PE खरेदीचा आदेश नाही.' : 'PCR आणि OI Change मध्ये स्पष्ट एकतर्फी संकेत नाही. WAIT; चार्ट आणि किंमतीची पुष्टी पाहा.'}</p><p className="mt-1 text-[10px] text-slate-500">CE OI वाढ = संभाव्य resistance pressure · PE OI वाढ = संभाव्य support positioning. OI कमी होणे म्हणजे positions unwind होत असू शकतात.</p></div>
-      <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-white">Strike OI Scanner · Spot ± ₹600</h2><p className="mt-1 text-[11px] text-slate-400">Spot च्या 600 points वर/खाली CE-PE premium, OI, Change OI, volume आणि मागील snapshot वर आधारित 4-formula signals दाखवले आहेत. Signal strength साठी Premium बदल किमान 0.25%, OI बदल किमान 1% आणि Volume confirmation साठी त्याच CE/PE गटातील median volume benchmark वापरतो.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-xs text-slate-300">{summary.spot ? `₹${fmt(summary.spot - 600)} – ₹${fmt(summary.spot + 600)}` : 'Spot unavailable'}</span></div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-white">Strike OI Scanner · Spot ± ₹600</h2><p className="mt-1 text-[11px] text-slate-400">Spot च्या 600 points वर/खाली आणि LTP ₹300 पर्यंतचे CE-PE contracts, OI, Change OI, volume आणि मागील snapshot वर आधारित 4-formula signals दाखवले आहेत. Signal strength साठी Premium बदल किमान 0.25%, OI बदल किमान 1% आणि Volume confirmation साठी त्याच CE/PE गटातील median volume benchmark वापरतो.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-xs text-slate-300">{summary.spot ? `₹${fmt(summary.spot - 600)} – ₹${fmt(summary.spot + 600)}` : 'Spot unavailable'}</span></div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-rose-300/20 bg-rose-300/5 p-3"><p className="text-[10px] text-rose-200">Highest CE OI · potential resistance</p><p className="mt-1 text-lg font-black text-white">{maxCe ? fmt(maxCe.strike) : '—'}</p><p className="text-[11px] text-slate-400">{maxCe ? `OI ${fmt(maxCe.ceOi)} · Change ${fmt(maxCe.ceChange)}` : 'Range मध्ये data नाही'}</p></div>
         <div className="rounded-lg border border-emerald-300/20 bg-emerald-300/5 p-3"><p className="text-[10px] text-emerald-200">Highest PE OI · potential support</p><p className="mt-1 text-lg font-black text-white">{maxPe ? fmt(maxPe.strike) : '—'}</p><p className="text-[11px] text-slate-400">{maxPe ? `OI ${fmt(maxPe.peOi)} · Change ${fmt(maxPe.peChange)}` : 'Range मध्ये data नाही'}</p></div>
@@ -824,7 +824,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
             <td className="p-2 font-bold">{fmt(r.strike)}</td><td className="p-2">{r.type}</td><td className="p-2">₹{fmt(r.ltp)}</td><td className="p-2">₹{fmt(r.premiumPerLot)}</td><td className="p-2">₹{fmt(r.perLotRisk)}</td><td className="p-2 font-bold">{r.maxLots}</td>
           </tr>)}</tbody>
         </table>
-        <p className="mt-1 text-[10px] text-slate-500">इथे capital मध्ये परवडणारे आणि प्रति lot SL risk ₹1,500 च्या आत असलेले strikes दाखवले आहेत. Radar मध्ये valid LTP असलेले महाग contracts सुद्धा दिसू शकतात.</p>
+        <p className="mt-1 text-[10px] text-slate-500">इथे capital मध्ये परवडणारे आणि प्रति lot SL risk ₹1,500 च्या आत असलेले strikes दाखवले आहेत. Radar आणि trade selection मध्ये फक्त ₹300 पर्यंत LTP असलेले contracts दाखवले जातात.</p>
       </div>}
       {selectedTradeContract && stopPct > 0 && stopPct <= 80 && targetPct > 0 && targetPct <= 200 && lotSize > 0 ? (() => {
         const entry = selectedTradeContract.ltp;
@@ -844,7 +844,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
           </div>
           <div className="mt-3 rounded-lg border border-cyan-300/20 bg-cyan-300/5 p-3"><p className="text-xs text-slate-300">Capital ₹{fmt(capital)} · ₹1,500 Risk cap · Lot size {lotSize}</p><p className="mt-1 text-lg font-black text-white">{maxLots} max lot(s)</p><p className="text-[10px] text-slate-400">{maxLots > 0 ? `Premium required: ₹${fmt(maxLots * premiumPerLot)} · Estimated SL risk: ₹${fmt(maxLots * riskPerLot)} (excluding charges and slippage)` : `एका lot साठी premium ₹${fmt(premiumPerLot)} लागेल किंवा SL risk ₹${fmt(riskPerLot)} आहे; capital / risk cap मध्ये lot बसत नाही.`}</p></div>
         </div>;
-      })() : selectedTradeContract ? <p className="mt-3 text-xs text-rose-300">SL 1–80%, Target 1–200% आणि Lot size 1 पेक्षा जास्त ठेवा.</p> : <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs text-amber-100">{tradeContracts.length ? 'तुझ्या capital आणि ₹1,500 risk cap मध्ये बसणारा CE किंवा PE contract वर निवडा.' : rows.length ? 'या expiry मध्ये Spot ± ₹600 range मध्ये LTP असलेले contracts उपलब्ध नाहीत. दुसरी expiry निवडा किंवा पूर्ण Option Chain CSV upload करा.' : 'सुरुवात करण्यासाठी option-chain CSV upload कर.'}</div>}
+      })() : selectedTradeContract ? <p className="mt-3 text-xs text-rose-300">SL 1–80%, Target 1–200% आणि Lot size 1 पेक्षा जास्त ठेवा.</p> : <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-xs text-amber-100">{tradeContracts.length ? 'तुझ्या capital आणि ₹1,500 risk cap मध्ये बसणारा CE किंवा PE contract वर निवडा.' : rows.length ? 'या expiry मध्ये Spot ± ₹600 range आणि ₹300 पर्यंत LTP असलेले contracts उपलब्ध नाहीत. दुसरी expiry निवडा किंवा पूर्ण Option Chain CSV upload करा.' : 'सुरुवात करण्यासाठी option-chain CSV upload कर.'}</div>}
       <div className="mt-4 flex items-start gap-2 rounded-lg bg-[#080f1b] p-3 text-[11px] leading-5 text-slate-400"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /> हे फक्त indicative गणित आहे; WAIT म्हणजे directional confirmation नाही. Live premium feed, bid-ask spread, IV/Greeks आणि liquidity तपासल्याशिवाय प्रत्यक्ष ट्रेड करू नका. Option buying मध्ये premium पूर्ण गमावण्याचा धोका असतो.</div>
     </div>
     <div className="flex items-center justify-between text-[10px] text-slate-500"><span><CalendarClock className="mr-1 inline h-3 w-3" /> Current data cloud + browser · History last 30 daily snapshots saved in Cloudflare D1</span><button onClick={clearData} className="underline hover:text-white">Clear option data</button></div>
