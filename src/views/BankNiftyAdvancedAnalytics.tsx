@@ -62,6 +62,21 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
     }).filter((r): r is Row & {delta:number} => Boolean(r)).sort((a,b) => Math.abs(b.delta)-Math.abs(a.delta)).slice(0,12);
   }, [latest, previous, selectedExpiry]);
 
+  const buildupSignals = useMemo(() => {
+    if (!latest || !previous) return [];
+    const oldMap = new Map(previous.rows.filter(r => r.expiry === selectedExpiry && r.ltp > 0 && r.ltp <= 300).map(r => [r.strike + '|' + r.type, r]));
+    return latest.rows.filter(r => r.expiry === selectedExpiry && r.ltp > 0 && r.ltp <= 300).flatMap(r => {
+      const old = oldMap.get(r.strike + '|' + r.type);
+      if (!old || !(old.ltp > 0)) return [];
+      const priceUp = r.ltp > old.ltp, priceDown = r.ltp < old.ltp;
+      const oiUp = r.oi > old.oi, oiDown = r.oi < old.oi;
+      const signal = priceUp && oiUp ? 'LONG BUILDUP' : priceDown && oiUp ? 'SHORT BUILDUP' : priceUp && oiDown ? 'SHORT COVERING' : priceDown && oiDown ? 'LONG UNWINDING' : 'NO CLEAR CHANGE';
+      const pricePct = (r.ltp-old.ltp)/old.ltp*100;
+      const oiPct = old.oi > 0 ? (r.oi-old.oi)/old.oi*100 : 0;
+      return signal === 'NO CLEAR CHANGE' ? [] : [{...r, signal, pricePct, oiPct}];
+    }).sort((a,b) => Math.abs(b.oiPct)+Math.abs(b.pricePct)-Math.abs(a.oiPct)-Math.abs(a.pricePct)).slice(0,20);
+  }, [latest, previous, selectedExpiry]);
+
   const pcrTrend = useMemo(() => snapshots.map(s => {
     const ce = s.rows.filter(r => r.expiry === selectedExpiry && r.type === 'CE').reduce((n,r) => n+r.oi, 0);
     const pe = s.rows.filter(r => r.expiry === selectedExpiry && r.type === 'PE').reduce((n,r) => n+r.oi, 0);
@@ -71,6 +86,33 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
   const liquidity = useMemo(() => chain.map(r => ({...r, volumeOi: r.oi > 0 ? r.volume/r.oi : 0}))
     .sort((a,b) => b.volumeOi-a.volumeOi).slice(0,10), [chain]);
 
+  const sentiment = useMemo(() => {
+    let score = 0;
+    const reasons: string[] = [];
+    if (pcr >= 1.2) { score += 25; reasons.push('PCR 1.20 पेक्षा जास्त: PE OI तुलनेने जास्त'); }
+    else if (pcr > 0 && pcr <= 0.8) { score -= 25; reasons.push('PCR 0.80 किंवा कमी: CE OI तुलनेने जास्त'); }
+    const ceChange = chain.filter(r => r.type === 'CE').reduce((s,r) => s+r.changeOi,0);
+    const peChange = chain.filter(r => r.type === 'PE').reduce((s,r) => s+r.changeOi,0);
+    if (peChange > ceChange && peChange > 0) { score += 20; reasons.push('PE side Change OI जास्त'); }
+    else if (ceChange > peChange && ceChange > 0) { score -= 20; reasons.push('CE side Change OI जास्त'); }
+    const longs = buildupSignals.filter(r => r.signal === 'LONG BUILDUP' || r.signal === 'SHORT COVERING').length;
+    const shorts = buildupSignals.filter(r => r.signal === 'SHORT BUILDUP' || r.signal === 'LONG UNWINDING').length;
+    if (longs > shorts) { score += 20; reasons.push('मागील snapshot मध्ये bullish price/OI patterns जास्त'); }
+    else if (shorts > longs) { score -= 20; reasons.push('मागील snapshot मध्ये bearish price/OI patterns जास्त'); }
+    score = Math.max(-100, Math.min(100, score));
+    return { score, label: score >= 30 ? 'BULLISH' : score <= -30 ? 'BEARISH' : 'NEUTRAL', reasons };
+  }, [pcr, chain, buildupSignals]);
+  const smartAlerts = useMemo(() => {
+    const alerts: Array<{level:'HIGH'|'INFO'; title:string; detail:string}> = [];
+    if (pcr >= 1.3) alerts.push({level:'INFO',title:'PCR bullish zone',detail:'PCR '+pcr.toFixed(2)+' आहे; PE OI तुलनेने जास्त.'});
+    if (pcr > 0 && pcr <= 0.7) alerts.push({level:'INFO',title:'PCR bearish zone',detail:'PCR '+pcr.toFixed(2)+' आहे; CE OI तुलनेने जास्त.'});
+    const strongest = buildupSignals.find(r => Math.abs(r.oiPct) >= 10 && Math.abs(r.pricePct) >= 3);
+    if (strongest) alerts.push({level:'HIGH',title:strongest.signal+' · '+fmt(strongest.strike)+' '+strongest.type,detail:'Price '+(strongest.pricePct>0?'+':'')+strongest.pricePct.toFixed(1)+'% · OI '+(strongest.oiPct>0?'+':'')+strongest.oiPct.toFixed(1)+'% vs previous saved snapshot.'});
+    const active = liquidity.filter(r => r.volumeOi >= 0.5 && r.volume >= 1000).slice(0,3);
+    if (active.length) alerts.push({level:'INFO',title:'High activity contracts',detail:active.map(r=>fmt(r.strike)+' '+r.type).join(', ')+' · Volume/OI 50%+.'});
+    if (!previous) alerts.push({level:'INFO',title:'Historical comparison unavailable',detail:'OI buildup alerts साठी किमान दोन वेगवेगळ्या दिवसांचे saved snapshots आवश्यक.'});
+    return alerts;
+  }, [pcr, buildupSignals, liquidity, previous]);
   const ivRows = useMemo(() => chain.filter(r => Number.isFinite(r.iv) && (r.iv || 0) > 0).sort((a,b) => Math.abs(a.strike-spot)-Math.abs(b.strike-spot)), [chain, spot]);
   const atmIv = useMemo(() => ({ ce: ivRows.find(r => r.type === 'CE'), pe: ivRows.find(r => r.type === 'PE') }), [ivRows]);
   const ivSkew = atmIv.ce && atmIv.pe ? (atmIv.pe.iv || 0) - (atmIv.ce.iv || 0) : null;
@@ -116,6 +158,12 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
           {!previous ? <p className="mt-4 rounded-lg bg-[#080f1b] p-3 text-xs text-amber-200">किमान दोन वेगवेगळ्या दिवसांचे snapshots आवश्यक. सध्या पुरेसा prior data नाही.</p> : <div className="mt-3 space-y-2">{oiShift.slice(0,8).map(r => <div key={r.strike+r.type} className="flex items-center justify-between gap-2 rounded-lg bg-[#080f1b] px-3 py-2 text-xs"><span className="font-bold text-white">{r.strike} {r.type}</span><span className={r.delta >= 0 ? 'text-emerald-300' : 'text-rose-300'}>{r.delta >= 0 ? '+' : ''}{fmt(r.delta)} OI</span></div>)}</div>}
         </section>
         <section className={panel}>
+          <h3 className="text-sm font-bold text-white">1 · OI Build-up Signals</h3>
+          <p className="mt-1 text-xs text-slate-400">₹300 पर्यंतचे contracts; latest आणि previous saved snapshot मधील LTP + OI बदलावरून classification.</p>
+          {!previous ? <p className="mt-3 rounded-lg bg-[#080f1b] p-3 text-xs text-amber-200">दोन वेगवेगळ्या दिवसांचे snapshots नसल्याने buildup classification उपलब्ध नाही.</p> : !buildupSignals.length ? <p className="mt-3 text-xs text-slate-400">या snapshot pair मध्ये स्पष्ट price/OI buildup pattern नाही.</p> : <div className="mt-3 max-h-64 overflow-auto"><table className="w-full text-left text-xs"><thead className="sticky top-0 bg-[#0d1527] text-[10px] text-slate-500"><tr><th className="py-2">Contract</th><th>Pattern</th><th>LTP Δ</th><th>OI Δ</th></tr></thead><tbody>{buildupSignals.slice(0,12).map(r=><tr key={r.strike+r.type} className="border-t border-slate-800"><td className="py-2 font-bold text-white">{fmt(r.strike)} {r.type}</td><td className={r.signal.includes('LONG')||r.signal==='SHORT COVERING'?'text-emerald-300':'text-rose-300'}>{r.signal}</td><td>{r.pricePct>0?'+':''}{r.pricePct.toFixed(1)}%</td><td>{r.oiPct>0?'+':''}{r.oiPct.toFixed(1)}%</td></tr>)}</tbody></table></div>}
+          <p className="mt-2 text-[10px] text-slate-500">हे फक्त दोन saved snapshots मधील pattern आहे; intraday/live tick signal नाही.</p>
+        </section>
+        <section className={panel}>
           <h3 className="text-sm font-bold text-white">3 · Liquidity Checker</h3>
           <p className="mt-1 text-xs text-slate-400">Volume/OI ratio आणि traded volume वरून activity proxy.</p>
           <div className="mt-3 overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-[10px] uppercase text-slate-500"><tr><th className="py-2">Contract</th><th>Volume</th><th>Vol/OI</th><th>Activity</th></tr></thead><tbody>{liquidity.map(r => <tr key={r.strike+r.type} className="border-t border-slate-800"><td className="py-2 font-bold text-white">{r.strike} {r.type}</td><td>{fmt(r.volume)}</td><td>{(r.volumeOi*100).toFixed(1)}%</td><td className={r.volumeOi >= 1 ? 'text-emerald-300' : r.volumeOi >= .25 ? 'text-amber-200' : 'text-slate-400'}>{r.volumeOi >= 1 ? 'HIGH' : r.volumeOi >= .25 ? 'MEDIUM' : 'LOW'}</td></tr>)}</tbody></table></div>
@@ -141,6 +189,21 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
           <p className="mt-2 text-[10px] text-slate-500">आताचा PCR: {pcr ? pcr.toFixed(2) : '—'} · इतिहास वाढवण्यासाठी वेगवेगळ्या दिवशी CSV snapshot save करा.</p>
         </section>
       </div>
+        <section className={panel}>
+          <h3 className="text-sm font-bold text-white">4 · Smart Alerts</h3>
+          <p className="mt-1 text-xs text-slate-400">CSV मधील PCR, OI/price changes आणि Volume/OI वर आधारित rule alerts.</p>
+          {!smartAlerts.length ? <p className="mt-3 text-xs text-slate-400">सध्याच्या data वर alert trigger झालेला नाही.</p> : <div className="mt-3 space-y-2">{smartAlerts.map((a,i)=><div key={i} className="rounded-lg bg-[#080f1b] p-3"><div className="flex items-center gap-2"><span className={a.level==='HIGH'?'text-rose-300':'text-cyan-200'}>{a.level}</span><b className="text-xs text-white">{a.title}</b></div><p className="mt-1 text-xs text-slate-400">{a.detail}</p></div>)}</div>}
+          <p className="mt-2 text-[10px] text-slate-500">Alerts या page वरच दिसतात; browser push notification किंवा broker action नाही.</p>
+        </section>
+        <section className={panel}>
+          <h3 className="text-sm font-bold text-white">8 · Market Sentiment Score</h3>
+          <p className="mt-1 text-xs text-slate-400">PCR + Change OI + previous snapshot price/OI pattern यांचे transparent rule-based score.</p>
+          <div className="mt-3 flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs text-slate-400">Sentiment</p><p className={'text-2xl font-black '+(sentiment.score>=30?'text-emerald-300':sentiment.score<=-30?'text-rose-300':'text-amber-200')}>{sentiment.label}</p></div><div className="text-right"><p className="text-xs text-slate-400">Score</p><p className="text-3xl font-black text-white">{sentiment.score>0?'+':''}{sentiment.score}/100</p></div></div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-700"><div className="h-full rounded-full bg-cyan-400" style={{width:((sentiment.score+100)/2)+'%'}} /></div>
+          <div className="mt-3 space-y-1">{sentiment.reasons.length ? sentiment.reasons.map((reason,i)=><p key={i} className="text-xs text-slate-300">• {reason}</p>) : <p className="text-xs text-slate-400">Directional factors स्पष्ट नाहीत.</p>}</div>
+          <p className="mt-2 text-[10px] text-slate-500">हा custom heuristic score आहे; probability, guaranteed accuracy किंवा trade recommendation नाही.</p>
+        </section>
+      </section>
       <section className={panel}>
         <h3 className="text-sm font-bold text-white">5 · Spot Scenario Analyzer · Expiry Payoff</h3>
         <p className="mt-1 text-xs text-slate-400">निवडलेल्या long CE/PE चा expiry intrinsic payoff. हा what-if calculator आहे, forecast नाही.</p>
