@@ -612,14 +612,12 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
       );
       await saveScannerData('banknifty-options', mergedRows);
       setRows(mergedRows);
-      const now = new Date();
-      const snapshotDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const snapshotDate = localIstDate();
       const snapshot: DailySnapshot = { date: snapshotDate, spot: parsed[0]?.spot || 0, rows: parsed.map(r => ({ expiry: r.expiry, strike: r.strike, type: r.type, ltp: r.ltp, oi: r.oi, changeOi: r.changeOi, volume: r.volume, iv: r.iv })) };
-      // Worker stores each expiry independently under (upload date + expiry).
-      const nextHistory = [...history.filter(h => h.date !== snapshot.date), snapshot].sort((a, b) => a.date.localeCompare(b.date)).slice(-30);
+      const cloudHistory = await loadScannerData<DailySnapshot[]>(HISTORY_KEY).catch(() => [] as DailySnapshot[]) || [];
+      const nextHistory = [...cloudHistory.filter(h => h.date.slice(0, 10) !== snapshot.date), snapshot].sort((a, b) => a.date.localeCompare(b.date)).slice(-500);
+      await saveScannerData(HISTORY_KEY, nextHistory);
       setHistory(nextHistory);
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedRows));
       setExpiryChoice('');
       setMessage(`${parsed.length} option rows History मध्ये save झाले; ${eligibleParsed.length} eligible rows Main Scanner मध्ये ठेवले. ${suppliedSpot > 0 ? `तुम्ही दिलेला BANKNIFTY Spot ₹${fmt(suppliedSpot)} वापरला.` : 'BANKNIFTY Spot CE-PE premium parity वरून अंदाजे काढला आहे.'} Daily snapshot save झाला.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'CSV वाचता आला नाही.'); }
