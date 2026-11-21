@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { loadScannerData, saveScannerData, deleteScannerData } from '../services/cloudScannerStorage';
 import { Activity, Upload, Download, AlertTriangle, CalendarClock } from 'lucide-react';
+import { CLOUD_WORKER_URL, getAppwriteJwt } from '../services/appwriteAuth';
 
 type OptionRow = {
   expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number;
@@ -200,6 +201,9 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
   const [manualSpot, setManualSpot] = useState('');
   const [history, setHistory] = useState<DailySnapshot[]>(() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as DailySnapshot[]; } catch { return []; } });
   const [todayKey, setTodayKey] = useState(localDateKey);
+  const [liveStatus, setLiveStatus] = useState('FYERS Live तपासत आहे…');
+  const [liveUpdatedAt, setLiveUpdatedAt] = useState<string | null>(null);
+  const [liveError, setLiveError] = useState('');
   useEffect(() => {
     let active = true;
     loadScannerData<OptionRow[]>('banknifty-options').then(async data => {
@@ -240,6 +244,77 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
     return () => window.clearInterval(interval);
   }, [todayKey]);
   const [error, setError] = useState('');
+  const [liveEnabled, setLiveEnabled] = useState(true);
+  useEffect(() => {
+    if (!liveEnabled) return;
+    let active = true;
+    let busy = false;
+    const refreshLiveChain = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const jwt = await getAppwriteJwt();
+        const headers = { authorization: `Bearer ${jwt}` };
+        const quoteRes = await fetch(`${CLOUD_WORKER_URL}/api/fyers/quote`, { headers, cache: 'no-store' });
+        const quoteBody = await quoteRes.json();
+        if (!quoteRes.ok) throw new Error(quoteBody.error || 'FYERS token/API उपलब्ध नाही.');
+        const spot = Number(quoteBody.quotes?.['NSE:NIFTYBANK-INDEX']?.ltp || 0);
+        if (!(spot > 0)) throw new Error('FYERS कडून BANKNIFTY Spot मिळाला नाही.');
+        const firstRes = await fetch(`${CLOUD_WORKER_URL}/api/fyers/option-chain?index=BANKNIFTY&strikecount=50`, { headers, cache: 'no-store' });
+        const firstBody = await firstRes.json();
+        if (!firstRes.ok) throw new Error(firstBody.error || 'FYERS BANKNIFTY expiry list मिळाली नाही.');
+        const expiryData = (firstBody.data?.expiryData || []) as Array<{ date: string; expiry: string | number }>;
+        const futureExpiries = expiryData.map(item => ({ iso: parseDate(item.date || ''), timestamp: String(item.expiry) }))
+          .filter(item => item.iso && isEligiblePositionalExpiry(item.iso) && /^\\d{9,12}$/.test(item.timestamp))
+          .sort((a, b) => a.iso.localeCompare(b.iso));
+        if (!futureExpiries.length) throw new Error('FYERS मध्ये BANKNIFTY ची पुढील expiry उपलब्ध नाही.');
+        const fetchedRows: OptionRow[] = [];
+        const snapshots: DailySnapshot[] = [];
+        for (const expiry of futureExpiries.slice(0, 12)) {
+          if (!active) return;
+          const res = expiry.timestamp === String(expiryData[0]?.expiry)
+            ? firstRes
+            : await fetch(`${CLOUD_WORKER_URL}/api/fyers/option-chain?index=BANKNIFTY&strikecount=50&timestamp=${encodeURIComponent(expiry.timestamp)}`, { headers, cache: 'no-store' });
+          const body = res === firstRes ? firstBody : await res.json();
+          if (!res.ok || !body.data?.optionsChain) continue;
+          const converted = (body.data.optionsChain as Array<{ strike_price: number; option_type: string; ltp?: number; oi?: number; oich?: number; volume?: number; greeks?: { iv?: number } }>)
+            .filter(item => Number(item.strike_price) > 0 && Number(item.ltp) > 0)
+            .map(item => ({
+              expiry: expiry.iso, strike: Number(item.strike_price), type: item.option_type === 'CE' ? 'CE' as const : 'PE' as const,
+              ltp: Number(item.ltp || 0), oi: Number(item.oi || 0) / 30, changeOi: Number(item.oich || 0) / 30,
+              volume: Number(item.volume || 0) / 30, iv: Number(item.greeks?.iv || 0) || undefined, spot
+            }));
+          if (!converted.length) continue;
+          fetchedRows.push(...converted);
+          const stamp = new Date().toISOString();
+          snapshots.push({ date: stamp, expiry: expiry.iso, spot, rows: converted.map(({ expiry: exp, strike, type, ltp, oi, changeOi, volume, iv }) => ({ expiry: exp, strike, type, ltp, oi, changeOi, volume, iv })) });
+        }
+        if (!active) return;
+        if (!fetchedRows.length) throw new Error('FYERS कडून कोणत्याही पुढील expiry चे contracts मिळाले नाहीत.');
+        const mergedRows = fetchedRows.filter(row => isEligiblePositionalExpiry(row.expiry));
+        await saveScannerData('banknifty-options', mergedRows);
+        if (!active) return;
+        setRows(mergedRows);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedRows));
+        const oldHistory = (() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as DailySnapshot[]; } catch { return []; } })();
+        const nextHistory = [...oldHistory, ...snapshots].slice(-500);
+        setHistory(nextHistory);
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
+        setLiveUpdatedAt(new Date().toISOString());
+        setLiveStatus(`FYERS Live · ${mergedRows.length} contracts · ${futureExpiries.length} expiries`);
+        setLiveError('');
+      } catch (e) {
+        if (!active) return;
+        const reason = e instanceof Error ? e.message : 'FYERS Live refresh अयशस्वी.';
+        setLiveError(reason);
+        setLiveStatus('Live data stale · FYERS reconnect आवश्यक असू शकतो');
+      } finally { busy = false; }
+    };
+    void refreshLiveChain();
+    const timer = window.setInterval(() => { void refreshLiveChain(); }, 60000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [liveEnabled]);
+
   const [stopPct, setStopPct] = useState(20);
   const [targetPct, setTargetPct] = useState(35);
   const [lotSize, setLotSize] = useState(30);
@@ -621,6 +696,11 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300"><Activity className="h-4 w-4" /> MOTI · Separate Options Module</div>
       <h1 className="mt-3 text-2xl font-black text-white sm:text-3xl">BANKNIFTY Options Positional Scanner</h1>
       <p className="mt-2 max-w-3xl text-sm text-slate-300">Intraday नाही. या आठवड्याची expiry वगळली आहे. पुढील 1, 2, 3 किंवा 4 आठवड्यांतील expiry स्वतंत्रपणे निवडा; त्यापुढील expiry 5+ Weeks मध्ये दिसेल. OI हे positioning data आहे; ते एकटे buy signal नाही.</p>
+      <div className="mb-3 rounded-xl border border-cyan-300/20 bg-[#080f1b] p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-bold text-cyan-200">{liveStatus}</span><label className="flex items-center gap-2 text-[10px] text-slate-300"><input type="checkbox" checked={liveEnabled} onChange={e => setLiveEnabled(e.target.checked)} /> Auto Live</label></div>
+        <p className="mt-1 text-[10px] text-slate-400">{liveUpdatedAt ? `Last update: ${new Date(liveUpdatedAt).toLocaleString('en-IN')}` : 'FYERS Data API मधून प्रत्येक 60 सेकंदांनी refresh.'} · FYERS quantity values BANKNIFTY lot size 30 ने contracts मध्ये रूपांतरित.</p>
+        {liveError && <p role="alert" className="mt-2 text-[11px] text-amber-200">{liveError} · CSV upload backup म्हणून उपलब्ध.</p>}
+      </div>
       <div className="mt-4 flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1 text-[10px] font-bold text-slate-300">BANKNIFTY Spot (optional, NSE वर दिसणारा)
           <input type="number" min="1" step="0.05" value={manualSpot} onChange={e => setManualSpot(e.target.value)} placeholder="उदा. 25144.30" className="w-44 rounded-xl border border-slate-600 bg-[#080f1b] px-3 py-3 text-sm text-white placeholder:text-slate-500" />
@@ -631,7 +711,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
         </label>
         <button onClick={downloadTemplate} className="inline-flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-3 text-xs font-bold text-slate-200 hover:bg-white/5"><Download className="h-4 w-4" /> CSV Template</button>
       </div>
-      <p className="mt-2 text-[10px] text-slate-400">NSE वरचा अचूक Spot भरून मग CSV upload करा. रिकामा ठेवल्यास CE-PE premium parity वरून अंदाज वापरला जाईल. Full Option Chain CSV मध्ये सर्व strikes scan होतात; single-strike CSV मध्ये फक्त तोच strike वाचता येतो.</p>
+      <p className="mt-2 text-[10px] text-slate-400">मुख्य डेटा FYERS Live API मधून प्रत्येक 60 सेकंदांनी येतो आणि उपलब्ध पुढील expiry आपोआप घेतल्या जातात. CSV फक्त backup/manual fallback आहे.</p>
     </div>
 
 
@@ -654,8 +734,8 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
     </div>
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
-      <h2 className="text-sm font-bold text-white">Daily Signal Accuracy · CSV History Based</h2>
-      <p className="mt-1 text-[11px] text-slate-400">कालच्या OI + Premium signal नंतर पुढील upload-day ला त्याच contract चा premium कोणत्या दिशेने बदलला ते मोजले आहे. Intraday data नाही.</p>
+      <h2 className="text-sm font-bold text-white">Daily Signal Accuracy · Saved Snapshot Based</h2>
+      <p className="mt-1 text-[11px] text-slate-400">मागील saved FYERS/CSV snapshot नंतर त्याच contract चा premium कोणत्या दिशेने बदलला ते मोजले आहे. डेटा snapshot frequency वर अवलंबून.</p>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Historical Accuracy</p><p className="mt-1 text-xl font-black text-white">{dailyAccuracy.total ? dailyAccuracy.accuracy.toFixed(1) + '%' : '—'}</p></div>
         <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Correct Outcomes</p><p className="mt-1 text-xl font-black text-emerald-300">{dailyAccuracy.correct} / {dailyAccuracy.total}</p></div>
@@ -773,8 +853,8 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
     </section>
 
     <div className="rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-bold text-white">Daily Snapshot History · Selected expiry</h2><p className="mt-1 text-[11px] text-slate-400">प्रत्येक Upload Date + Expiry स्वतंत्र Cloudflare history मध्ये जतन होते. त्याच दिवशी तीच expiry पुन्हा upload केल्यास फक्त त्या expiry चा snapshot update होतो; इतर expiry सुरक्षित राहतात.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-xs text-slate-300">{historyDays} days · {history.length} expiry snapshots</span></div>
-      {latestSnapshot ? <div className="mt-3 grid gap-3 sm:grid-cols-3"><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest upload date</p><p className="mt-1 text-sm font-bold text-white">{latestSnapshot.date} · {selectedExpiry}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest Spot</p><p className="mt-1 text-sm font-bold text-white">₹{fmt(latestSnapshot.spot)}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Previous snapshot</p><p className="mt-1 text-sm font-bold text-white">{previousSnapshot?.date || 'अजून उपलब्ध नाही'}</p></div></div> : <p className="mt-3 text-xs text-amber-200">पहिला CSV upload केल्यानंतर Daily History सुरू होईल.</p>}
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-bold text-white">Live Snapshot History · Selected expiry</h2><p className="mt-1 text-[11px] text-slate-400">FYERS Live refresh मधील प्रत्येक expiry snapshot browser history मध्ये जतन होतो; CSV backup upload देखील snapshot जोडतो.</p></div><span className="rounded-lg bg-[#080f1b] px-3 py-2 text-xs text-slate-300">{historyDays} days · {history.length} expiry snapshots</span></div>
+      {latestSnapshot ? <div className="mt-3 grid gap-3 sm:grid-cols-3"><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest upload date</p><p className="mt-1 text-sm font-bold text-white">{latestSnapshot.date} · {selectedExpiry}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Latest Spot</p><p className="mt-1 text-sm font-bold text-white">₹{fmt(latestSnapshot.spot)}</p></div><div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Previous snapshot</p><p className="mt-1 text-sm font-bold text-white">{previousSnapshot?.date || 'अजून उपलब्ध नाही'}</p></div></div> : <p className="mt-3 text-xs text-amber-200">FYERS Live connect झाल्यावर snapshots आपोआप सुरू होतील; FYERS disconnect असल्यास CSV backup वापरता येईल.</p>}
       {previousSnapshot && <><p className="mt-3 text-[11px] text-slate-300">Previous snapshot पासून BANKNIFTY Spot बदल: <b className={latestSnapshot!.spot >= previousSnapshot.spot ? 'text-emerald-300' : 'text-rose-300'}>{latestSnapshot!.spot >= previousSnapshot.spot ? '+' : ''}{fmt(latestSnapshot!.spot - previousSnapshot.spot)} points</b>. प्रत्येक CE/PE contract स्वतंत्रपणे मागील snapshot च्या LTP आणि OI शी compare केला आहे. आजचा Change in OI आणि Volume हे NSE CSV मधून घेतले आहेत.</p><div className="mt-3 overflow-x-auto"><table className="w-full min-w-[900px] text-left text-xs"><thead className="text-[10px] uppercase text-slate-400"><tr>{['Type','Strike','Price Δ %','OI Δ vs Prior','Today Chg OI','Today Volume','Price + OI Read','Confidence'].map(x => <th key={x} className="px-3 py-2">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#1e2e4f]">{[...priceOiSignals].sort((a, b) => b.volume - a.volume).slice(0, 30).map(r => <tr key={r.expiry + r.strike + r.type}><td className="px-3 py-2 font-bold text-white">{r.type}</td><td className="px-3 py-2">{fmt(r.strike)}</td><td className="px-3 py-2">{r.priceChangePct === undefined ? '—' : (r.priceChangePct >= 0 ? '+' : '') + fmt(r.priceChangePct) + '%'}</td><td className="px-3 py-2">{r.oiDeltaSinceSnapshot === undefined ? '—' : fmt(r.oiDeltaSinceSnapshot)}</td><td className="px-3 py-2">{fmt(r.changeOi)}</td><td className="px-3 py-2">{fmt(r.volume)}</td><td className={'px-3 py-2 font-bold ' + (r.signalType === 'bullish' ? 'text-emerald-300' : r.signalType === 'bearish' ? 'text-rose-300' : 'text-amber-200')}>{r.signal}</td><td className="px-3 py-2 text-amber-200">{r.confidence}</td></tr>)}</tbody></table></div></>}
       {pcrHistory.length > 0 && <div className="mt-3"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Selected expiry PCR history</p><div className="flex flex-wrap gap-2">{pcrHistory.map(p => <span key={p.date} className="rounded-lg bg-[#080f1b] px-3 py-2 text-[11px] text-slate-300">{p.date}: <b className="text-white">{p.pcr.toFixed(2)}</b></span>)}</div></div>}
     </div>
