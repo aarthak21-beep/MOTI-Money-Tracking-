@@ -11,6 +11,16 @@ const STARTING_CAPITAL = 100000;
 const INDEX_LOT_SIZES: Record<'NIFTY' | 'BANKNIFTY', number> = { NIFTY: 65, BANKNIFTY: 30 };
 const money = (n: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n);
 
+const NSE_HOLIDAYS_2026 = new Set(['2026-01-15', '2026-01-26', '2026-03-03', '2026-03-26', '2026-03-31', '2026-04-03', '2026-04-14', '2026-05-01', '2026-05-28', '2026-06-26', '2026-09-14', '2026-10-02', '2026-10-20', '2026-11-10', '2026-11-24', '2026-12-25']);
+const isIndianMarketOpenNow = () => {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+  const get = (type: string) => parts.find(part => part.type === type)?.value || '';
+  const date = `${get('year')}-${get('month')}-${get('day')}`;
+  const minutes = Number(get('hour')) * 60 + Number(get('minute'));
+  return !NSE_HOLIDAYS_2026.has(date) && ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(get('weekday')) && minutes >= 9 * 60 + 15 && minutes < 15 * 60 + 30;
+};
+
 export const MotiTradexView: React.FC = () => {
   const [holdings, setHoldings] = useState<Holding[]>(() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as Holding[]; } catch { return []; }
@@ -75,7 +85,7 @@ export const MotiTradexView: React.FC = () => {
 
 
   const fetchIndexQuotes = async () => {
-    if (quoteBusy || !fyersConnected) return;
+    if (quoteBusy || !fyersConnected || !isIndianMarketOpenNow()) return;
     setQuoteBusy(true); setQuoteError('');
     try {
       const jwt = await getAppwriteJwt();
@@ -92,7 +102,7 @@ export const MotiTradexView: React.FC = () => {
   };
 
   const fetchOptionChain = async () => {
-    if (!fyersConnected) return;
+    if (!fyersConnected || !isIndianMarketOpenNow()) return;
     setOptionChainBusy(true); setOptionChainError('');
     try {
       const jwt = await getAppwriteJwt();
@@ -155,15 +165,15 @@ export const MotiTradexView: React.FC = () => {
 
   useEffect(() => {
     if (!fyersConnected) return;
-    void fetchIndexQuotes();
-    const timer = window.setInterval(() => { void fetchIndexQuotes(); }, 60000);
+    if (isIndianMarketOpenNow()) void fetchIndexQuotes();
+    const timer = window.setInterval(() => { if (isIndianMarketOpenNow()) void fetchIndexQuotes(); }, 60000);
     return () => window.clearInterval(timer);
   }, [fyersConnected]);
 
   useEffect(() => {
     if (!fyersConnected) return;
-    void fetchOptionChain();
-    const timer = window.setInterval(() => { void fetchOptionChain(); }, 60000);
+    if (isIndianMarketOpenNow()) void fetchOptionChain();
+    const timer = window.setInterval(() => { if (isIndianMarketOpenNow()) void fetchOptionChain(); }, 60000);
     return () => window.clearInterval(timer);
   }, [fyersConnected, optionIndex, optionExpiry]);
 
@@ -388,7 +398,7 @@ export const MotiTradexView: React.FC = () => {
         <div><h2 className="text-sm font-bold text-white">NIFTY 50 + BANKNIFTY · FYERS Quotes</h2>
           <p className="mt-1 text-xs text-slate-400">दोन्ही index चे market-data quote snapshots. दर 60 सेकंदांनी automatic refresh; order placement नाही.</p>
         </div>
-        <button type="button" onClick={() => void fetchIndexQuotes()} disabled={quoteBusy || !fyersConnected} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-50">{quoteBusy ? 'Fetching…' : 'Refresh Quotes'}</button>
+        <button type="button" onClick={() => void fetchIndexQuotes()} disabled={quoteBusy || !fyersConnected || !isIndianMarketOpenNow()} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-50">{quoteBusy ? 'Fetching…' : 'Refresh Quotes'}</button>
       </div>
       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         {([{ key: 'NSE:NIFTY50-INDEX', label: 'NIFTY 50' }, { key: 'NSE:NIFTYBANK-INDEX', label: 'BANKNIFTY' }] as const).map(item => {
@@ -413,7 +423,7 @@ export const MotiTradexView: React.FC = () => {
           <h2 className="text-sm font-bold text-white">Live Option Chain · FYERS</h2>
           <p className="mt-1 text-xs text-slate-400">NIFTY / BANKNIFTY · ATM च्या दोन्ही बाजूला 10 strikes · दर 60 सेकंदांनी auto-refresh.</p>
         </div>
-        <button type="button" onClick={() => void fetchOptionChain()} disabled={optionChainBusy || !fyersConnected} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-50">{optionChainBusy ? 'Fetching…' : 'Refresh Chain'}</button>
+        <button type="button" onClick={() => void fetchOptionChain()} disabled={optionChainBusy || !fyersConnected || !isIndianMarketOpenNow()} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-50">{optionChainBusy ? 'Fetching…' : 'Refresh Chain'}</button>
       </div>
       <div className="mt-4 flex flex-wrap items-end gap-4">
         <div>
