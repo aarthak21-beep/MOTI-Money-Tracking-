@@ -71,6 +71,10 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
   const liquidity = useMemo(() => chain.map(r => ({...r, volumeOi: r.oi > 0 ? r.volume/r.oi : 0}))
     .sort((a,b) => b.volumeOi-a.volumeOi).slice(0,10), [chain]);
 
+  const ivRows = useMemo(() => chain.filter(r => Number.isFinite(r.iv) && (r.iv || 0) > 0).sort((a,b) => Math.abs(a.strike-spot)-Math.abs(b.strike-spot)), [chain, spot]);
+  const atmIv = useMemo(() => ({ ce: ivRows.find(r => r.type === 'CE'), pe: ivRows.find(r => r.type === 'PE') }), [ivRows]);
+  const ivSkew = atmIv.ce && atmIv.pe ? (atmIv.pe.iv || 0) - (atmIv.ce.iv || 0) : null;
+
   const chosenStrike = Number(scenarioStrike);
   const chosenPremium = Number(scenarioPremium);
   const chosenSpot = Number(scenarioSpot);
@@ -116,6 +120,19 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
           <p className="mt-1 text-xs text-slate-400">Volume/OI ratio आणि traded volume वरून activity proxy.</p>
           <div className="mt-3 overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-[10px] uppercase text-slate-500"><tr><th className="py-2">Contract</th><th>Volume</th><th>Vol/OI</th><th>Activity</th></tr></thead><tbody>{liquidity.map(r => <tr key={r.strike+r.type} className="border-t border-slate-800"><td className="py-2 font-bold text-white">{r.strike} {r.type}</td><td>{fmt(r.volume)}</td><td>{(r.volumeOi*100).toFixed(1)}%</td><td className={r.volumeOi >= 1 ? 'text-emerald-300' : r.volumeOi >= .25 ? 'text-amber-200' : 'text-slate-400'}>{r.volumeOi >= 1 ? 'HIGH' : r.volumeOi >= .25 ? 'MEDIUM' : 'LOW'}</td></tr>)}</tbody></table></div>
           <p className="mt-2 text-[10px] text-slate-500">CSV parser मध्ये Bid/Ask spread उपलब्ध नाही; म्हणून हा activity proxy आहे, spread/liquidity guarantee नाही.</p>
+        </section>
+        <section className={panel}>
+          <h3 className="text-sm font-bold text-white">6 · IV Analysis</h3>
+          <p className="mt-1 text-xs text-slate-400">CSV मधील उपलब्ध implied volatility वरून ATM जवळचे CE/PE IV आणि skew.</p>
+          {!ivRows.length ? <p className="mt-3 rounded-lg bg-[#080f1b] p-3 text-xs text-amber-200">या CSV मध्ये valid IV values उपलब्ध नाहीत. IV analysis दाखवता येणार नाही.</p> : <>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Nearest CE IV</p><p className="mt-1 text-lg font-bold text-white">{atmIv.ce ? fmt(atmIv.ce.iv || 0)+'%' : '—'}</p></div>
+              <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">Nearest PE IV</p><p className="mt-1 text-lg font-bold text-white">{atmIv.pe ? fmt(atmIv.pe.iv || 0)+'%' : '—'}</p></div>
+              <div className="rounded-lg bg-[#080f1b] p-3"><p className="text-[10px] text-slate-400">PE − CE Skew</p><p className="mt-1 text-lg font-bold text-cyan-200">{ivSkew === null ? '—' : (ivSkew > 0 ? '+' : '')+fmt(ivSkew)+' pp'}</p></div>
+            </div>
+            <div className="mt-3 max-h-64 overflow-auto"><table className="w-full text-left text-xs"><thead className="sticky top-0 bg-[#0d1527] text-[10px] text-slate-500"><tr><th className="py-2">Strike</th><th>CE IV</th><th>PE IV</th></tr></thead><tbody>{Array.from(new Set(ivRows.map(r=>r.strike))).sort((a,b)=>Math.abs(a-spot)-Math.abs(b-spot)).slice(0,15).map(k=>{const ce=ivRows.find(r=>r.strike===k&&r.type==='CE');const pe=ivRows.find(r=>r.strike===k&&r.type==='PE');return <tr key={k} className="border-t border-slate-800"><td className="py-2 font-bold text-white">{fmt(k)}</td><td>{ce ? fmt(ce.iv||0)+'%' : '—'}</td><td>{pe ? fmt(pe.iv||0)+'%' : '—'}</td></tr>})}</tbody></table></div>
+          </>}
+          <p className="mt-2 text-[10px] text-slate-500">Skew हा nearest available CE आणि PE IV मधील फरक आहे; IV Rank/Percentile नाही. CSV मधील IV values वर अवलंबून.</p>
         </section>
         <section className={panel}>
           <h3 className="text-sm font-bold text-white">4 · PCR Trend & OI History</h3>
