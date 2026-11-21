@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { loadScannerData } from '../services/cloudScannerStorage';
 
 type Row = { expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number; changeOi: number; volume: number; iv?: number; spot: number };
 type Snapshot = { date: string; expiry?: string; spot: number; rows: Row[] };
-const CHAIN_KEY = 'moti_banknifty_options_chain_v1';
-const HISTORY_KEY = 'moti_banknifty_options_history_v1';
+const CHAIN_KEY = 'banknifty-options';
+const HISTORY_KEY = 'banknifty-history';
 const LOT_SIZE = 30;
 const fmt = (v: number) => Number.isFinite(v) ? v.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—';
 const panel = 'rounded-2xl border border-[#1e2e4f] bg-[#0d1527] p-4 sm:p-5';
@@ -18,15 +19,22 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
   const [scenarioType, setScenarioType] = useState<'CE' | 'PE'>('CE');
   const [scenarioLots, setScenarioLots] = useState('1');
 
-  const reload = () => {
-    try { setRows(JSON.parse(localStorage.getItem(CHAIN_KEY) || '[]')); } catch { setRows([]); }
-    try { setHistory(JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')); } catch { setHistory([]); }
-  };
   useEffect(() => {
-    reload();
-    const timer = window.setInterval(reload, 4000);
-    window.addEventListener('storage', reload);
-    return () => { window.clearInterval(timer); window.removeEventListener('storage', reload); };
+    let active = true;
+    const reload = async () => {
+      try {
+        const [chainData, historyData] = await Promise.all([
+          loadScannerData<Row[]>(CHAIN_KEY),
+          loadScannerData<Snapshot[]>(HISTORY_KEY),
+        ]);
+        if (!active) return;
+        setRows(chainData || []);
+        setHistory(historyData || []);
+      } catch { if (active) { setRows([]); setHistory([]); } }
+    };
+    void reload();
+    const timer = window.setInterval(() => { void reload(); }, 15000);
+    return () => { active = false; window.clearInterval(timer); };
   }, []);
 
   const expiries = useMemo(() => Array.from(new Set(rows.map(r => r.expiry))).sort(), [rows]);
