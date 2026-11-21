@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { loadScannerData } from '../services/cloudScannerStorage';
 
 type Row = { expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number; changeOi: number; volume: number; iv?: number; spot: number };
-type Snapshot = { date: string; expiry?: string; spot: number; rows: Row[] };
+type Snapshot = { date: string; expiry?: string; kind?: 'DAILY' | 'EOD'; spot: number; rows: Row[] };
 const CHAIN_KEY = 'banknifty-options';
 const HISTORY_KEY = 'banknifty-history';
 const LOT_SIZE = 30;
@@ -45,7 +45,12 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
   const ceOi = chain.filter(r => r.type === 'CE').reduce((s, r) => s + r.oi, 0);
   const peOi = chain.filter(r => r.type === 'PE').reduce((s, r) => s + r.oi, 0);
   const pcr = ceOi > 0 ? peOi / ceOi : 0;
-  const snapshots = useMemo(() => history.filter(h => h.expiry === selectedExpiry || (!h.expiry && h.rows?.some(r => r.expiry === selectedExpiry))).sort((a,b) => a.date.localeCompare(b.date)), [history, selectedExpiry]);
+  const snapshots = useMemo(() => {
+    const relevant = history.filter(h => h.expiry === selectedExpiry || (!h.expiry && h.rows?.some(r => r.expiry === selectedExpiry)));
+    const byDay = new Map<string, Snapshot>();
+    relevant.forEach(snapshot => { const day = snapshot.date.slice(0, 10); const existing = byDay.get(day); if (!existing || snapshot.kind === 'EOD') byDay.set(day, snapshot); });
+    return Array.from(byDay.values()).sort((a,b) => a.date.localeCompare(b.date));
+  }, [history, selectedExpiry]);
   const latest = snapshots[snapshots.length - 1];
   const previous = snapshots.length > 1 ? snapshots[snapshots.length - 2] : undefined;
 
@@ -88,7 +93,7 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
   const pcrTrend = useMemo(() => snapshots.map(s => {
     const ce = s.rows.filter(r => r.expiry === selectedExpiry && r.type === 'CE').reduce((n,r) => n+r.oi, 0);
     const pe = s.rows.filter(r => r.expiry === selectedExpiry && r.type === 'PE').reduce((n,r) => n+r.oi, 0);
-    return { date: s.date, pcr: ce > 0 ? pe / ce : 0, ce, pe };
+    return { date: s.date, kind: s.kind || 'DAILY', pcr: ce > 0 ? pe / ce : 0, ce, pe };
   }), [snapshots, selectedExpiry]);
 
   const liquidity = useMemo(() => chain.map(r => ({...r, volumeOi: r.oi > 0 ? r.volume/r.oi : 0}))
@@ -187,7 +192,7 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
         </section>
         <section className={panel}>
           <h3 className="text-sm font-bold text-white">2 · OI Shift Tracker</h3>
-          <p className="mt-1 text-xs text-slate-400">मागील saved snapshot पासून strike-wise OI मधील बदल.</p>
+          <p className="mt-1 text-xs text-slate-400">प्रत्येक trading day चा EOD snapshot उपलब्ध असल्यास तो; अन्यथा त्या दिवसाचा पहिला saved snapshot वापरून strike-wise OI बदल.</p>
           {!previous ? <p className="mt-4 rounded-lg bg-[#080f1b] p-3 text-xs text-amber-200">किमान दोन वेगवेगळ्या दिवसांचे snapshots आवश्यक. सध्या पुरेसा prior data नाही.</p> : <div className="mt-3 space-y-2">{oiShift.slice(0,8).map(r => <div key={r.strike+r.type} className="flex items-center justify-between gap-2 rounded-lg bg-[#080f1b] px-3 py-2 text-xs"><span className="font-bold text-white">{r.strike} {r.type}</span><span className={r.delta >= 0 ? 'text-emerald-300' : 'text-rose-300'}>{r.delta >= 0 ? '+' : ''}{fmt(r.delta)} OI</span></div>)}</div>}
         </section>
         <section className={panel}>
@@ -217,8 +222,8 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
         </section>
         <section className={panel}>
           <h3 className="text-sm font-bold text-white">4 · PCR Trend & OI History</h3>
-          <p className="mt-1 text-xs text-slate-400">प्रत्येक saved date चा selected expiry PCR.</p>
-          {!pcrTrend.length ? <p className="mt-3 text-xs text-amber-200">PCR history उपलब्ध नाही.</p> : <div className="mt-3 space-y-2">{pcrTrend.map(p => <div key={p.date} className="grid grid-cols-[1fr_auto_auto] gap-3 rounded-lg bg-[#080f1b] px-3 py-2 text-xs"><span className="text-slate-300">{p.date}</span><span className="text-white">PCR <b>{p.pcr.toFixed(2)}</b></span><span className="text-slate-400">CE {fmt(p.ce)} · PE {fmt(p.pe)}</span></div>)}</div>}
+          <p className="mt-1 text-xs text-slate-400">प्रत्येक trading day चा PCR; EOD snapshot उपलब्ध असल्यास तो वापरला जातो.</p>
+          {!pcrTrend.length ? <p className="mt-3 text-xs text-amber-200">PCR history उपलब्ध नाही.</p> : <div className="mt-3 space-y-2">{pcrTrend.map(p => <div key={p.date} className="grid grid-cols-[1fr_auto_auto] gap-3 rounded-lg bg-[#080f1b] px-3 py-2 text-xs"><span className="text-slate-300">{p.date} {p.kind === 'EOD' ? <b className="ml-1 text-cyan-200">EOD</b> : null}</span><span className="text-white">PCR <b>{p.pcr.toFixed(2)}</b></span><span className="text-slate-400">CE {fmt(p.ce)} · PE {fmt(p.pe)}</span></div>)}</div>}
           <p className="mt-2 text-[10px] text-slate-500">आताचा PCR: {pcr ? pcr.toFixed(2) : '—'} · इतिहास वाढवण्यासाठी वेगवेगळ्या दिवशी CSV snapshot save करा.</p>
         </section>
       </div>
@@ -238,7 +243,7 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
         </section>
       <section className={panel}>
         <h3 className="text-sm font-bold text-white">9 · Historical Signal Backtest</h3>
-        <p className="mt-1 text-xs text-slate-400">एका snapshot pair वर तयार झालेला directional bias पुढील saved snapshot मधील BANKNIFTY Spot move विरुद्ध तपासला जातो. ₹300 पर्यंतचे contracts वापरले आहेत.</p>
+        <p className="mt-1 text-xs text-slate-400">प्रत्येक दिवसासाठी EOD snapshot उपलब्ध असल्यास त्यावर तयार झालेला directional bias पुढील trading day च्या BANKNIFTY Spot move विरुद्ध तपासला जातो. ₹300 पर्यंतचे contracts वापरले आहेत.</p>
         {historicalBacktest.total < 1 ? <p className="mt-3 rounded-lg bg-[#080f1b] p-3 text-xs text-amber-200">किमान 3 वेगवेगळ्या तारखांचे saved snapshots आवश्यक (signal साठी 2 आणि पुढील दिवसाचा outcome तपासण्यासाठी 1). सध्या {snapshots.length} snapshots उपलब्ध.</p> : <>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl bg-[#080f1b] p-3"><p className="text-xs text-slate-400">Signals Tested</p><p className="mt-1 text-2xl font-black text-white">{historicalBacktest.total}</p></div>
