@@ -113,6 +113,31 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
     if (!previous) alerts.push({level:'INFO',title:'Historical comparison unavailable',detail:'OI buildup alerts साठी किमान दोन वेगवेगळ्या दिवसांचे saved snapshots आवश्यक.'});
     return alerts;
   }, [pcr, buildupSignals, liquidity, previous]);
+  // Score a saved directional signal against the next available day's BANKNIFTY spot move.
+  const historicalBacktest = useMemo(() => {
+    const ordered = snapshots.filter(s => s.spot > 0).sort((a,b) => a.date.localeCompare(b.date));
+    const tests: Array<{date:string; signal:string; direction:1|-1; movePct:number; correct:boolean; bullish:number; bearish:number}> = [];
+    for (let i=1;i<ordered.length-1;i++) {
+      const before=ordered[i-1], signalDay=ordered[i], outcome=ordered[i+1];
+      const oldMap=new Map(before.rows.filter(r=>r.expiry===selectedExpiry&&r.ltp>0&&r.ltp<=300).map(r=>[r.strike+'|'+r.type,r]));
+      let bullish=0,bearish=0;
+      for (const r of signalDay.rows.filter(r=>r.expiry===selectedExpiry&&r.ltp>0&&r.ltp<=300)) {
+        const old=oldMap.get(r.strike+'|'+r.type); if(!old||!(old.ltp>0)) continue;
+        const up=r.ltp>old.ltp,down=r.ltp<old.ltp,oiUp=r.oi>old.oi,oiDown=r.oi<old.oi;
+        const pattern=up&&oiUp?'LONG':down&&oiUp?'SHORT':up&&oiDown?'COVER':down&&oiDown?'UNWIND':'';
+        if(!pattern) continue;
+        const bull=r.type==='CE'?(pattern==='LONG'||pattern==='COVER'):(pattern==='SHORT'||pattern==='UNWIND');
+        if(bull) bullish++; else bearish++;
+      }
+      if(bullish===bearish) continue;
+      const direction:1|-1=bullish>bearish?1:-1;
+      const movePct=(outcome.spot-signalDay.spot)/signalDay.spot*100;
+      if(!Number.isFinite(movePct)||movePct===0) continue;
+      tests.push({date:signalDay.date,signal:direction===1?'BULLISH':'BEARISH',direction,movePct,correct:direction===1?movePct>0:movePct<0,bullish,bearish});
+    }
+    const wins=tests.filter(t=>t.correct).length;
+    return {tests:tests.slice(-15).reverse(),total:tests.length,accuracy:tests.length?wins/tests.length*100:0,avgMove:tests.length?tests.reduce((s,t)=>s+t.direction*t.movePct,0)/tests.length:0};
+  },[snapshots,selectedExpiry]);
   const ivRows = useMemo(() => chain.filter(r => Number.isFinite(r.iv) && (r.iv || 0) > 0).sort((a,b) => Math.abs(a.strike-spot)-Math.abs(b.strike-spot)), [chain, spot]);
   const atmIv = useMemo(() => ({ ce: ivRows.find(r => r.type === 'CE'), pe: ivRows.find(r => r.type === 'PE') }), [ivRows]);
   const ivSkew = atmIv.ce && atmIv.pe ? (atmIv.pe.iv || 0) - (atmIv.ce.iv || 0) : null;
@@ -203,6 +228,19 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
           <div className="mt-3 space-y-1">{sentiment.reasons.length ? sentiment.reasons.map((reason,i)=><p key={i} className="text-xs text-slate-300">• {reason}</p>) : <p className="text-xs text-slate-400">Directional factors स्पष्ट नाहीत.</p>}</div>
           <p className="mt-2 text-[10px] text-slate-500">हा custom heuristic score आहे; probability, guaranteed accuracy किंवा trade recommendation नाही.</p>
         </section>
+      <section className={panel}>
+        <h3 className="text-sm font-bold text-white">9 · Historical Signal Backtest</h3>
+        <p className="mt-1 text-xs text-slate-400">एका snapshot pair वर तयार झालेला directional bias पुढील saved snapshot मधील BANKNIFTY Spot move विरुद्ध तपासला जातो. ₹300 पर्यंतचे contracts वापरले आहेत.</p>
+        {historicalBacktest.total < 1 ? <p className="mt-3 rounded-lg bg-[#080f1b] p-3 text-xs text-amber-200">किमान 3 वेगवेगळ्या तारखांचे saved snapshots आवश्यक (signal साठी 2 आणि पुढील दिवसाचा outcome तपासण्यासाठी 1). सध्या {snapshots.length} snapshots उपलब्ध.</p> : <>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl bg-[#080f1b] p-3"><p className="text-xs text-slate-400">Signals Tested</p><p className="mt-1 text-2xl font-black text-white">{historicalBacktest.total}</p></div>
+            <div className="rounded-xl bg-[#080f1b] p-3"><p className="text-xs text-slate-400">Historical Hit Rate</p><p className="mt-1 text-2xl font-black text-cyan-200">{historicalBacktest.accuracy.toFixed(1)}%</p></div>
+            <div className="rounded-xl bg-[#080f1b] p-3"><p className="text-xs text-slate-400">Avg. Directional Spot Move</p><p className={'mt-1 text-2xl font-black '+(historicalBacktest.avgMove>=0?'text-emerald-300':'text-rose-300')}>{historicalBacktest.avgMove>0?'+':''}{historicalBacktest.avgMove.toFixed(2)}%</p></div>
+          </div>
+          <div className="mt-3 overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-[10px] text-slate-500"><tr><th className="py-2">Signal Date</th><th>Bias</th><th>Next Spot Move</th><th>Result</th><th>Bull/Bear votes</th></tr></thead><tbody>{historicalBacktest.tests.map(t=><tr key={t.date} className="border-t border-slate-800"><td className="py-2 text-slate-300">{t.date}</td><td className={t.direction===1?'text-emerald-300':'text-rose-300'}>{t.signal}</td><td>{t.movePct>0?'+':''}{t.movePct.toFixed(2)}%</td><td className={t.correct?'text-emerald-300':'text-rose-300'}>{t.correct?'HIT':'MISS'}</td><td className="text-slate-400">{t.bullish} / {t.bearish}</td></tr>)}</tbody></table></div>
+        </>}
+        <p className="mt-2 text-[10px] text-slate-500">हा historical heuristic आहे; future prediction किंवा guaranteed accuracy नाही. एकाच दिवसाचे पुन्हा upload केलेले CSV वेगळा trading day मानले जात नाही. निकाल उपलब्ध snapshots आणि Spot quality वर अवलंबून आहे.</p>
+      </section>
       <section className={panel}>
         <h3 className="text-sm font-bold text-white">5 · Spot Scenario Analyzer · Expiry Payoff</h3>
         <p className="mt-1 text-xs text-slate-400">निवडलेल्या long CE/PE चा expiry intrinsic payoff. हा what-if calculator आहे, forecast नाही.</p>
