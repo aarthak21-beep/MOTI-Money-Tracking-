@@ -147,6 +147,13 @@ const parseCsv = (text: string, filename = '', fallbackSpot = 0): OptionRow[] =>
 const csvTemplate = 'Expiry,Strike,OptionType,LTP,OI,ChangeOI,Volume,IV,UnderlyingValue\n2026-12-03,26000,CE,150,120000,15000,45000,14.2,25950\n2026-12-03,26000,PE,175,145000,22000,51000,14.8,25950';
 const fmt = (v: number) => v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const localDateKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const isIndianMarketOpenNow = () => {
+  const parts = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  const get = (type: string) => parts.find(part => part.type === type)?.value || '';
+  const weekday = get('weekday');
+  const minutes = Number(get('hour')) * 60 + Number(get('minute'));
+  return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday) && minutes >= 9 * 60 + 15 && minutes < 15 * 60 + 30;
+};
 const today = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
 const expiryDaysAway = (expiry: string) => {
   const [year, month, day] = expiry.split('-').map(Number);
@@ -246,20 +253,36 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
   const [error, setError] = useState('');
   const [liveEnabled, setLiveEnabled] = useState(true);
   useEffect(() => {
-    if (!liveEnabled) return;
+    if (!liveEnabled) {
+      setLiveStatus('Auto Live बंद');
+      return;
+    }
     let active = true;
     let busy = false;
     const refreshLiveChain = async () => {
-      if (busy) return;
+      if (!active || busy) return;
+      if (!isIndianMarketOpenNow()) {
+        setLiveStatus('Market बंद · FYERS requests थांबवले');
+        setLiveError('');
+        return;
+      }
       busy = true;
       try {
         const jwt = await getAppwriteJwt();
+        if (!active || !isIndianMarketOpenNow()) {
+          setLiveStatus('Market बंद · FYERS requests थांबवले');
+          return;
+        }
         const headers = { authorization: `Bearer ${jwt}` };
         const quoteRes = await fetch(`${CLOUD_WORKER_URL}/api/fyers/quote`, { headers, cache: 'no-store' });
         const quoteBody = await quoteRes.json();
         if (!quoteRes.ok) throw new Error(quoteBody.error || 'FYERS token/API उपलब्ध नाही.');
         const spot = Number(quoteBody.quotes?.['NSE:NIFTYBANK-INDEX']?.ltp || 0);
         if (!(spot > 0)) throw new Error('FYERS कडून BANKNIFTY Spot मिळाला नाही.');
+        if (!active || !isIndianMarketOpenNow()) {
+          setLiveStatus('Market बंद · FYERS requests थांबवले');
+          return;
+        }
         const firstRes = await fetch(`${CLOUD_WORKER_URL}/api/fyers/option-chain?index=BANKNIFTY&strikecount=50`, { headers, cache: 'no-store' });
         const firstBody = await firstRes.json();
         if (!firstRes.ok) throw new Error(firstBody.error || 'FYERS BANKNIFTY expiry list मिळाली नाही.');
@@ -271,7 +294,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
         const fetchedRows: OptionRow[] = [];
         const snapshots: DailySnapshot[] = [];
         for (const expiry of futureExpiries.slice(0, 12)) {
-          if (!active) return;
+          if (!active || !isIndianMarketOpenNow()) break;
           const res = expiry.timestamp === String(expiryData[0]?.expiry)
             ? firstRes
             : await fetch(`${CLOUD_WORKER_URL}/api/fyers/option-chain?index=BANKNIFTY&strikecount=50&timestamp=${encodeURIComponent(expiry.timestamp)}`, { headers, cache: 'no-store' });
@@ -290,9 +313,14 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
           snapshots.push({ date: stamp, expiry: expiry.iso, spot, rows: converted.map(({ expiry: exp, strike, type, ltp, oi, changeOi, volume, iv }) => ({ expiry: exp, strike, type, ltp, oi, changeOi, volume, iv })) });
         }
         if (!active) return;
+        if (!isIndianMarketOpenNow()) {
+          setLiveStatus('Market बंद · FYERS requests थांबवले');
+          return;
+        }
         if (!fetchedRows.length) throw new Error('FYERS कडून कोणत्याही पुढील expiry चे contracts मिळाले नाहीत.');
         const mergedRows = fetchedRows.filter(row => isEligiblePositionalExpiry(row.expiry));
-        await saveScannerData('banknifty-options', mergedRows);
+        try { await saveScannerData('banknifty-options', mergedRows); }
+        catch { /* Keep the live chain usable locally even if cloud storage is unavailable. */ }
         if (!active) return;
         setRows(mergedRows);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedRows));
@@ -311,6 +339,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
       } finally { busy = false; }
     };
     void refreshLiveChain();
+    // This timer only checks the local IST market clock outside trading hours; it makes no network request.
     const timer = window.setInterval(() => { void refreshLiveChain(); }, 60000);
     return () => { active = false; window.clearInterval(timer); };
   }, [liveEnabled]);
