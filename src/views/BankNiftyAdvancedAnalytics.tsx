@@ -203,7 +203,6 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
           <div className="mt-3 space-y-1">{sentiment.reasons.length ? sentiment.reasons.map((reason,i)=><p key={i} className="text-xs text-slate-300">• {reason}</p>) : <p className="text-xs text-slate-400">Directional factors स्पष्ट नाहीत.</p>}</div>
           <p className="mt-2 text-[10px] text-slate-500">हा custom heuristic score आहे; probability, guaranteed accuracy किंवा trade recommendation नाही.</p>
         </section>
-      </section>
       <section className={panel}>
         <h3 className="text-sm font-bold text-white">5 · Spot Scenario Analyzer · Expiry Payoff</h3>
         <p className="mt-1 text-xs text-slate-400">निवडलेल्या long CE/PE चा expiry intrinsic payoff. हा what-if calculator आहे, forecast नाही.</p>
