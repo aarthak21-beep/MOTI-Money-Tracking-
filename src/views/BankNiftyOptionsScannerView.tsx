@@ -147,12 +147,14 @@ const parseCsv = (text: string, filename = '', fallbackSpot = 0): OptionRow[] =>
 const csvTemplate = 'Expiry,Strike,OptionType,LTP,OI,ChangeOI,Volume,IV,UnderlyingValue\n2026-12-03,26000,CE,150,120000,15000,45000,14.2,25950\n2026-12-03,26000,PE,175,145000,22000,51000,14.8,25950';
 const fmt = (v: number) => v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const localDateKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const NSE_HOLIDAYS_2026 = new Set(['2026-01-15', '2026-01-26', '2026-03-03', '2026-03-26', '2026-03-31', '2026-04-03', '2026-04-14', '2026-05-01', '2026-05-28', '2026-06-26', '2026-09-14', '2026-10-02', '2026-10-20', '2026-11-10', '2026-11-24', '2026-12-25']);
 const isIndianMarketOpenNow = () => {
   const parts = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
   const get = (type: string) => parts.find(part => part.type === type)?.value || '';
   const weekday = get('weekday');
   const minutes = Number(get('hour')) * 60 + Number(get('minute'));
-  return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday) && minutes >= 9 * 60 + 15 && minutes < 15 * 60 + 30;
+  const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  return !NSE_HOLIDAYS_2026.has(date) && ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday) && minutes >= 9 * 60 + 15 && minutes < 15 * 60 + 30;
 };
 const today = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
 const expiryDaysAway = (expiry: string) => {
