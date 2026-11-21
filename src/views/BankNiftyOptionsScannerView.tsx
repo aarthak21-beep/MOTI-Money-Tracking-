@@ -8,6 +8,7 @@ type OptionRow = {
   oi: number; changeOi: number; volume: number; iv?: number; spot: number;
 };
 const HISTORY_KEY = 'banknifty-history';
+const PAPER_TRADES_KEY = 'banknifty-paper-trades';
 const localIstDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 type DailySnapshot = { date: string; expiry?: string; spot: number; rows: Array<{ expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number; changeOi?: number; volume?: number; iv?: number }> };
 const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -226,6 +227,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
       }
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud data load failed.'); });
     void loadScannerData<DailySnapshot[]>(HISTORY_KEY).then(data => { if (active) setHistory(data || []); }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud history load failed.'); });
+    void loadScannerData<typeof paperTrades>(PAPER_TRADES_KEY).then(data => { if (active) setPaperTrades(data || []); }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cloud paper journal load failed.'); });
     return () => { active = false; };
   }, []);
   useEffect(() => {
@@ -352,7 +354,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [strategyType, setStrategyType] = useState<'BULL_CALL_SPREAD' | 'BEAR_PUT_SPREAD' | 'IRON_CONDOR'>('BULL_CALL_SPREAD');
   const [strategyWidth, setStrategyWidth] = useState(100);
-  const [paperTrades, setPaperTrades] = useState<Array<{id:string;date:string;expiry:string;strike:number;type:'CE'|'PE';entry:number;qty:number;status:'OPEN'|'CLOSED';exit?:number;closedAt?:string}>>(() => { try { return JSON.parse(localStorage.getItem('moti_banknifty_paper_trades_v1') || '[]'); } catch { return []; } });
+  const [paperTrades, setPaperTrades] = useState<Array<{id:string;date:string;expiry:string;strike:number;type:'CE'|'PE';entry:number;qty:number;status:'OPEN'|'CLOSED';exit?:number;closedAt?:string}>>([]);
   const [paperExit, setPaperExit] = useState<Record<string,string>>({});
 
 
@@ -631,14 +633,14 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
   const savePaperTrade = (contract: OptionRow) => {
     const trade = { id: `${Date.now()}-${contract.strike}-${contract.type}`, date: localDateKey(), expiry: contract.expiry, strike: contract.strike, type: contract.type, entry: contract.ltp, qty: lotSize, status: 'OPEN' as const };
     const next = [trade, ...paperTrades].slice(0, 200);
-    setPaperTrades(next); localStorage.setItem('moti_banknifty_paper_trades_v1', JSON.stringify(next));
+    setPaperTrades(next); void saveScannerData(PAPER_TRADES_KEY, next).catch(e => setError(e instanceof Error ? e.message : 'Cloud paper journal save failed.'));
     setMessage(`Paper trade saved: ${contract.strike} ${contract.type} @ ₹${fmt(contract.ltp)}`);
   };
   const closePaperTrade = (id: string) => {
     const exit = Number((paperExit[id] || '').replace(/[,₹\\s]/g, ''));
     if (!(exit > 0)) { setError('Paper trade बंद करण्यासाठी वैध exit premium भरा.'); return; }
     const next = paperTrades.map(t => t.id === id ? { ...t, status: 'CLOSED' as const, exit, closedAt: localDateKey() } : t);
-    setPaperTrades(next); localStorage.setItem('moti_banknifty_paper_trades_v1', JSON.stringify(next));
+    setPaperTrades(next); void saveScannerData(PAPER_TRADES_KEY, next).catch(e => setError(e instanceof Error ? e.message : 'Cloud paper journal save failed.'));
     setPaperExit(old => ({ ...old, [id]: '' })); setMessage('Paper trade closed आणि journal save झाला.');
   };
   const downloadCsv = (filename: string, content: string) => {
@@ -714,7 +716,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
 
   const clearData = () => {
     if (window.confirm('Saved BANKNIFTY option-chain data delete करायचा?')) {
-      void (async () => { try { await deleteScannerData('banknifty-options'); await deleteScannerData(HISTORY_KEY); setRows([]); setHistory([]); setMessage('Cloud option-chain आणि daily history clear केला.'); } catch (e) { setError(e instanceof Error ? e.message : 'Cloud delete failed.'); } })();
+      void (async () => { try { await deleteScannerData('banknifty-options'); await deleteScannerData(HISTORY_KEY); await deleteScannerData(PAPER_TRADES_KEY); setRows([]); setHistory([]); setPaperTrades([]); setMessage('Cloud option-chain आणि daily history clear केला.'); } catch (e) { setError(e instanceof Error ? e.message : 'Cloud delete failed.'); } })();
     }
   };
 
