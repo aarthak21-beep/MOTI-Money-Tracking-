@@ -32,7 +32,7 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
   const expiries = useMemo(() => Array.from(new Set(rows.map(r => r.expiry))).sort(), [rows]);
   const [expiry, setExpiry] = useState('');
   const selectedExpiry = expiries.includes(expiry) ? expiry : expiries[0] || '';
-  const chain = useMemo(() => rows.filter(r => r.expiry === selectedExpiry && r.ltp > 0), [rows, selectedExpiry]);
+  const chain = useMemo(() => rows.filter(r => r.expiry === selectedExpiry && r.ltp > 0 && r.ltp <= 300), [rows, selectedExpiry]);
   const spot = chain[0]?.spot || 0;
   const ceOi = chain.filter(r => r.type === 'CE').reduce((s, r) => s + r.oi, 0);
   const peOi = chain.filter(r => r.type === 'PE').reduce((s, r) => s + r.oi, 0);
@@ -56,7 +56,7 @@ export const BankNiftyAdvancedAnalytics: React.FC = () => {
   const oiShift = useMemo(() => {
     if (!latest || !previous) return [];
     const oldMap = new Map(previous.rows.filter(r => r.expiry === selectedExpiry).map(r => [r.strike + '|' + r.type, r]));
-    return latest.rows.filter(r => r.expiry === selectedExpiry).map(r => {
+    return latest.rows.filter(r => r.expiry === selectedExpiry && r.ltp > 0 && r.ltp <= 300).map(r => {
       const old = oldMap.get(r.strike + '|' + r.type);
       return old ? { ...r, delta: r.oi - old.oi } : null;
     }).filter((r): r is Row & {delta:number} => Boolean(r)).sort((a,b) => Math.abs(b.delta)-Math.abs(a.delta)).slice(0,12);
