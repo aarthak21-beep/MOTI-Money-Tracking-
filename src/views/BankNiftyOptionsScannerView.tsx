@@ -10,7 +10,8 @@ type OptionRow = {
 const HISTORY_KEY = 'banknifty-history';
 const PAPER_TRADES_KEY = 'banknifty-paper-trades';
 const localIstDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-type DailySnapshot = { date: string; expiry?: string; spot: number; rows: Array<{ expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number; changeOi?: number; volume?: number; iv?: number }> };
+const isEodSnapshotWindow = () => { const parts = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()); const hour = Number(parts.find(p => p.type === 'hour')?.value || 0); const minute = Number(parts.find(p => p.type === 'minute')?.value || 0); const total = hour * 60 + minute; return total >= 15 * 60 + 20 && total < 15 * 60 + 30; };
+type DailySnapshot = { date: string; expiry?: string; kind?: 'DAILY' | 'EOD'; spot: number; rows: Array<{ expiry: string; strike: number; type: 'CE' | 'PE'; ltp: number; oi: number; changeOi?: number; volume?: number; iv?: number }> };
 const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
 const number = (v?: string) => {
   if (!v || v.trim() === '-' || v.trim() === '—') return 0;
@@ -322,9 +323,17 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
         setRows(mergedRows);
         const tradingDate = localIstDate();
         const oldHistory = await loadScannerData<DailySnapshot[]>(HISTORY_KEY).catch(() => [] as DailySnapshot[]) || [];
-        const newDaily = snapshots.filter(snapshot => !oldHistory.some(saved => saved.expiry === snapshot.expiry && saved.date.slice(0, 10) === tradingDate));
+        const eodWindow = isEodSnapshotWindow();
+        const newDaily = snapshots.flatMap(snapshot => {
+          const savedForDay = oldHistory.filter(saved => saved.expiry === snapshot.expiry && saved.date.slice(0, 10) === tradingDate);
+          const additions: DailySnapshot[] = [];
+          if (!savedForDay.some(saved => saved.kind !== 'EOD')) additions.push({ ...snapshot, kind: 'DAILY' });
+          if (eodWindow && !savedForDay.some(saved => saved.kind === 'EOD')) additions.push({ ...snapshot, kind: 'EOD' });
+          return additions;
+        });
         if (newDaily.length) {
-          const nextHistory = [...oldHistory, ...newDaily].slice(-36);
+          // 72 records cover about three sessions at 12 expiries with both daily and EOD snapshots.
+          const nextHistory = [...oldHistory, ...newDaily].slice(-72);
           await saveScannerData(HISTORY_KEY, nextHistory);
           setHistory(nextHistory);
         }
@@ -378,7 +387,12 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
     return { ceOi, peOi, ceChg, peChg, pcr, bias, spot };
   }, [chain]);
   const rangeRows = useMemo(() => chain.filter(r => r.strike >= summary.spot - 600 && r.strike <= summary.spot + 600 && r.ltp > 0 && r.ltp <= 300), [chain, summary.spot]);
-  const expirySnapshots = useMemo(() => history.filter(h => h.expiry === selectedExpiry || (!h.expiry && h.rows.some(r => r.expiry === selectedExpiry))), [history, selectedExpiry]);
+  const expirySnapshots = useMemo(() => {
+    const relevant = history.filter(h => h.expiry === selectedExpiry || (!h.expiry && h.rows.some(r => r.expiry === selectedExpiry)));
+    const byDay = new Map<string, DailySnapshot>();
+    relevant.forEach(snapshot => { const day = snapshot.date.slice(0, 10); const existing = byDay.get(day); if (!existing || snapshot.kind === 'EOD') byDay.set(day, snapshot); });
+    return Array.from(byDay.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }, [history, selectedExpiry]);
   const latestSnapshot = expirySnapshots.slice().sort((a, b) => b.date.localeCompare(a.date))[0] || null;
   const previousSnapshot = latestSnapshot
     ? expirySnapshots.filter(h => h.date < latestSnapshot.date).sort((a, b) => b.date.localeCompare(a.date))[0] || null
@@ -408,7 +422,7 @@ export const BankNiftyOptionsScannerView: React.FC = () => {
     const confidence = volumeConfirmed ? 'VOLUME CONFIRMED' : r.volume > 0 ? 'BELOW MEDIAN VOLUME' : 'NO VOLUME';
     return { ...r, signal, signalType, oldLtp: old.ltp, oldOi: old.oi, priceChangePct, oiDeltaSinceSnapshot, oiChangePct, strength, strengthScore, volumeConfirmed, medianVolume, confidence };
   }), [rangeRows, priorByContract]);
-  const pcrHistory = useMemo(() => [...history].sort((a, b) => a.date.localeCompare(b.date)).map(h => { const ce = h.rows.filter(r => r.expiry === selectedExpiry && r.type === 'CE').reduce((s, r) => s + r.oi, 0); const pe = h.rows.filter(r => r.expiry === selectedExpiry && r.type === 'PE').reduce((s, r) => s + r.oi, 0); return { date: h.date, pcr: ce ? pe / ce : 0 }; }).filter(x => x.pcr > 0).slice(-7), [history, selectedExpiry]);
+  const pcrHistory = useMemo(() => expirySnapshots.map(h => { const ce = h.rows.filter(r => r.expiry === selectedExpiry && r.type === 'CE').reduce((s, r) => s + r.oi, 0); const pe = h.rows.filter(r => r.expiry === selectedExpiry && r.type === 'PE').reduce((s, r) => s + r.oi, 0); return { date: h.date, pcr: ce ? pe / ce : 0 }; }).filter(x => x.pcr > 0).slice(-7), [expirySnapshots, selectedExpiry]);
   const strikeStats = useMemo(() => {
     const grouped = new Map<number, { strike: number; ceOi: number; peOi: number; ceChange: number; peChange: number; ceVol: number; peVol: number }>();
     for (const r of rangeRows) {
